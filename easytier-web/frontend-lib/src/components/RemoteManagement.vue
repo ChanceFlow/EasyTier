@@ -149,6 +149,11 @@ const needShowNetworkStatus = computed(() => {
 
 // ---- 移动端底部原生 Tab ----
 const mobileTab = ref<'home' | 'devices' | 'config' | 'activity'>('home');
+watch(mobileTab, async (newTab) => {
+    if (newTab === 'config' && !currentNetworkConfig.value) {
+        await loadCurrentNetworkConfig();
+    }
+});
 
 // ---- 移动端网络切换 Bottom Sheet ----
 const networkSheetOpen = ref(false);
