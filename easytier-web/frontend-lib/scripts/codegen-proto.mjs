@@ -23,6 +23,28 @@ const protoFiles = [
   'error.proto',
 ]
 
+const generatedFileNames = protoFiles.map((file) => file.replace(/\.proto$/, '.ts'))
+
+function isUpToDate() {
+  try {
+    const maxProtoMtime = Math.max(
+      ...protoFiles.map((file) => statSync(resolve(protoRoot, file)).mtimeMs),
+    )
+    return generatedFileNames.every((file) => {
+      const target = resolve(outDir, file)
+      return existsSync(target) && statSync(target).mtimeMs >= maxProtoMtime
+    })
+  } catch {
+    return false
+  }
+}
+
+// Skip the network + protoc entirely when generated outputs are already fresh.
+if (isUpToDate()) {
+  console.log('[codegen-proto] outputs up-to-date, skipping')
+  process.exit(0)
+}
+
 function installGeneratedFiles(fromDir, toDir) {
   mkdirSync(toDir, { recursive: true })
 

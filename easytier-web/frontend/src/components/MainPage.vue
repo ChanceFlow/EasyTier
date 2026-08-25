@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { I18nUtils } from 'easytier-frontend-lib'
 import { computed, onMounted, ref, onUnmounted, nextTick } from 'vue';
-import { Button, TieredMenu } from 'primevue';
+import { useDisplay } from 'vuetify';
 import { useRoute, useRouter } from 'vue-router';
-import { useDialog } from 'primevue/usedialog';
 import ChangePassword from './ChangePassword.vue';
 import Icon from '../assets/easytier.png'
 import { useI18n } from 'vue-i18n'
@@ -12,6 +11,8 @@ import ApiClient from '../modules/api';
 const { t } = useI18n()
 const route = useRoute();
 const router = useRouter();
+const { smAndUp } = useDisplay()
+
 const api = computed<ApiClient | undefined>(() => {
     try {
         return new ApiClient(atob(route.params.apiHost as string), () => {
@@ -22,30 +23,22 @@ const api = computed<ApiClient | undefined>(() => {
     }
 });
 
-const dialog = useDialog();
+// ChangePassword is hosted in a v-dialog below (previously opened through
+// PrimeVue's useDialog / DialogService).
+const showChangePassword = ref(false);
 
-const userMenu = ref();
 const userMenuItems = ref([
     {
         label: t('web.main.change_password'),
-        icon: 'pi pi-key',
+        icon: 'mdi-key',
         command: () => {
             console.log('File');
-            let ret = dialog.open(ChangePassword, {
-                props: {
-                    modal: true,
-                },
-                data: {
-                    api: api.value,
-                }
-            });
-
-            console.log("return", ret)
+            showChangePassword.value = true;
         },
     },
     {
         label: t('web.main.logout'),
-        icon: 'pi pi-sign-out',
+        icon: 'mdi-logout',
         command: async () => {
             try {
                 await api.value?.logout();
@@ -58,8 +51,22 @@ const userMenuItems = ref([
 ])
 
 const forceShowSideBar = ref(false)
-const sidebarRef = ref<HTMLElement>()
-const toggleButtonRef = ref<HTMLElement>()
+const sidebarContentRef = ref<HTMLElement>()
+const toggleButtonRef = ref()
+
+// The navigation drawer is always shown on >= sm displays; on smaller
+// screens it only shows while forceShowSideBar is true.
+const drawerVisible = computed(() => smAndUp.value || forceShowSideBar.value)
+
+const onDrawerUpdate = (value: boolean) => {
+    if (value) {
+        forceShowSideBar.value = true;
+    } else {
+        closeSidebar();
+    }
+}
+
+const toggleButtonEl = computed<HTMLElement | undefined>(() => (toggleButtonRef.value as any)?.$el)
 
 // 处理点击外部区域关闭侧边栏
 const handleClickOutside = (event: Event) => {
@@ -69,8 +76,8 @@ const handleClickOutside = (event: Event) => {
     if (!forceShowSideBar.value) return;
 
     // 检查点击是否在侧边栏内部或切换按钮上
-    const isClickInsideSidebar = sidebarRef.value?.contains(target);
-    const isClickOnToggleButton = toggleButtonRef.value?.contains(target);
+    const isClickInsideSidebar = sidebarContentRef.value?.contains(target);
+    const isClickOnToggleButton = toggleButtonEl.value?.contains(target);
 
     // 如果点击在侧边栏外部且不在切换按钮上，则关闭侧边栏
     if (!isClickInsideSidebar && !isClickOnToggleButton) {
@@ -100,88 +107,62 @@ onUnmounted(() => {
 
 </script>
 
-<!-- https://flowbite.com/docs/components/sidebar/#sidebar-with-navbar -->
 <template>
-    <nav
-        class="fixed top-0 z-50 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 top-navbar">
-        <div class="px-3 py-3 lg:px-5 lg:pl-3">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center justify-start rtl:justify-end">
-                    <div class="sm:hidden">
-                        <Button ref="toggleButtonRef" type="button" aria-haspopup="true" icon="pi pi-list"
-                            variant="text" size="large" severity="contrast" @click="toggleSidebar" />
-                    </div>
-                    <a href="https://easytier.top" class="flex ms-2 md:me-24">
-                        <img :src="Icon" class="h-9 me-3" alt="FlowBite Logo" />
-                        <span
-                            class="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap dark:text-white">EasyTier</span>
-                    </a>
-                </div>
-                <div class="flex items-center">
-                    <div class="language-switch">
-                        <Button icon="pi pi-language" @click="I18nUtils.toggleLanguage" rounded severity="contrast" />
-                    </div>
+    <!-- 顶部导航栏 (Frosted glass) -->
+    <v-app-bar color="surface" flat border="b" class="main-app-bar">
+        <v-app-bar-nav-icon v-if="!smAndUp" ref="toggleButtonRef" icon="mdi-menu" aria-haspopup="true"
+            @click="toggleSidebar" />
+        <a href="https://easytier.top" class="d-flex align-center ga-2 ms-2 text-decoration-none">
+            <v-img :src="Icon" width="32" height="32" cover class="rounded-lg" />
+            <span class="text-h6 font-weight-bold">EasyTier</span>
+        </a>
+        <v-spacer />
+        <v-btn icon="mdi-translate" variant="text" size="small" @click="I18nUtils.toggleLanguage" />
+        <v-menu>
+            <template #activator="{ props: menuProps }">
+                <v-btn v-bind="menuProps" class="ms-1" icon="mdi-account" variant="text" size="small" aria-haspopup="true" />
+            </template>
+            <v-list density="comfortable" min-width="200" rounded="xl">
+                <v-list-item v-for="(item, index) in userMenuItems" :key="index" :prepend-icon="item.icon"
+                    :title="item.label" @click="item.command" />
+            </v-list>
+        </v-menu>
+    </v-app-bar>
 
-                    <div class="flex items-center ms-3">
-                        <div>
-                            <Button type="button" @click="userMenu.toggle($event)" aria-haspopup="true"
-                                aria-controls="user-menu" icon="pi pi-user" raised rounded />
-                            <TieredMenu ref="userMenu" id="user-menu" :model="userMenuItems" popup />
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- 侧边栏：桌面端常驻，移动端临时抽屉 -->
+    <v-navigation-drawer :model-value="drawerVisible" :width="256" :mobile-breakpoint="600"
+        @update:model-value="onDrawerUpdate">
+        <div ref="sidebarContentRef" class="h-100 pa-3">
+            <v-list nav density="comfortable">
+                <v-list-item prepend-icon="mdi-chart-pie" :title="t('web.main.dashboard')" rounded="xl"
+                    @click="router.push({ name: 'dashboard' })" />
+                <v-list-item prepend-icon="mdi-server" :title="t('web.main.device_list')" rounded="xl"
+                    @click="router.push({ name: 'deviceList' })" />
+                <v-list-item prepend-icon="mdi-login" :title="t('web.main.login_page')" rounded="xl"
+                    @click="router.push({ name: 'login' })" />
+            </v-list>
         </div>
-    </nav>
+    </v-navigation-drawer>
 
-    <!-- 背景遮罩 - 只在侧边栏显示时显示 -->
-    <div v-if="forceShowSideBar" class="fixed inset-0 z-30 bg-black bg-opacity-50 sm:hidden" @click="closeSidebar">
-    </div>
-
-    <aside ref="sidebarRef" id="logo-sidebar"
-        class="fixed top-1 left-0 z-40 w-64 h-screen pt-20 transition-transform bg-white border-r border-gray-201 sm:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
-        :class="{ '-translate-x-full': !forceShowSideBar }" aria-label="Sidebar">
-        <div class="h-full px-3 pb-4 overflow-y-auto bg-white dark:bg-gray-800">
-            <ul class="space-y-2 font-medium">
-                <li>
-                    <Button variant="text" class="w-full justify-start gap-x-3 pl-1.5 sidebar-button"
-                        severity="contrast" @click="router.push({ name: 'dashboard' })">
-                        <i class="pi pi-chart-pie text-xl"></i>
-                        <span class="mb-0.5">{{ t('web.main.dashboard') }}</span>
-                    </Button>
-                </li>
-                <li>
-                    <Button variant="text" class="w-full justify-start gap-x-3 pl-1.5 sidebar-button"
-                        severity="contrast" @click="router.push({ name: 'deviceList' })">
-                        <i class="pi pi-server text-xl"></i>
-                        <span class="mb-0.5">{{ t('web.main.device_list') }}</span>
-                    </Button>
-                </li>
-                <li>
-                    <Button variant="text" class="w-full justify-start gap-x-3 pl-1.5 sidebar-button"
-                        severity="contrast" @click="router.push({ name: 'login' })">
-                        <i class="pi pi-sign-in text-xl"></i>
-                        <span class="mb-0.5">{{ t('web.main.login_page') }}</span>
-                    </Button>
-                </li>
-            </ul>
-        </div>
-    </aside>
-
-    <div class="p-4 sm:ml-64">
-        <div class="p-4 border-2 border-gray-200 border-dashed rounded-lg dark:border-gray-700">
-            <div class="grid grid-cols-1 gap-4">
+    <v-main>
+        <v-container fluid class="pa-4">
+            <v-sheet class="pa-4 rounded-xl" border>
                 <RouterView v-slot="{ Component }">
                     <component :is="Component" :api="api" />
                 </RouterView>
-            </div>
-        </div>
-    </div>
+            </v-sheet>
+        </v-container>
+    </v-main>
+
+    <!-- 修改密码对话框 -->
+    <v-dialog v-model="showChangePassword" max-width="480">
+        <ChangePassword :api="api" @close="showChangePassword = false" />
+    </v-dialog>
 </template>
 
 <style scoped>
-.sidebar-button {
-    text-align: left;
-    justify-content: left;
+.main-app-bar {
+    backdrop-filter: blur(20px);
+    background: rgba(var(--v-theme-surface), 0.85) !important;
 }
 </style>

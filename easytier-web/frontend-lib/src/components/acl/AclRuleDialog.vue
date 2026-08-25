@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { AutoComplete, Button, Checkbox, Dialog, InputNumber, InputText, MultiSelect, Panel, SelectButton, ToggleButton } from 'primevue';
-import { computed, ref, watch } from 'vue';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { AclAction, AclProtocol, AclRule, ensureAclRuleLists } from '../../types/network';
 
@@ -43,110 +42,189 @@ function save() {
   close()
 }
 
-// Suggestions for IP/Port AutoComplete
-const genericSuggestions = ref<string[]>([])
+// Suggestions for IP/Port AutoComplete — v-combobox is free-input so no suggestions needed
 </script>
 
 <template>
-  <Dialog :visible="visible" @update:visible="emit('update:visible', $event)" modal :header="t('acl.edit_rule')"
-    :style="{ width: '90vw', maxWidth: '600px' }">
-    <div class="flex flex-col gap-4">
-      <div class="flex flex-row gap-4 items-center">
-        <div class="flex flex-col gap-2 grow">
-          <label class="font-bold">{{ t('acl.rule.name') }}</label>
-          <InputText v-model="rule.name" fluid />
-        </div>
-        <div class="flex flex-col gap-2">
-          <label class="font-bold">{{ t('acl.rule.enabled') }}</label>
-          <ToggleButton v-model="rule.enabled" on-icon="pi pi-check" off-icon="pi pi-times"
-            :on-label="t('web.common.enable')" :off-label="t('web.common.disable')" class="w-24" />
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <label class="font-bold">{{ t('acl.rule.description') }}</label>
-        <InputText v-model="rule.description" fluid />
-      </div>
-
-      <div class="flex flex-row gap-4 flex-wrap">
-        <div class="flex flex-col gap-2 grow">
-          <label class="font-bold">{{ t('acl.rule.action') }}</label>
-          <SelectButton v-model="rule.action" :options="actionOptions" :option-label="opt => opt.label()"
-            option-value="value" :allow-empty="false" />
-        </div>
-        <div class="flex flex-col gap-2 grow">
-          <label class="font-bold">{{ t('acl.rule.protocol') }}</label>
-          <SelectButton v-model="rule.protocol" :options="protocolOptions"
-            :option-label="opt => typeof opt.label === 'function' ? opt.label() : opt.label" option-value="value"
-            :allow-empty="false" />
-        </div>
-      </div>
-
-      <Panel :header="t('acl.rules')" toggleable>
-        <div class="flex flex-col gap-4">
-          <div class="flex flex-col gap-2">
-            <label class="font-bold">{{ t('acl.rule.src_ips') }}</label>
-            <AutoComplete v-model="rule.source_ips" multiple fluid :suggestions="genericSuggestions"
-              @complete="genericSuggestions = [$event.query]"
-              :placeholder="t('chips_placeholder', ['10.126.126.0/24'])" />
+  <v-dialog :model-value="visible" @update:model-value="emit('update:visible', $event)" max-width="600px">
+    <v-card :title="t('acl.edit_rule')">
+      <v-card-text class="d-flex flex-column ga-4">
+        <div class="d-flex ga-4 align-center">
+          <div class="d-flex flex-column ga-2 flex-grow-1">
+            <label class="font-weight-bold">{{ t('acl.rule.name') }}</label>
+            <v-text-field v-model="rule.name" variant="outlined" hide-details />
           </div>
-          <div class="flex flex-col gap-2">
-            <label class="font-bold">{{ t('acl.rule.dst_ips') }}</label>
-            <AutoComplete v-model="rule.destination_ips" multiple fluid :suggestions="genericSuggestions"
-              @complete="genericSuggestions = [$event.query]"
-              :placeholder="t('chips_placeholder', ['10.126.126.2/32'])" />
-          </div>
-
-          <div v-if="showPorts" class="flex flex-row gap-4 flex-wrap">
-            <div class="flex flex-col gap-2 grow">
-              <label class="font-bold">{{ t('acl.rule.src_ports') }}</label>
-              <AutoComplete v-model="rule.source_ports" multiple fluid :suggestions="genericSuggestions"
-                @complete="genericSuggestions = [$event.query]" placeholder="e.g. 80, 1000-2000" />
-            </div>
-            <div class="flex flex-col gap-2 grow">
-              <label class="font-bold">{{ t('acl.rule.dst_ports') }}</label>
-              <AutoComplete v-model="rule.ports" multiple fluid :suggestions="genericSuggestions"
-                @complete="genericSuggestions = [$event.query]" placeholder="e.g. 80, 1000-2000" />
-            </div>
+          <div class="d-flex flex-column ga-2">
+            <label class="font-weight-bold">{{ t('acl.rule.enabled') }}</label>
+            <v-switch v-model="rule.enabled" color="primary" hide-details />
           </div>
         </div>
-      </Panel>
 
-      <Panel :header="t('advanced_settings')" toggleable collapsed>
-        <div class="flex flex-col gap-4">
-          <div class="flex items-center gap-2">
-            <Checkbox v-model="rule.stateful" :binary="true" inputId="rule-stateful" />
-            <label for="rule-stateful" class="font-bold">{{ t('acl.rule.stateful') }}</label>
-          </div>
+        <div class="d-flex flex-column ga-2">
+          <label class="font-weight-bold">{{ t('acl.rule.description') }}</label>
+          <v-text-field v-model="rule.description" variant="outlined" hide-details />
+        </div>
 
-          <div class="flex flex-row gap-4 flex-wrap">
-            <div class="flex flex-col gap-2 grow">
-              <label class="font-bold">{{ t('acl.rule.rate_limit') }}</label>
-              <InputNumber v-model="rule.rate_limit" :min="0" placeholder="0 = no limit" fluid />
-            </div>
-            <div class="flex flex-col gap-2 grow">
-              <label class="font-bold">{{ t('acl.rule.burst_limit') }}</label>
-              <InputNumber v-model="rule.burst_limit" :min="0" placeholder="0 = no limit" fluid />
-            </div>
+        <div class="d-flex ga-4 flex-wrap">
+          <div class="d-flex flex-column ga-2 flex-grow-1">
+            <label class="font-weight-bold">{{ t('acl.rule.action') }}</label>
+            <v-btn-toggle v-model="rule.action" density="comfortable" divided class="align-self-start">
+              <v-btn v-for="opt in actionOptions" :key="opt.value" :value="opt.value">
+                {{ typeof opt.label === 'function' ? opt.label() : opt.label }}
+              </v-btn>
+            </v-btn-toggle>
           </div>
-
-          <div class="flex flex-col gap-2">
-            <label class="font-bold">{{ t('acl.rule.src_groups') }}</label>
-            <MultiSelect v-model="rule.source_groups" :options="props.groupNames" multiple fluid filter
-              :placeholder="t('acl.rule.src_groups')" />
-          </div>
-          <div class="flex flex-col gap-2">
-            <label class="font-bold">{{ t('acl.rule.dst_groups') }}</label>
-            <MultiSelect v-model="rule.destination_groups" :options="props.groupNames" multiple fluid filter
-              :placeholder="t('acl.rule.dst_groups')" />
+          <div class="d-flex flex-column ga-2 flex-grow-1">
+            <label class="font-weight-bold">{{ t('acl.rule.protocol') }}</label>
+            <v-btn-toggle v-model="rule.protocol" density="comfortable" divided class="align-self-start">
+              <v-btn v-for="opt in protocolOptions" :key="opt.value" :value="opt.value">
+                {{ typeof opt.label === 'function' ? opt.label() : opt.label }}
+              </v-btn>
+            </v-btn-toggle>
           </div>
         </div>
-      </Panel>
-    </div>
 
-    <template #footer>
-      <Button :label="t('web.common.cancel')" icon="pi pi-times" @click="close" text />
-      <Button :label="t('web.common.save')" icon="pi pi-save" @click="save" />
-    </template>
-  </Dialog>
+        <!-- Match section -->
+        <v-expansion-panels variant="accordion">
+          <v-expansion-panel :title="t('acl.rules')">
+            <template #text>
+              <div class="d-flex flex-column ga-4">
+                <div class="d-flex flex-column ga-2">
+                  <label class="font-weight-bold">{{ t('acl.rule.src_ips') }}</label>
+                  <v-combobox
+                    v-model="rule.source_ips"
+                    multiple
+                    chips
+                    closable-chips
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    :placeholder="t('chips_placeholder', ['10.126.126.0/24'])"
+                  />
+                </div>
+                <div class="d-flex flex-column ga-2">
+                  <label class="font-weight-bold">{{ t('acl.rule.dst_ips') }}</label>
+                  <v-combobox
+                    v-model="rule.destination_ips"
+                    multiple
+                    chips
+                    closable-chips
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    :placeholder="t('chips_placeholder', ['10.126.126.2/32'])"
+                  />
+                </div>
+
+                <div v-if="showPorts" class="d-flex ga-4 flex-wrap">
+                  <div class="d-flex flex-column ga-2 flex-grow-1">
+                    <label class="font-weight-bold">{{ t('acl.rule.src_ports') }}</label>
+                    <v-combobox
+                      v-model="rule.source_ports"
+                      multiple
+                      chips
+                      closable-chips
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      placeholder="e.g. 80, 1000-2000"
+                    />
+                  </div>
+                  <div class="d-flex flex-column ga-2 flex-grow-1">
+                    <label class="font-weight-bold">{{ t('acl.rule.dst_ports') }}</label>
+                    <v-combobox
+                      v-model="rule.ports"
+                      multiple
+                      chips
+                      closable-chips
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      placeholder="e.g. 80, 1000-2000"
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
+          </v-expansion-panel>
+        </v-expansion-panels>
+
+        <!-- Advanced settings -->
+        <v-expansion-panels variant="accordion">
+          <v-expansion-panel :title="t('advanced_settings')">
+            <template #text>
+              <div class="d-flex flex-column ga-4">
+                <div class="d-flex align-center ga-2">
+                  <v-checkbox v-model="rule.stateful" color="primary" hide-details class="mt-0" />
+                  <label class="font-weight-bold">{{ t('acl.rule.stateful') }}</label>
+                </div>
+
+                <div class="d-flex ga-4 flex-wrap">
+                  <div class="d-flex flex-column ga-2 flex-grow-1">
+                    <label class="font-weight-bold">{{ t('acl.rule.rate_limit') }}</label>
+                    <v-text-field
+                      :model-value="rule.rate_limit"
+                      type="number"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      :placeholder="'0 = no limit'"
+                      @update:model-value="rule.rate_limit = $event === '' ? 0 : Number($event)"
+                    />
+                  </div>
+                  <div class="d-flex flex-column ga-2 flex-grow-1">
+                    <label class="font-weight-bold">{{ t('acl.rule.burst_limit') }}</label>
+                    <v-text-field
+                      :model-value="rule.burst_limit"
+                      type="number"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                      :placeholder="'0 = no limit'"
+                      @update:model-value="rule.burst_limit = $event === '' ? 0 : Number($event)"
+                    />
+                  </div>
+                </div>
+
+                <div class="d-flex flex-column ga-2">
+                  <label class="font-weight-bold">{{ t('acl.rule.src_groups') }}</label>
+                  <v-select
+                    v-model="rule.source_groups"
+                    :items="props.groupNames"
+                    multiple
+                    chips
+                    closable-chips
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    :placeholder="t('acl.rule.src_groups')"
+                  />
+                </div>
+                <div class="d-flex flex-column ga-2">
+                  <label class="font-weight-bold">{{ t('acl.rule.dst_groups') }}</label>
+                  <v-select
+                    v-model="rule.destination_groups"
+                    :items="props.groupNames"
+                    multiple
+                    chips
+                    closable-chips
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    :placeholder="t('acl.rule.dst_groups')"
+                  />
+                </div>
+              </div>
+            </template>
+          </v-expansion-panel>
+        </v-expansion-panels>
+      </v-card-text>
+
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="close">{{ t('web.common.cancel') }}</v-btn>
+        <v-btn color="primary" variant="flat" :prepend-icon="'mdi-content-save'" @click="save">{{ t('web.common.save') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>

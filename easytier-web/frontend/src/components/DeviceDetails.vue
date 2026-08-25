@@ -58,14 +58,14 @@ defineProps<{
 /* 标准布局的详情项样式 */
 .detail-item {
   position: relative;
-  border-bottom: 1px solid var(--surface-border, #e9ecef);
+  border-bottom: 1px solid rgb(var(--v-theme-outlineVariant));
   padding-bottom: 0.75rem;
   transition: all 0.2s;
   border-radius: 0.25rem;
 }
 
 .detail-item:hover {
-  background-color: var(--surface-hover, rgba(245, 247, 250, 0.5));
+  background-color: rgb(var(--v-theme-surfaceContainerHigh));
 }
 
 .detail-item:last-child {
@@ -74,7 +74,7 @@ defineProps<{
 
 .detail-label {
   font-weight: 600;
-  color: var(--text-color, #334155);
+  color: rgb(var(--v-theme-onSurface));
   font-size: 0.95rem;
   margin-bottom: 0.375rem;
   display: flex;
@@ -108,7 +108,7 @@ defineProps<{
 }
 
 .detail-value {
-  color: var(--text-color-secondary, #475569);
+  color: rgb(var(--v-theme-onSurfaceVariant));
   word-break: break-all;
   padding-left: 1rem;
   line-height: 1.4;
@@ -160,13 +160,13 @@ defineProps<{
 
 /* 机器ID特殊样式 */
 .machine-id-value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.95rem;
-  background-color: var(--surface-ground, #f1f5f9);
-  color: var(--text-color, #1f2937);
+  background-color: rgb(var(--v-theme-surfaceContainerLow));
+  color: rgb(var(--v-theme-onSurface));
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  border: 1px solid var(--surface-border, #e2e8f0);
+  border: 1px solid rgb(var(--v-theme-outlineVariant));
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
@@ -178,34 +178,5 @@ defineProps<{
   font-size: 0.75rem;
   padding: 0.15rem 0.3rem;
   border-radius: 0.2rem;
-}
-
-/* 暗黑模式适配 */
-@media (prefers-color-scheme: dark) {
-  .detail-item {
-    border-bottom: 1px solid var(--surface-border, #334155);
-  }
-
-  .detail-item:last-child {
-    border-bottom: none;
-  }
-
-  .detail-item:hover {
-    background-color: var(--surface-hover, rgba(30, 41, 59, 0.4));
-  }
-
-  .detail-value {
-    color: var(--text-color-secondary, #cbd5e1);
-  }
-
-  .detail-label {
-    color: var(--text-color, #e2e8f0);
-  }
-
-  .machine-id-value {
-    background-color: var(--surface-ground, #1e293b);
-    color: var(--text-color, #f1f5f9);
-    border-color: var(--surface-border, #334155);
-  }
 }
 </style>

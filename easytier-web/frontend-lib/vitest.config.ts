@@ -8,5 +8,11 @@ export default defineConfig({
     environment: 'happy-dom',
     include: ['tests/**/*.spec.ts'],
     setupFiles: ['./tests/setup.ts'],
+    css: false,
+    server: {
+      deps: {
+        inline: [/vuetify/],
+      },
+    },
   },
 })

@@ -1,23 +1,9 @@
-@import 'primeicons/primeicons.css';
-@import 'floating-vue/dist/style.css';
-
-@layer tailwind-base, primevue, tailwind-utilities;
-
-@layer tailwind-base {
-  @tailwind base;
-}
-
-@layer tailwind-utilities {
-  @tailwind components;
-  @tailwind utilities;
-}
-
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 12px;
-  line-height: 24px;
+  /* Base typography */
+  font-family: "Roboto Flex", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
   font-weight: 400;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -25,30 +11,58 @@
   -webkit-text-size-adjust: 100%;
 }
 
-.card {
-  background: var(--surface-card);
-  padding: 2rem;
-  border-radius: 10px;
-  margin-bottom: 1rem;
+html, body {
+  margin: 0;
+  padding: 0;
 }
 
+/* M3 utility helpers */
+.mono {
+  font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.text-mono {
+  font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* M3 horizontal rule */
+.m3-divider {
+  border: none;
+  height: 1px;
+  background: var(--v-theme-outlineVariant);
+  margin: 16px 0;
+}
+
+/* scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-  border-radius: 4px;
+  width: 6px;
+  height: 6px;
 }
-
-::-webkit-scrollbar-track {
-  border-radius: 4px;
-}
-
 ::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background-color: #0000005d;
+  background: rgba(120, 120, 128, 0.4);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
+/* floating-vue tooltip kept for back-compat (memory-safe) */
 .v-popper__inner {
   white-space: pre-wrap;
   max-width: 32rem;
   line-height: 1.5;
+}
+
+/* safe-area helpers for mobile (Tauri Android / PWA) */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Focus ring accessibility */
+:focus-visible {
+  outline: 2px solid var(--v-theme-primary);
+  outline-offset: 2px;
 }

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import RemoteManagement from '../src/components/RemoteManagement.vue'
+import { vuetify } from '../src/theme'
 import {
   DEFAULT_NETWORK_CONFIG,
   type NetworkConfig,
@@ -48,78 +49,6 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => key,
   }),
 }))
-
-vi.mock('primevue', async () => {
-  const { defineComponent, h } = await import('vue')
-
-  const PassThrough = defineComponent({
-    name: 'PassThrough',
-    props: {
-      label: String,
-      value: String,
-    },
-    setup(props, { slots }) {
-      return () => h('div', {
-        'data-label': props.label,
-        'data-value': props.value,
-        'data-stub': 'pass-through',
-      }, slots.default?.())
-    },
-  })
-
-  const ButtonStub = defineComponent({
-    name: 'Button',
-    props: {
-      label: String,
-      icon: String,
-      disabled: Boolean,
-    },
-    emits: ['click'],
-    setup(props, { slots, emit }) {
-      return () => h('button', {
-        type: 'button',
-        disabled: props.disabled,
-        'data-label': props.label ?? props.icon,
-        onClick: (event: MouseEvent) => emit('click', event),
-      }, slots.default?.() ?? props.label ?? props.icon)
-    },
-  })
-
-  const SelectStub = defineComponent({
-    name: 'Select',
-    props: {
-      modelValue: Object,
-      options: Array,
-    },
-    emits: ['update:modelValue'],
-    setup(props, { slots }) {
-      return () => h('div', { 'data-stub': 'select' }, [
-        slots.value?.({ value: props.modelValue, placeholder: '' }),
-      ])
-    },
-  })
-
-  const MenuStub = defineComponent({
-    name: 'Menu',
-    setup(_, { expose }) {
-      expose({ toggle: vi.fn() })
-      return () => h('div', { 'data-stub': 'menu' })
-    },
-  })
-
-  return {
-    Button: ButtonStub,
-    ConfirmPopup: PassThrough,
-    Divider: PassThrough,
-    IftaLabel: PassThrough,
-    Menu: MenuStub,
-    Message: PassThrough,
-    Select: SelectStub,
-    Tag: PassThrough,
-    useConfirm: () => ({ require: vi.fn() }),
-    useToast: () => ({ add: vi.fn() }),
-  }
-})
 
 const INSTANCE_ID = '00000000-0000-0000-0000-000000000001'
 const INSTANCE_UUID = {
@@ -197,6 +126,7 @@ describe('RemoteManagement config save', () => {
         instanceId: INSTANCE_ID,
       },
       global: {
+        plugins: [vuetify],
         stubs: {
           Config: true,
           ConfigEditDialog: true,
@@ -208,11 +138,12 @@ describe('RemoteManagement config save', () => {
     try {
       await settleRemoteManagement()
 
-      const saveButton = wrapper.find('button[data-label="web.device_management.save_config"]')
-      expect(saveButton.exists()).toBe(true)
-      expect(saveButton.attributes('disabled')).toBeUndefined()
+      const saveButton = wrapper.findAll('button.v-btn')
+        .find((button) => button.text().includes('web.device_management.save_config'))
+      expect(saveButton).toBeTruthy()
+      expect((saveButton!.element as HTMLButtonElement).disabled).toBe(false)
 
-      await saveButton.trigger('click')
+      await saveButton!.trigger('click')
       await flushPromises()
 
       expect(api.save_config).toHaveBeenCalledOnce()

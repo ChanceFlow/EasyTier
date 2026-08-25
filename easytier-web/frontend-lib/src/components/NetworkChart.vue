@@ -1,19 +1,18 @@
 <template>
-  <div
-    class="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-800/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700 shadow-md hover:shadow-lg transition-all duration-300">
-    <div class="flex items-center justify-center mb-3">
-      <div class="flex gap-2 text-sm">
-        <span class="flex items-center gap-1 w-32">
-          <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span class="text-green-600 dark:text-green-400 truncate">{{ t('upload') }}: {{ currentUpload }}/s</span>
+  <div class="network-chart">
+    <div class="d-flex align-center justify-center mb-3">
+      <div class="d-flex ga-4 text-body-2">
+        <span class="d-flex align-center ga-1" style="width: 8rem">
+          <div class="chart-dot" style="background: #22c55e"></div>
+          <span class="truncate">{{ t('upload') }}: {{ currentUpload }}/s</span>
         </span>
-        <span class="flex items-center gap-1 w-32">
-          <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
-          <span class="text-blue-600 dark:text-blue-400 truncate">{{ t('download') }}: {{ currentDownload }}/s</span>
+        <span class="d-flex align-center ga-1" style="width: 8rem">
+          <div class="chart-dot" style="background: #3b82f6"></div>
+          <span class="truncate">{{ t('download') }}: {{ currentDownload }}/s</span>
         </span>
       </div>
     </div>
-    <div class="h-32">
+    <div style="height: 8rem">
       <canvas ref="chartCanvas"></canvas>
     </div>
   </div>
@@ -277,3 +276,23 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.network-chart {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.10));
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease;
+}
+.network-chart:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+}
+.chart-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+</style>

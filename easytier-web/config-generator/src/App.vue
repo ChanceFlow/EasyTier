@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Config, I18nUtils, NetworkTypes } from 'easytier-frontend-lib'
-import { Button, SelectButton, Textarea } from 'primevue'
 import { computed, onMounted, ref, watch } from 'vue'
 import initConfigWasm, {
   generate_config as generateTomlConfig,
@@ -65,32 +64,45 @@ const copyConfig = async () => {
 </script>
 
 <template>
-  <main class="config-generator">
-    <section class="config-panel">
-      <SelectButton
-        class="language-switch"
-        :model-value="currentLanguage"
-        :options="languageOptions"
-        option-label="label"
-        option-value="value"
-        size="small"
-        :allow-empty="false"
-        :aria-label="t('exchange_language')"
-        @update:model-value="setLanguage"
-      />
-      <Config :cur-network="networkConfig" :action-label="t('generate_config')" @run-network="generateConfig" />
-    </section>
-    <section class="output-panel">
-      <pre v-if="errorMessage" class="error-message">{{ errorMessage }}</pre>
-      <Textarea
-        v-model="tomlConfig"
-        spellcheck="false"
-        class="toml-config"
-        :placeholder="t('config_generator_placeholder')"
-      />
-      <Button :label="copyButtonLabel" icon="pi pi-copy" :disabled="!tomlConfig" @click="copyConfig" />
-    </section>
-  </main>
+  <v-app>
+    <main class="config-generator">
+      <section class="config-panel">
+        <v-btn-toggle
+          :model-value="currentLanguage"
+          density="comfortable"
+          divided
+          color="primary"
+          class="language-switch"
+          size="small"
+          @update:model-value="setLanguage"
+        >
+          <v-btn v-for="opt in languageOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </v-btn>
+        </v-btn-toggle>
+        <Config :cur-network="networkConfig" :action-label="t('generate_config')" @run-network="generateConfig" />
+      </section>
+      <section class="output-panel">
+        <pre v-if="errorMessage" class="error-message">{{ errorMessage }}</pre>
+        <v-textarea
+          v-model="tomlConfig"
+          spellcheck="false"
+          auto-grow
+          class="toml-config text-mono"
+          :placeholder="t('config_generator_placeholder')"
+        />
+        <v-btn
+          :prepend-icon="'mdi-content-copy'"
+          :disabled="!tomlConfig"
+          :color="configCopied ? 'success' : 'primary'"
+          variant="flat"
+          @click="copyConfig"
+        >
+          {{ copyButtonLabel }}
+        </v-btn>
+      </section>
+    </main>
+  </v-app>
 </template>
 
 <style scoped>
@@ -99,10 +111,12 @@ const copyConfig = async () => {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 2rem;
   padding: 1.25rem;
+  height: 100vh;
 }
 
 .config-panel {
   position: relative;
+  overflow-y: auto;
 }
 
 .language-switch {
@@ -129,7 +143,10 @@ const copyConfig = async () => {
   width: 100%;
   flex: 1;
   resize: none;
-  font-family: monospace;
+  font-family: "Roboto Mono", ui-monospace, monospace;
+}
+.toml-config :deep(textarea) {
+  font-family: "Roboto Mono", ui-monospace, monospace !important;
 }
 
 .error-message {
@@ -138,7 +155,8 @@ const copyConfig = async () => {
   padding: 0.5rem;
   color: #b91c1c;
   background: #fee2e2;
-  border-radius: 0.25rem;
+  border-radius: 0.5rem;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 768px) {

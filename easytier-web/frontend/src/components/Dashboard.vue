@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Card, useToast } from 'primevue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { Utils } from 'easytier-frontend-lib';
 import ApiClient, { Summary } from '../modules/api';
@@ -8,7 +7,9 @@ const props = defineProps({
     api: ApiClient,
 });
 
-const toast = useToast();
+// 通知状态（替代 PrimeVue Toast）
+const snackbar = ref(false);
+const snackbarMessage = ref('');
 
 const summary = ref<Summary | undefined>(undefined);
 
@@ -21,7 +22,8 @@ const periodFunc = new Utils.PeriodicTask(async () => {
     try {
         await loadSummary();
     } catch (e) {
-        toast.add({ severity: 'error', summary: 'Load Summary Failed', detail: e, life: 2000 });
+        snackbarMessage.value = `Load Summary Failed: ${e}`;
+        snackbar.value = true;
         console.error(e);
     }
 }, 1000);
@@ -43,24 +45,24 @@ const deviceCount = computed<number | undefined>(
 </script>
 
 <template>
-    <div class="grid grid-cols-3 gap-4">
-        <Card class="h-full">
-            <template #title>Device Count</template>
-            <template #content>
-                <div class="w-full flex justify-center text-7xl font-bold text-green-800 mt-4">
-                    {{ deviceCount }}
-                </div>
-            </template>
-        </Card>
-        <div class="flex items-center justify-center rounded bg-gray-50 dark:bg-gray-800">
-            <p class="text-2xl text-gray-400 dark:text-gray-500">
-                <!-- <svg class="w-3.5 h-3.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none"
-                    viewBox="0 0 18 18">
-                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 1v16M1 9h16" />
-                </svg> -->
-            </p>
-        </div>
-    </div>
+    <v-row dense>
+        <v-col cols="12" sm="4">
+            <v-card class="h-100" rounded="lg">
+                <v-card-title>Device Count</v-card-title>
+                <v-card-text>
+                    <div class="d-flex justify-center align-center text-h1 font-weight-bold text-success py-4">
+                        {{ deviceCount }}
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-col>
+        <v-col cols="12" sm="8">
+            <v-sheet class="h-100 d-flex align-center justify-center" color="surfaceContainerLow" rounded="lg">
+            </v-sheet>
+        </v-col>
+    </v-row>
 
+    <v-snackbar v-model="snackbar" color="error" :timeout="2000" location="bottom">
+        {{ snackbarMessage }}
+    </v-snackbar>
 </template>

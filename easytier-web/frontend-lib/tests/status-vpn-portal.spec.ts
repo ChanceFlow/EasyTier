@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import Status from '../src/components/Status.vue'
+import { vuetify } from '../src/theme'
 import { VpnPortalClientState, type NetworkInstance } from '../src/types/network'
 
 vi.mock('vue-i18n', () => ({
@@ -16,42 +17,7 @@ vi.mock('../src/components/NetworkChart.vue', () => ({
   default: defineComponent({ render: () => h('div') }),
 }))
 
-vi.mock('primevue', () => {
-  const PassThrough = defineComponent({
-    setup(_, { slots }) {
-      return () => h('div', slots.default?.())
-    },
-  })
-  const CardStub = defineComponent({
-    setup(_, { slots }) {
-      return () => h('div', [slots.title?.(), slots.content?.()])
-    },
-  })
-  const ButtonStub = defineComponent({
-    props: { label: String },
-    emits: ['click'],
-    setup(props, { emit }) {
-      return () => h('button', {
-        'data-label': props.label,
-        onClick: (event: MouseEvent) => emit('click', event),
-      }, props.label)
-    },
-  })
-
-  return {
-    Badge: PassThrough,
-    Button: ButtonStub,
-    Card: CardStub,
-    Chip: PassThrough,
-    Column: PassThrough,
-    DataTable: PassThrough,
-    Dialog: PassThrough,
-    Divider: PassThrough,
-    ScrollPanel: PassThrough,
-    Tag: PassThrough,
-    Timeline: PassThrough,
-  }
-})
+const NetworkChartStub = defineComponent({ render: () => h('div') })
 
 function runningInstance(): NetworkInstance {
   return {
@@ -84,6 +50,26 @@ function runningInstance(): NetworkInstance {
   }
 }
 
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
+function mountStatus(api: any) {
+  return mount(Status, {
+    props: {
+      curNetworkInst: runningInstance(),
+      api,
+    },
+    global: {
+      plugins: [vuetify],
+      stubs: {
+        HumanEvent: true,
+        NetworkChart: NetworkChartStub,
+      },
+    },
+  })
+}
+
 describe('Status VPN Portal details', () => {
   it('fetches client configs only when the user opens the dialog', async () => {
     const getVpnPortalInfo = vi.fn(async () => ({
@@ -102,28 +88,24 @@ describe('Status VPN Portal details', () => {
         client_config: '[Interface]\nPrivateKey = secret',
       }],
     }))
-    const wrapper = mount(Status, {
-      props: {
-        curNetworkInst: runningInstance(),
-        api: { get_vpn_portal_info: getVpnPortalInfo } as any,
-      },
-      global: {
-        directives: { tooltip: () => {} },
-        stubs: { HumanEvent: true },
-      },
-    })
+    const wrapper = mountStatus({ get_vpn_portal_info: getVpnPortalInfo })
 
     try {
       expect(getVpnPortalInfo).not.toHaveBeenCalled()
 
-      await wrapper.find('button[data-label="show_vpn_portal_config"]').trigger('click')
+      const showButton = wrapper.findAll('button.v-btn')
+        .find((button) => button.text().includes('show_vpn_portal_config'))
+      expect(showButton).toBeTruthy()
+      await showButton!.trigger('click')
       await flushPromises()
 
       expect(getVpnPortalInfo).toHaveBeenCalledOnce()
       expect(getVpnPortalInfo).toHaveBeenCalledWith('12345678-9abc-def0-fedc-ba9876543210')
-      expect(wrapper.text()).toContain('phone-a · 10.0.0.10')
-      expect(wrapper.text()).toContain('203.0.113.5:51820')
-      expect(wrapper.text()).toContain('PrivateKey = secret')
+
+      const bodyText = document.body.textContent ?? ''
+      expect(bodyText).toContain('phone-a · 10.0.0.10')
+      expect(bodyText).toContain('203.0.113.5:51820')
+      expect(bodyText).toContain('PrivateKey = secret')
     } finally {
       wrapper.unmount()
     }
@@ -136,23 +118,18 @@ describe('Status VPN Portal details', () => {
       connected_clients: [],
       clients: [],
     }))
-    const wrapper = mount(Status, {
-      props: {
-        curNetworkInst: runningInstance(),
-        api: { get_vpn_portal_info: getVpnPortalInfo } as any,
-      },
-      global: {
-        directives: { tooltip: () => {} },
-        stubs: { HumanEvent: true },
-      },
-    })
+    const wrapper = mountStatus({ get_vpn_portal_info: getVpnPortalInfo })
 
     try {
-      await wrapper.find('button[data-label="show_vpn_portal_config"]').trigger('click')
+      const showButton = wrapper.findAll('button.v-btn')
+        .find((button) => button.text().includes('show_vpn_portal_config'))
+      expect(showButton).toBeTruthy()
+      await showButton!.trigger('click')
       await flushPromises()
 
-      expect(wrapper.text()).toContain('vpn_portal_not_configured')
-      expect(wrapper.text()).not.toContain('vpn_portal_type: null')
+      const bodyText = document.body.textContent ?? ''
+      expect(bodyText).toContain('vpn_portal_not_configured')
+      expect(bodyText).not.toContain('vpn_portal_type: null')
     } finally {
       wrapper.unmount()
     }

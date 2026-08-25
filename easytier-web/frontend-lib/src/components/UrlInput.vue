@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import { AutoComplete, Button, Dialog, InputNumber, InputText } from 'primevue'
-import InputGroup from 'primevue/inputgroup'
-import InputGroupAddon from 'primevue/inputgroupaddon'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -127,19 +124,9 @@ watch(internalValue, () => {
 }, { deep: true })
 
 const protoOptions = computed(() => Object.keys(props.protos))
-const filteredProtos = ref<string[]>([])
 
-const searchProtos = (event: { query: string }) => {
-    if (!event.query.trim().length) {
-        filteredProtos.value = [...protoOptions.value]
-    } else {
-        filteredProtos.value = protoOptions.value.filter((proto) => {
-            return proto.toLowerCase().startsWith(event.query.toLowerCase())
-        })
-    }
-}
-
-const onProtoChange = (newProto: string) => {
+const onProtoChange = (newProto: string | null) => {
+    if (!newProto) return
     const oldProto = internalValue.value.proto
     const oldDefault = props.protos[oldProto]
     const newDefault = props.protos[newProto]
@@ -152,91 +139,161 @@ const onProtoChange = (newProto: string) => {
 </script>
 
 <template>
-    <div class="url-input-container w-full min-w-0 overflow-hidden">
-        <InputGroup class="url-input-full w-full min-w-0">
-            <AutoComplete :model-value="internalValue.proto" :suggestions="filteredProtos" dropdown
-                class="max-w-32 proto-autocomplete-in-group" @complete="searchProtos"
-                @update:model-value="onProtoChange" />
-            <InputText v-model="internalValue.host" :placeholder="placeholder || '0.0.0.0'" class="grow min-w-0"
-                @focus="onHostFocus" @blur="onHostBlur" />
+    <div class="url-input-container w-100">
+        <!-- Full width view (>= 400px) -->
+        <div class="url-input-full">
+            <v-combobox
+                :model-value="internalValue.proto"
+                :items="protoOptions"
+                @update:model-value="onProtoChange"
+                hide-details
+                density="compact"
+                variant="outlined"
+                class="url-proto-select"
+                style="max-width: 8rem"
+            />
+            <v-text-field
+                :model-value="internalValue.host"
+                :placeholder="placeholder || '0.0.0.0'"
+                hide-details
+                density="compact"
+                variant="outlined"
+                class="flex-grow-1 url-host-field"
+                @update:model-value="internalValue.host = $event"
+                @focus="onHostFocus"
+                @blur="onHostBlur"
+            />
             <template v-if="!isNoPortProto">
-                <InputGroupAddon>
-                    <span style="font-weight: bold">:</span>
-                </InputGroupAddon>
-                <InputNumber v-model="internalValue.port" :format="false" :min="1" :max="65535" class="max-w-24"
-                    :placeholder="String(protos[internalValue.proto] ?? 11010)" fluid />
+                <span class="url-sep">:</span>
+                <v-text-field
+                    :model-value="internalValue.port"
+                    :placeholder="String(protos[internalValue.proto] ?? 11010)"
+                    hide-details
+                    density="compact"
+                    variant="outlined"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    class="url-port-field"
+                    style="max-width: 6rem"
+                    @update:model-value="internalValue.port = $event === '' ? null : Number($event)"
+                />
             </template>
-            <!-- Rendered in both responsive branches; keep action slot content free of side effects and duplicate IDs. -->
             <slot name="actions"></slot>
-        </InputGroup>
+        </div>
 
-        <div
-            class="url-input-compact flex justify-between items-center p-2 border rounded w-full min-w-0 overflow-hidden">
-            <span class="truncate mr-2 min-w-0 flex-1 overflow-hidden">{{ url }}</span>
-            <div class="flex items-center shrink-0">
-                <Button icon="pi pi-pencil" class="p-button-sm p-button-text" :aria-label="t('web.common.edit')"
-                    @click="editing = true" />
-                <slot name="actions"></slot>
+        <!-- Compact view (mobile) -->
+        <div class="url-input-compact">
+            <div class="d-flex align-center justify-space-between w-100 url-compact-row">
+                <span class="truncate text-mono url-compact-text">{{ url }}</span>
+                <div class="d-flex align-center shrink-0">
+                    <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="t('web.common.edit')" @click="editing = true" />
+                    <slot name="actions"></slot>
+                </div>
             </div>
         </div>
 
-        <Dialog v-model:visible="editing" modal :header="placeholder" :style="{ width: '90vw', maxWidth: '500px' }">
-            <div class="flex flex-col gap-4 py-4">
-                <div class="flex flex-col gap-2">
-                    <label>{{ t('tunnel_proto') }}</label>
-                    <AutoComplete :model-value="internalValue.proto" :suggestions="filteredProtos" dropdown fluid
-                        @complete="searchProtos" @update:model-value="onProtoChange" />
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label>{{ t('web.common.address') || 'Address' }}</label>
-                    <InputText v-model="internalValue.host" :placeholder="placeholder || '0.0.0.0'" class="w-full"
-                        @focus="onHostFocus" @blur="onHostBlur" />
-                </div>
-                <div v-if="!isNoPortProto" class="flex flex-col gap-2">
-                    <label>{{ t('port') }}</label>
-                    <InputNumber v-model="internalValue.port" :format="false" :min="1" :max="65535" class="w-full"
-                        :placeholder="String(protos[internalValue.proto] ?? 11010)" />
-                </div>
-            </div>
-            <template #footer>
-                <Button :label="t('web.common.confirm') || 'Done'" icon="pi pi-check" @click="onDialogConfirm"
-                    autofocus />
-            </template>
-        </Dialog>
+        <!-- Edit dialog (used on small screens) -->
+        <v-dialog v-model="editing" max-width="500px">
+            <v-card :title="placeholder">
+                <v-card-text class="d-flex flex-column ga-4 pt-4">
+                    <div class="d-flex flex-column ga-2">
+                        <label class="text-body-2">{{ t('tunnel_proto') }}</label>
+                        <v-combobox
+                            :model-value="internalValue.proto"
+                            :items="protoOptions"
+                            @update:model-value="onProtoChange"
+                            hide-details
+                            density="compact"
+                            variant="outlined"
+                        />
+                    </div>
+                    <div class="d-flex flex-column ga-2">
+                        <label class="text-body-2">{{ t('web.common.address') || 'Address' }}</label>
+                        <v-text-field
+                            :model-value="internalValue.host"
+                            :placeholder="placeholder || '0.0.0.0'"
+                            hide-details
+                            density="compact"
+                            variant="outlined"
+                            @update:model-value="internalValue.host = $event"
+                            @focus="onHostFocus"
+                            @blur="onHostBlur"
+                        />
+                    </div>
+                    <div v-if="!isNoPortProto" class="d-flex flex-column ga-2">
+                        <label class="text-body-2">{{ t('port') }}</label>
+                        <v-text-field
+                            :model-value="internalValue.port"
+                            :placeholder="String(protos[internalValue.proto] ?? 11010)"
+                            hide-details
+                            density="compact"
+                            variant="outlined"
+                            type="number"
+                            min="1"
+                            max="65535"
+                            @update:model-value="internalValue.port = $event === '' ? null : Number($event)"
+                        />
+                    </div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="elevated" color="primary" @click="onDialogConfirm">
+                        <v-icon start>mdi-check</v-icon>
+                        {{ t('web.common.confirm') || 'Done' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </div>
 </template>
 
 <style scoped>
 .url-input-container {
     container-type: inline-size;
+    min-width: 0;
 }
 
 .url-input-full {
     display: none;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 }
 
 .url-input-compact {
     display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
 }
 
 @container (min-width: 400px) {
     .url-input-full {
         display: flex;
     }
-
     .url-input-compact {
         display: none;
     }
 }
 
-.proto-autocomplete-in-group,
-.proto-autocomplete-in-group :deep(.p-autocomplete-input),
-.proto-autocomplete-in-group :deep(.p-autocomplete-dropdown) {
-    border-top-right-radius: 0 !important;
-    border-bottom-right-radius: 0 !important;
+.url-compact-row {
+    border: 1px solid var(--v-theme-outlineVariant);
+    border-radius: 8px;
+    padding: 4px 4px 4px 10px;
+    min-width: 0;
+    background: var(--v-theme-surface);
 }
-
-.proto-autocomplete-in-group :deep(.p-autocomplete-dropdown) {
-    border-right: 0 !important;
+.url-compact-text {
+    font-size: 0.85rem;
+    color: var(--v-theme-onSurface);
+}
+.url-sep {
+    font-weight: bold;
+    color: var(--v-theme-onSurfaceVariant);
+    padding: 0 2px;
+}
+.url-proto-select :deep(.v-field__input) {
+    min-height: 40px;
 }
 </style>

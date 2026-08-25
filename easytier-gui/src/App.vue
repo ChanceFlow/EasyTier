@@ -8,6 +8,7 @@ onBeforeMount(async () => {
 </script>
 
 <template>
-  <Toast position="bottom-right" />
-  <RouterView />
+  <v-app>
+    <RouterView />
+  </v-app>
 </template>

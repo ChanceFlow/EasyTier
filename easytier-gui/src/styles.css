@@ -1,53 +1,192 @@
-@layer tailwind-base, primevue, tailwind-utilities;
-
-@layer tailwind-base {
-  @tailwind base;
-}
-
-@layer tailwind-utilities {
-  @tailwind components;
-  @tailwind utilities;
-}
+/* EasyTier GUI — Pure Native iOS / Modern App Design System */
 
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 12px;
-  line-height: 24px;
-  font-weight: 400;
+  font-size: 14px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  /* Font Weight Standard Scale */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-heavy: 800;
+
+  /* iOS System Palette (Dark OLED) */
+  --ios-bg: #000000;
+  --ios-surface: #1C1C1E;
+  --ios-surface-secondary: #2C2C2E;
+  --ios-surface-tertiary: #3A3A3C;
+  --ios-border: rgba(255, 255, 255, 0.09);
+  --ios-border-hairline: rgba(255, 255, 255, 0.06);
+  --ios-text: #FFFFFF;
+  --ios-text-secondary: #8E8E93;
+  --ios-text-tertiary: #636366;
+  
+  --ios-green: #30D158;
+  --ios-blue: #0A84FF;
+  --ios-orange: #FF9F0A;
+  --ios-red: #FF453A;
+  --ios-indigo: #5E5CE6;
+  --ios-purple: #BF5AF2;
+  --ios-teal: #64D2FF;
+}
+
+.v-theme--m3Light {
+  --ios-bg: #F2F2F7;
+  --ios-surface: #FFFFFF;
+  --ios-surface-secondary: #E5E5EA;
+  --ios-surface-tertiary: #D1D1D6;
+  --ios-border: rgba(60, 60, 67, 0.12);
+  --ios-border-hairline: rgba(60, 60, 67, 0.08);
+  --ios-text: #000000;
+  --ios-text-secondary: #8E8E93;
+  --ios-text-tertiary: #C7C7CC;
+  
+  --ios-green: #34C759;
+  --ios-blue: #007AFF;
+  --ios-orange: #FF9500;
+  --ios-red: #FF3B30;
+  --ios-indigo: #5856D6;
+  --ios-purple: #AF52DE;
+  --ios-teal: #5AC8FA;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum" 1;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background-color: var(--ios-bg);
+  color: var(--ios-text);
+  overflow: hidden;
 }
 
-.card {
-  background: var(--surface-card);
-  padding: 2rem;
-  border-radius: 10px;
-  margin-bottom: 1rem;
+/* Tabular numbers for clean numeric & IP alignments */
+.text-mono {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
 }
 
+/* Minimalist scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-  border-radius: 4px;
+  width: 0px;
+  height: 0px;
 }
 
-::-webkit-scrollbar-track {
-  border-radius: 4px;
+/* Typographic Utility Classes */
+.fw-regular { font-weight: var(--fw-regular) !important; }
+.fw-medium { font-weight: var(--fw-medium) !important; }
+.fw-semibold { font-weight: var(--fw-semibold) !important; }
+.fw-bold { font-weight: var(--fw-bold) !important; }
+.fw-heavy { font-weight: var(--fw-heavy) !important; }
+
+/* Inset Grouped Section (iOS Settings style) */
+.ios-section {
+  margin-bottom: 1.25rem;
 }
 
-::-webkit-scrollbar-thumb {
-  border-radius: 4px;
-  background-color: #0000005d;
+.ios-section-header {
+  font-size: 0.75rem;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ios-text-secondary);
+  padding: 0 1rem 0.375rem;
 }
 
+.ios-group {
+  background-color: var(--ios-surface);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--ios-border);
+}
+
+.ios-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6875rem 1rem;
+  min-height: 44px;
+  position: relative;
+  transition: background-color 0.12s ease;
+}
+
+.ios-row + .ios-row {
+  border-top: 1px solid var(--ios-border-hairline);
+}
+
+.ios-row-pressable:active {
+  background-color: var(--ios-surface-secondary);
+}
+
+/* Squircle icon container */
+.ios-squircle {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Bottom Tab Bar (iOS Native) */
+.ios-tab-bar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: calc(52px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: env(safe-area-inset-bottom) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  background: color-mix(in srgb, var(--ios-surface) 80%, transparent) !important;
+  border-top: 1px solid var(--ios-border) !important;
+  z-index: 1000;
+}
+
+.ios-tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ios-text-secondary);
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.15s ease, transform 0.12s ease;
+}
+
+.ios-tab-item span {
+  font-size: 10px;
+  font-weight: var(--fw-medium);
+  margin-top: 2px;
+}
+
+.ios-tab-item.tab-active {
+  color: var(--ios-blue);
+}
+
+.ios-tab-item.tab-active span {
+  font-weight: var(--fw-semibold);
+}
+
+/* Legacy password field */
 .p-password {
   width: 100%;
 }
-
-.p-password>input {
+.p-password > input {
   width: 100%;
 }

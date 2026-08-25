@@ -2,7 +2,6 @@ import { networkInterfaces } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import VueI18n from '@intlify/unplugin-vue-i18n/vite'
-import { PrimeVueResolver } from '@primevue/auto-import-resolver'
 import Vue from '@vitejs/plugin-vue'
 import { containsCidr, parseCidr } from 'cidr-tools'
 import { gateway4sync } from 'default-gateway'
@@ -45,6 +44,27 @@ export default defineConfig(async () => ({
           include: [/\.vue$/, /\.md$/],
         }),
       },
+      // This app uses plain <script setup> with native compiler macros only —
+      // none of the vue-macros language extensions are used anywhere. Several
+      // of the default-enabled macro transforms have pathological scope
+      // analysis on this codebase's SFCs that spin the dev server at ~100%
+      // CPU on first browser load (setup-component's getScopeDecls loops
+      // forever; reactivity-transform's AST walk takes minutes). Disable all
+      // default-on features; re-enable individually if a macro is ever used.
+      betterDefine: false,
+      chainCall: false,
+      defineEmit: false,
+      defineModels: false,
+      defineProp: false,
+      defineProps: false,
+      definePropsRefs: false,
+      defineRender: false,
+      hoistStatic: false,
+      jsxDirective: false,
+      reactivityTransform: false,
+      setupComponent: false,
+      setupJsdoc: false,
+      shortVmodel: false,
     }),
 
     // https://github.com/posva/unplugin-vue-router
@@ -83,9 +103,6 @@ export default defineConfig(async () => ({
       // allow auto import and register components used in markdown
       include: [/\.vue$/, /\.vue\?vue/, /\.md$/],
       dts: 'src/components.d.ts',
-      resolvers: [
-        PrimeVueResolver(),
-      ],
     }),
 
     // https://github.com/intlify/bundle-tools/tree/main/packages/unplugin-vue-i18n
@@ -97,13 +114,49 @@ export default defineConfig(async () => ({
     }),
 
     // https://github.com/webfansplz/vite-plugin-vue-devtools
-    VueDevTools(),
+    // Disabled for plain-browser preview (VITE_DISABLE_DEVTOOLS=1): the devtools
+    // overlay can busy-spin the dev server when a headless browser loads it.
+    ...(process.env.VITE_DISABLE_DEVTOOLS ? [] : [VueDevTools()]),
   ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors
   clearScreen: false,
+
+  // Pre-bundle everything at startup and disable runtime dep discovery. Without
+  // this, the first browser load discovers `@tauri-apps/*` / plugin deps and
+  // triggers a "new dependencies optimized ... reloading" cycle that stalls the
+  // dev server (browser preview via `vite --host` hangs).
+  optimizeDeps: {
+    include: [
+      'vue',
+      'vue-router',
+      'pinia',
+      'vue-i18n',
+      'vuetify',
+      'vuetify/components',
+      'vuetify/directives',
+      '@tauri-apps/api/core',
+      '@tauri-apps/api/menu',
+      '@tauri-apps/api/tray',
+      '@tauri-apps/api/event',
+      '@tauri-apps/api/window',
+      '@tauri-apps/api/path',
+      '@tauri-apps/plugin-os',
+      '@tauri-apps/plugin-shell',
+      '@tauri-apps/plugin-process',
+      '@tauri-apps/plugin-clipboard-manager',
+      'tauri-plugin-vpnservice-api',
+      '@vueuse/core',
+      'uuid',
+    ],
+    // The shared lib is a workspace package; serve its built ESM directly
+    // instead of pre-bundling it (avoids duplicated vue/vuetify instances).
+    exclude: ['easytier-frontend-lib'],
+    noDiscovery: true,
+  },
+
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,
