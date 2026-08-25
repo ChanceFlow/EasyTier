@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useDisplay } from 'vuetify'
 
 const props = defineProps<{
     placeholder?: string
@@ -8,6 +9,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const { smAndDown } = useDisplay()
 const url = defineModel<string>({ required: true })
 const editing = ref(false)
 const hostFocused = ref(false)
@@ -194,8 +196,8 @@ const onProtoChange = (newProto: string | null) => {
         </div>
 
         <!-- Edit dialog (used on small screens) -->
-        <v-dialog v-model="editing" max-width="500px">
-            <v-card :title="placeholder">
+        <v-dialog v-model="editing" max-width="500px" :fullscreen="smAndDown">
+            <v-card :title="placeholder" rounded="xl" class="et-dialog-sheet">
                 <v-card-text class="d-flex flex-column ga-4 pt-4">
                     <div class="d-flex flex-column ga-2">
                         <label class="text-body-2">{{ t('tunnel_proto') }}</label>
@@ -278,11 +280,12 @@ const onProtoChange = (newProto: string | null) => {
 }
 
 .url-compact-row {
-    border: 1px solid var(--v-theme-outlineVariant);
-    border-radius: 8px;
-    padding: 4px 4px 4px 10px;
+    border: 1px solid var(--et-border);
+    border-radius: 12px;
+    padding: 4px 4px 4px 12px;
     min-width: 0;
-    background: var(--v-theme-surface);
+    min-height: 44px;
+    background: var(--et-surface);
 }
 .url-compact-text {
     font-size: 0.85rem;

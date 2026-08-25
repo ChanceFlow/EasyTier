@@ -8,7 +8,14 @@ onBeforeMount(async () => {
 </script>
 
 <template>
-  <v-app>
+  <v-app class="et-app-host">
     <RouterView />
   </v-app>
 </template>
+
+<style>
+.et-app-host {
+  height: 100%;
+  width: 100%;
+}
+</style>

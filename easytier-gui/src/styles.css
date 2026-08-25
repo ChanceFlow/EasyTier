@@ -1,192 +1,115 @@
-/* EasyTier GUI — Pure Native iOS / Modern App Design System */
+/* EasyTier GUI chrome — tokens live in easytier-frontend-lib/style.css */
 
-:root {
-  font-size: 14px;
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", "Roboto Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-
-  /* Font Weight Standard Scale */
-  --fw-regular: 400;
-  --fw-medium: 500;
-  --fw-semibold: 600;
-  --fw-bold: 700;
-  --fw-heavy: 800;
-
-  /* iOS System Palette (Dark OLED) */
-  --ios-bg: #000000;
-  --ios-surface: #1C1C1E;
-  --ios-surface-secondary: #2C2C2E;
-  --ios-surface-tertiary: #3A3A3C;
-  --ios-border: rgba(255, 255, 255, 0.09);
-  --ios-border-hairline: rgba(255, 255, 255, 0.06);
-  --ios-text: #FFFFFF;
-  --ios-text-secondary: #8E8E93;
-  --ios-text-tertiary: #636366;
-  
-  --ios-green: #30D158;
-  --ios-blue: #0A84FF;
-  --ios-orange: #FF9F0A;
-  --ios-red: #FF453A;
-  --ios-indigo: #5E5CE6;
-  --ios-purple: #BF5AF2;
-  --ios-teal: #64D2FF;
-}
-
-.v-theme--m3Light {
-  --ios-bg: #F2F2F7;
-  --ios-surface: #FFFFFF;
-  --ios-surface-secondary: #E5E5EA;
-  --ios-surface-tertiary: #D1D1D6;
-  --ios-border: rgba(60, 60, 67, 0.12);
-  --ios-border-hairline: rgba(60, 60, 67, 0.08);
-  --ios-text: #000000;
-  --ios-text-secondary: #8E8E93;
-  --ios-text-tertiary: #C7C7CC;
-  
-  --ios-green: #34C759;
-  --ios-blue: #007AFF;
-  --ios-orange: #FF9500;
-  --ios-red: #FF3B30;
-  --ios-indigo: #5856D6;
-  --ios-purple: #AF52DE;
-  --ios-teal: #5AC8FA;
-}
-
-html, body, #app {
+.et-app {
   height: 100%;
   width: 100%;
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum" 1;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  background-color: var(--ios-bg);
-  color: var(--ios-text);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  background:
+    radial-gradient(1200px 480px at 50% -12%, var(--et-accent-dim), transparent 55%),
+    var(--et-bg);
 }
 
-/* Tabular numbers for clean numeric & IP alignments */
-.text-mono {
-  font-family: var(--font-mono) !important;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.2px;
+.et-nav {
+  min-height: calc(var(--et-nav-height) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  border-bottom: 1px solid var(--et-border);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  background: color-mix(in srgb, var(--et-bg) 78%, transparent);
+  flex-shrink: 0;
+  z-index: 100;
 }
 
-/* Minimalist scrollbar */
-::-webkit-scrollbar {
-  width: 0px;
-  height: 0px;
-}
-
-/* Typographic Utility Classes */
-.fw-regular { font-weight: var(--fw-regular) !important; }
-.fw-medium { font-weight: var(--fw-medium) !important; }
-.fw-semibold { font-weight: var(--fw-semibold) !important; }
-.fw-bold { font-weight: var(--fw-bold) !important; }
-.fw-heavy { font-weight: var(--fw-heavy) !important; }
-
-/* Inset Grouped Section (iOS Settings style) */
-.ios-section {
-  margin-bottom: 1.25rem;
-}
-
-.ios-section-header {
-  font-size: 0.75rem;
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ios-text-secondary);
-  padding: 0 1rem 0.375rem;
-}
-
-.ios-group {
-  background-color: var(--ios-surface);
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid var(--ios-border);
-}
-
-.ios-row {
+.et-nav-inner {
+  height: var(--et-nav-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6875rem 1rem;
-  min-height: 44px;
-  position: relative;
-  transition: background-color 0.12s ease;
+  gap: 8px;
 }
 
-.ios-row + .ios-row {
-  border-top: 1px solid var(--ios-border-hairline);
+.et-nav-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
-.ios-row-pressable:active {
-  background-color: var(--ios-surface-secondary);
-}
-
-/* Squircle icon container */
-.ios-squircle {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  display: flex;
+.et-status-pill {
+  font-size: 0.72rem;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 4px 8px;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  gap: 6px;
+  max-width: 9.5rem;
 }
 
-/* Bottom Tab Bar (iOS Native) */
-.ios-tab-bar {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: calc(52px + env(safe-area-inset-bottom)) !important;
-  padding-bottom: env(safe-area-inset-bottom) !important;
-  backdrop-filter: blur(25px) !important;
-  -webkit-backdrop-filter: blur(25px) !important;
-  background: color-mix(in srgb, var(--ios-surface) 80%, transparent) !important;
-  border-top: 1px solid var(--ios-border) !important;
-  z-index: 1000;
+.et-status-pill.is-on {
+  background: var(--et-accent-dim);
+  color: var(--et-accent);
 }
 
-.ios-tab-item {
+.et-status-pill.is-off {
+  background: var(--et-surface-2);
+  color: var(--et-text-secondary);
+}
+
+.et-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--et-accent);
+  box-shadow: 0 0 0 0 var(--et-glow);
+  animation: et-pulse 1.8s ease-out infinite;
+}
+
+@keyframes et-pulse {
+  0% { box-shadow: 0 0 0 0 var(--et-glow); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.et-main {
+  flex: 1;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  min-height: 0;
+}
+
+.et-main-body {
   flex: 1;
-  height: 100%;
-  border: none;
-  background: transparent;
-  color: var(--ios-text-secondary);
-  cursor: pointer;
-  padding: 4px 0;
-  transition: color 0.15s ease, transform 0.12s ease;
-}
-
-.ios-tab-item span {
-  font-size: 10px;
-  font-weight: var(--fw-medium);
-  margin-top: 2px;
-}
-
-.ios-tab-item.tab-active {
-  color: var(--ios-blue);
-}
-
-.ios-tab-item.tab-active span {
-  font-weight: var(--fw-semibold);
-}
-
-/* Legacy password field */
-.p-password {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
 }
-.p-password > input {
-  width: 100%;
+
+@media (min-width: 720px) {
+  .et-main-body {
+    max-width: 560px;
+  }
+}
+
+.et-empty {
+  min-height: 60%;
+  padding: 2rem 1.5rem;
+}
+
+.et-sheet-card {
+  background: var(--et-surface) !important;
+  border-radius: 20px 20px 0 0 !important;
+}
+
+.et-dialog-card {
+  background: var(--et-surface) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .et-pulse-dot { animation: none; }
 }

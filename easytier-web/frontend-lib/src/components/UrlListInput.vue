@@ -38,7 +38,6 @@ const removeUrl = (index: number) => {
         </div>
         <div
             class="d-flex align-center justify-center w-100 url-list-add"
-            style="border: 2px dashed var(--v-theme-outlineVariant); border-radius: 12px; cursor: pointer; min-height: 40px; gap: 8px; color: var(--v-theme-onSurfaceVariant);"
             @click="addUrl"
         >
             <v-icon size="small">mdi-plus</v-icon>
@@ -49,10 +48,15 @@ const removeUrl = (index: number) => {
 
 <style scoped>
 .url-list-add {
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    border: 1.5px dashed var(--et-border);
+    border-radius: 12px;
+    cursor: pointer;
+    min-height: 44px;
+    gap: 8px;
+    color: var(--et-text-secondary);
 }
-.url-list-add:hover {
-    border-color: var(--v-theme-primary);
-    background: var(--v-theme-surfaceContainerLow);
+.url-list-add:active {
+    border-color: var(--et-accent);
+    background: var(--et-accent-dim);
 }
 </style>

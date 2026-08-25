@@ -90,7 +90,7 @@ watch(tomlConfig, (newValue) => {
 </script>
 <template>
     <v-dialog v-model="visible" max-width="70vw" :fullscreen="mobileUI">
-        <v-card :title="t('config_file')">
+        <v-card :title="t('config_file')" rounded="xl" class="et-dialog-sheet">
             <v-card-text>
                 <pre v-if="errorMessage" class="mb-2 config-error">
                     {{ errorMessage }}
@@ -107,8 +107,8 @@ watch(tomlConfig, (newValue) => {
             </v-card-text>
             <v-divider />
             <v-card-actions class="justify-end">
-                <v-btn v-if="!props.readonly" variant="elevated" color="primary" @click="handleConfigSave">{{ t('save') }}</v-btn>
-                <v-btn variant="text" @click="visible = false">{{ t('close') }}</v-btn>
+                <v-btn v-if="!props.readonly" variant="flat" color="primary" rounded="pill" @click="handleConfigSave">{{ t('save') }}</v-btn>
+                <v-btn variant="text" rounded="pill" @click="visible = false">{{ t('close') }}</v-btn>
             </v-card-actions>
         </v-card>
     </v-dialog>
@@ -130,6 +130,6 @@ watch(tomlConfig, (newValue) => {
 }
 .config-textarea :deep(textarea) {
     overflow-y: auto !important;
-    font-family: "Roboto Mono", ui-monospace, Consolas, monospace !important;
+    font-family: var(--font-mono) !important;
 }
 </style>

@@ -138,6 +138,13 @@ describe('RemoteManagement config save', () => {
     try {
       await settleRemoteManagement()
 
+      const configTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.config'),
+      )
+      expect(configTab).toBeTruthy()
+      await configTab!.trigger('click')
+      await nextTick()
+
       const saveButton = wrapper.findAll('button.v-btn')
         .find((button) => button.text().includes('web.device_management.save_config'))
       expect(saveButton).toBeTruthy()
@@ -152,6 +159,81 @@ describe('RemoteManagement config save', () => {
       for (const field of BOOLEAN_CONFIG_FIELDS) {
         expect(savedConfig[field], `${field} should be saved`).toBe(expectedFlags[field])
       }
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('stays on the home tab after stopping a running network', async () => {
+    let disabledInstIds: Array<typeof INSTANCE_UUID> = []
+    let runningInstIds: Array<typeof INSTANCE_UUID> = [INSTANCE_UUID]
+    const config = makeFlagConfig()
+    const api = {
+      delete_network: vi.fn(),
+      generate_config: vi.fn(),
+      get_network_config: vi.fn(async () => cloneConfig(config)),
+      get_network_info: vi.fn(async () => ({})),
+      get_vpn_portal_info: vi.fn(),
+      get_network_metas: vi.fn(async (instanceIds: string[]) => ({
+        metas: Object.fromEntries(instanceIds.map((id) => [id, {
+          config_permission: 0xffffffff,
+          inst_id: INSTANCE_UUID,
+          instance_name: 'mesh-save',
+          network_name: 'mesh-save',
+          source: 2,
+        }])),
+      })),
+      list_network_instance_ids: vi.fn(async () => ({
+        disabled_inst_ids: disabledInstIds,
+        running_inst_ids: runningInstIds,
+      })),
+      parse_config: vi.fn(),
+      run_network: vi.fn(),
+      save_config: vi.fn(async () => undefined),
+      update_network_instance_state: vi.fn(async (_id: string, disable: boolean) => {
+        if (disable) {
+          disabledInstIds = [INSTANCE_UUID]
+          runningInstIds = []
+        }
+        else {
+          disabledInstIds = []
+          runningInstIds = [INSTANCE_UUID]
+        }
+      }),
+      validate_config: vi.fn(),
+    }
+
+    const wrapper = mount(RemoteManagement, {
+      props: {
+        api,
+        instanceId: INSTANCE_ID,
+      },
+      global: {
+        plugins: [vuetify],
+        stubs: {
+          Config: true,
+          ConfigEditDialog: true,
+          Status: true,
+        },
+      },
+    })
+
+    try {
+      await settleRemoteManagement()
+
+      const homeTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.home'),
+      )
+      const configTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.config'),
+      )
+      expect(homeTab?.attributes('aria-selected')).toBe('true')
+
+      wrapper.findComponent({ name: 'Status' }).vm.$emit('toggle-network')
+      await settleRemoteManagement()
+
+      expect(homeTab?.attributes('aria-selected')).toBe('true')
+      expect(configTab?.attributes('aria-selected')).toBe('false')
     } finally {
       wrapper.unmount()
     }

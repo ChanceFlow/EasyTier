@@ -253,6 +253,73 @@ status:
   local: 本机
   server: 服务器
   relay: 中继
+  connected: 已连接
+  disconnected: 未连接
+  connect: 连接
+  disconnect: 断开
+  tap_to_connect: 点按圆环连接组网
+  tap_to_disconnect: 点按圆环断开组网
+  virtual_ip: 虚拟 IP
+  tun_interface: TUN 网卡
+  network_identity: 网络身份
+  live_bandwidth: 实时带宽
+  features: 功能
+  vpn_portal: VPN 门户
+  mesh_devices: 组网设备
+  no_devices: 暂无设备
+  search_devices: 搜索名称或 IP
+  filter_all: 全部
+  filter_direct: 直连
+  filter_relay: 中继
+  filter_server: 服务器
+  connectivity: 连通性
+  traffic: 流量
+  copy_ip: 复制 IP 地址
+  copied: 已复制
+  total: 累计
+  devices_unit: 台设备
+  route_cost: 路由
+  ping: 延迟
+  packet_loss: 丢包
+  uploaded: 已上传
+  downloaded: 已下载
+  peer_id: 节点 ID
+  public_ipv4: 公网 IPv4
+  public_ipv6: 公网 IPv6
+  listener: 监听
+  appearance: 外观
+  appearance_dark: 深色
+  appearance_light: 浅色
+
+tabs:
+  home: 组网
+  devices: 设备
+  config: 配置
+  activity: 动态
+
+nat:
+  unknown: 未知
+  open_internet: 开放网络
+  no_pat: 无 PAT
+  full_cone: 全锥型
+  restricted: 限制型
+  port_restricted: 端口限制型
+  symmetric: 对称型
+  sym_udp_firewall: 对称 UDP 防火墙
+  symmetric_easy_inc: 对称递增
+  symmetric_easy_dec: 对称递减
+
+flags_group:
+  path: 路径选择
+  protocol: 传输协议
+  p2p: 节点连通
+  stack: 网卡与协议栈
+  security: 安全与隐私
+
+port_forwards_bind_port: 绑定端口
+port_forwards_dst_port: 目标端口
+no_events: 暂无事件
+vpn_portal_label: VPN 门户 (WireGuard)
 
 run_network: 运行网络
 stop_network: 停止网络
@@ -367,10 +434,10 @@ web:
     create_network: 创建网络
     cancel_edit: 取消编辑
     more_actions: 更多操作
-    edit_as_file: 编辑为文件
-    save_config: 保存配置
+    edit_as_file: 源文件
+    save_config: 保存
     config_saved: 配置已保存
-    import_config: 导入配置
+    import_config: 导入
     create_new: 创建新网络
     network_status: 网络状态
     loading_network_status: 正在加载网络状态
@@ -380,6 +447,9 @@ web:
     no_network_selected: 未选择网络
     select_existing_network_or_create_new: 选择现有网络实例或创建新网络以管理网络设置
     disable_network: 禁用网络
+    save_and_start: 保存并连接
+    active: 已启用
+    stopped: 已停止
 
   network:
     title: 网络

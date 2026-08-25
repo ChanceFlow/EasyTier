@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import '../src/style.css'
 
 class ResizeObserverStub {
   observe() {}

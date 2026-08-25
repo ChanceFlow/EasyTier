@@ -206,21 +206,36 @@ const loadCurrentNetworkConfig = async () => {
     currentNetworkConfig.value = ret;
 }
 
-const stopNetwork = async () => {
+function setCurrentNetworkRunning(running: boolean): void {
+    if (!curNetworkInfo.value) {
+        return
+    }
+    if (selectedInstanceId.value && curNetworkInfo.value.instance_id !== selectedInstanceId.value.uuid) {
+        return
+    }
+    curNetworkInfo.value = {
+        ...curNetworkInfo.value,
+        running,
+    }
+}
+
+const stopNetwork = async (): Promise<void> => {
     if (!selectedInstanceId.value) {
         return;
     }
 
     await props.api.update_network_instance_state(selectedInstanceId.value.uuid, true);
     await loadNetworkInstanceIds();
+    setCurrentNetworkRunning(false)
 }
 
-const startNetwork = async () => {
+const startNetwork = async (): Promise<void> => {
     if (!selectedInstanceId.value) {
         return;
     }
     await props.api.update_network_instance_state(selectedInstanceId.value.uuid, false);
     await loadNetworkInstanceIds();
+    setCurrentNetworkRunning(true)
 }
 
 const toggleCurrentNetwork = async () => {
@@ -398,9 +413,49 @@ const exportConfig = async () => {
     }
 }
 
-const importConfig = () => {
+const importConfig = (): void => {
     configFile.value?.click();
 }
+
+interface ConfigActionItem {
+    key: 'edit' | 'import' | 'save'
+    icon: string
+    labelKey: string
+    primary: boolean
+    disabled: boolean
+    run: () => void
+}
+
+const configActions = computed<ConfigActionItem[]>(() => [
+    {
+        key: 'edit',
+        icon: 'mdi-file-code-outline',
+        labelKey: 'web.device_management.edit_as_file',
+        primary: false,
+        disabled: false,
+        run: (): void => {
+            showConfigEditDialog.value = true
+        },
+    },
+    {
+        key: 'import',
+        icon: 'mdi-tray-arrow-up',
+        labelKey: 'web.device_management.import_config',
+        primary: false,
+        disabled: false,
+        run: importConfig,
+    },
+    {
+        key: 'save',
+        icon: 'mdi-content-save-outline',
+        labelKey: 'web.device_management.save_config',
+        primary: true,
+        disabled: !currentNetworkConfig.value,
+        run: (): void => {
+            void saveNetworkConfig()
+        },
+    },
+])
 
 const handleFileUpload = async (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -477,25 +532,30 @@ const activityEvents = computed(() => {
 </script>
 
 <template>
-    <div class="device-management">
+    <div class="device-management" :class="{ 'has-tab-bar': needShowNetworkStatus }">
         <input type="file" @change="handleFileUpload" class="d-none" accept="application/toml" ref="configFile" />
 
         <!-- ================= 1. Top Network Switcher Profile Card ================= -->
-        <div class="ios-profile-card d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
+        <div class="et-network-chip d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
             <div class="d-flex align-center ga-3 min-w-0">
-                <div class="ios-squircle pressable" :style="{ background: heroIsRunning ? 'var(--ios-green)' : 'var(--ios-surface-secondary)' }" @click.stop="toggleCurrentNetwork">
-                    <v-icon size="18" :color="heroIsRunning ? 'white' : 'var(--ios-text-secondary)'">
-                        {{ heroIsRunning ? 'mdi-shield-check' : 'mdi-power' }}
+                <div
+                    class="et-squircle"
+                    :style="{ background: heroIsRunning ? 'var(--et-accent)' : 'var(--et-surface-2)' }"
+                >
+                    <v-icon size="18" :color="heroIsRunning ? 'onPrimary' : 'medium-emphasis'">
+                        {{ heroIsRunning ? 'mdi-shield-check' : 'mdi-shield-outline' }}
                     </v-icon>
                 </div>
                 <div class="min-w-0">
                     <div class="d-flex align-center ga-2">
                         <span class="hero-net-name truncate">{{ heroNetworkName }}</span>
                         <v-chip :color="heroIsRunning ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill font-weight-bold">
-                            {{ heroIsRunning ? 'Active' : 'Stopped' }}
+                            {{ heroIsRunning ? t('web.device_management.active') : t('web.device_management.stopped') }}
                         </v-chip>
                     </div>
-                    <div class="text-caption text-mono text-medium-emphasis truncate">{{ selectedInstanceId?.uuid ?? t('web.device_management.select_network') }}</div>
+                    <div class="text-caption text-medium-emphasis truncate">
+                        {{ isEditingNetwork ? t('web.device_management.edit_network') : t('web.device_management.select_network') }}
+                    </div>
                 </div>
             </div>
 
@@ -504,16 +564,6 @@ const activityEvents = computed(() => {
                     <v-btn icon="mdi-close" size="small" variant="text" :aria-label="t('web.device_management.cancel_edit')" @click.stop="cancelEditNetwork" />
                 </template>
                 <template v-else>
-                    <v-btn
-                        :color="heroIsRunning ? 'error' : 'success'"
-                        variant="tonal"
-                        size="x-small"
-                        rounded="pill"
-                        class="font-weight-bold px-3 me-1"
-                        @click.stop="toggleCurrentNetwork"
-                    >
-                        {{ heroIsRunning ? 'Stop' : 'Start' }}
-                    </v-btn>
                     <v-btn v-if="selectedInstanceId" icon="mdi-dots-vertical" size="small" variant="text" :aria-label="t('web.device_management.more_actions')" @click.stop="openActionMenu" />
                     <v-icon size="20" color="medium-emphasis">mdi-chevron-down</v-icon>
                 </template>
@@ -522,7 +572,7 @@ const activityEvents = computed(() => {
 
         <!-- Network Switcher Bottom Sheet (iOS Action Sheet) -->
         <v-bottom-sheet v-model="networkSheetOpen" scrollable>
-            <v-card rounded="t-xl" class="ios-network-sheet">
+            <v-card rounded="t-xl" class="et-network-sheet">
                 <div class="sheet-grabber" @click="networkSheetOpen = false" />
                 <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
                     <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.network') }}</span>
@@ -535,12 +585,12 @@ const activityEvents = computed(() => {
                         <div
                             v-for="item in instanceList"
                             :key="item.uuid"
-                            class="ios-row ios-row-pressable"
+                            class="et-row et-row-pressable"
                             @click="sheetSelectNetwork(item)"
                         >
                             <div class="d-flex align-center ga-3 min-w-0">
-                                <div class="ios-squircle" :style="{ background: isRunning(item.uuid) ? 'var(--ios-green)' : 'var(--ios-surface-secondary)' }">
-                                    <v-icon size="18" :color="isRunning(item.uuid) ? 'white' : 'var(--ios-text-secondary)'">
+                                <div class="et-squircle" :style="{ background: isRunning(item.uuid) ? 'var(--et-accent)' : 'var(--et-surface-2)' }">
+                                    <v-icon size="18" :color="isRunning(item.uuid) ? 'onPrimary' : 'medium-emphasis'">
                                         {{ isRunning(item.uuid) ? 'mdi-shield-check' : 'mdi-shield-off' }}
                                     </v-icon>
                                 </div>
@@ -563,7 +613,7 @@ const activityEvents = computed(() => {
 
         <!-- More actions menu -->
         <v-menu v-model="actionMenuOpen" :position-x="menuX" :position-y="menuY" location="bottom end">
-            <v-list density="comfortable" min-width="180" rounded="xl" class="ios-menu-list">
+            <v-list density="comfortable" min-width="180" rounded="xl" class="et-menu-list">
                 <v-list-item v-if="currentNetworkControl.editable.value" @click="runActionMenu('edit')">
                     <v-list-item-title>{{ t('web.device_management.edit_network') }}</v-list-item-title>
                     <template #prepend><v-icon size="20">mdi-pencil</v-icon></template>
@@ -591,15 +641,19 @@ const activityEvents = computed(() => {
                     <v-btn icon="mdi-close" size="small" variant="text" @click="cancelEditNetwork" />
                 </div>
 
-                <div class="rm-toolbar d-flex flex-wrap ga-2 justify-start mb-3">
-                    <v-btn variant="tonal" size="small" rounded="pill" :prepend-icon="'mdi-file-edit-outline'" @click="showConfigEditDialog = true">
-                        {{ t('web.device_management.edit_as_file') }}
-                    </v-btn>
-                    <v-btn variant="tonal" size="small" rounded="pill" :prepend-icon="'mdi-upload'" @click="importConfig">
-                        {{ t('web.device_management.import_config') }}
-                    </v-btn>
-                    <v-btn color="success" size="small" variant="tonal" rounded="pill" :prepend-icon="'mdi-content-save'" :disabled="!currentNetworkConfig" @click="saveNetworkConfig">
-                        {{ t('web.device_management.save_config') }}
+                <div class="et-action-grid et-group mb-3" role="toolbar">
+                    <v-btn
+                        v-for="item in configActions"
+                        :key="item.key"
+                        variant="text"
+                        class="et-action-cell"
+                        :color="item.primary ? 'primary' : undefined"
+                        :aria-label="t(item.labelKey)"
+                        :disabled="item.disabled"
+                        @click="item.run"
+                    >
+                        <v-icon size="22">{{ item.icon }}</v-icon>
+                        <span>{{ t(item.labelKey) }}</span>
                     </v-btn>
                 </div>
 
@@ -647,24 +701,28 @@ const activityEvents = computed(() => {
                                 </v-timeline-item>
                             </v-timeline>
                         </div>
-                        <div v-else class="ios-group text-center py-10 text-medium-emphasis">
+                        <div v-else class="et-group text-center py-10 text-medium-emphasis">
                             <v-icon size="40" class="mb-2">mdi-history</v-icon>
-                            <div>No events recorded yet</div>
+                            <div>{{ t('no_events') }}</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Config Tab View (when mobileTab === 'config' or when disabled in test) -->
-                <div v-if="mobileTab === 'config' || networkIsDisabled" class="config-tab-content">
-                    <div class="rm-toolbar d-flex flex-wrap ga-2 justify-start mb-3">
-                        <v-btn variant="tonal" size="small" rounded="pill" :prepend-icon="'mdi-file-edit-outline'" @click="showConfigEditDialog = true">
-                            {{ t('web.device_management.edit_as_file') }}
-                        </v-btn>
-                        <v-btn variant="tonal" size="small" rounded="pill" :prepend-icon="'mdi-upload'" @click="importConfig">
-                            {{ t('web.device_management.import_config') }}
-                        </v-btn>
-                        <v-btn color="success" size="small" variant="tonal" rounded="pill" :prepend-icon="'mdi-content-save'" :disabled="!currentNetworkConfig" @click="saveNetworkConfig">
-                            {{ t('web.device_management.save_config') }}
+                <div v-if="mobileTab === 'config'" class="config-tab-content">
+                    <div class="et-action-grid et-group mb-3" role="toolbar">
+                        <v-btn
+                            v-for="item in configActions"
+                            :key="item.key"
+                            variant="text"
+                            class="et-action-cell"
+                            :color="item.primary ? 'primary' : undefined"
+                            :aria-label="t(item.labelKey)"
+                            :disabled="item.disabled"
+                            @click="item.run"
+                        >
+                            <v-icon size="22">{{ item.icon }}</v-icon>
+                            <span>{{ t(item.labelKey) }}</span>
                         </v-btn>
                     </div>
                     <Config
@@ -677,7 +735,7 @@ const activityEvents = computed(() => {
 
             <!-- Mode C: Empty State (No network configured) -->
             <div v-else class="empty-state d-flex flex-column align-center justify-center py-12">
-                <div class="ios-squircle mb-4" style="width: 72px; height: 72px; border-radius: 20px; background: rgba(10, 132, 255, 0.15);">
+                <div class="et-squircle mb-4" style="width: 72px; height: 72px; border-radius: 20px; background: var(--et-accent-dim);">
                     <v-icon size="36" color="primary">mdi-shield-plus-outline</v-icon>
                 </div>
                 <div class="text-h6 text-center font-weight-bold mb-2">
@@ -691,7 +749,7 @@ const activityEvents = computed(() => {
                         {{ t('web.device_management.create_network') }}
                     </v-btn>
                     <v-btn variant="tonal" size="large" rounded="pill" :prepend-icon="'mdi-upload'" @click="importConfig">
-                        {{ t('web.device_management.import_config') }}
+                        {{ t('web.network.import') }}
                     </v-btn>
                 </div>
             </div>
@@ -700,49 +758,58 @@ const activityEvents = computed(() => {
         <!-- ================= 3. Fixed iOS Bottom Tab Bar ================= -->
         <nav
             v-if="needShowNetworkStatus"
-            class="ios-tab-bar d-flex align-center justify-space-around"
+            class="et-tab-bar d-flex align-center justify-space-around"
+            role="tablist"
         >
             <button
                 type="button"
-                class="ios-tab-item pressable"
+                class="et-tab-item"
                 :class="{ 'tab-active': mobileTab === 'home' }"
+                role="tab"
+                :aria-selected="mobileTab === 'home'"
                 @click="mobileTab = 'home'"
             >
                 <v-icon size="22">{{ mobileTab === 'home' ? 'mdi-shield' : 'mdi-shield-outline' }}</v-icon>
-                <span>Mesh</span>
+                <span>{{ t('tabs.home') }}</span>
             </button>
 
             <button
                 type="button"
-                class="ios-tab-item pressable"
+                class="et-tab-item"
                 :class="{ 'tab-active': mobileTab === 'devices' }"
+                role="tab"
+                :aria-selected="mobileTab === 'devices'"
                 @click="mobileTab = 'devices'"
             >
                 <v-badge v-if="peerCount > 0" :content="peerCount" color="primary" inline>
                     <v-icon size="22">mdi-devices</v-icon>
                 </v-badge>
                 <v-icon v-else size="22">mdi-devices</v-icon>
-                <span>Devices</span>
+                <span>{{ t('tabs.devices') }}</span>
             </button>
 
             <button
                 type="button"
-                class="ios-tab-item pressable"
+                class="et-tab-item"
                 :class="{ 'tab-active': mobileTab === 'config' }"
+                role="tab"
+                :aria-selected="mobileTab === 'config'"
                 @click="mobileTab = 'config'"
             >
                 <v-icon size="22">{{ mobileTab === 'config' ? 'mdi-cog' : 'mdi-cog-outline' }}</v-icon>
-                <span>Settings</span>
+                <span>{{ t('tabs.config') }}</span>
             </button>
 
             <button
                 type="button"
-                class="ios-tab-item pressable"
+                class="et-tab-item"
                 :class="{ 'tab-active': mobileTab === 'activity' }"
+                role="tab"
+                :aria-selected="mobileTab === 'activity'"
                 @click="mobileTab = 'activity'"
             >
                 <v-icon size="22">{{ mobileTab === 'activity' ? 'mdi-pulse' : 'mdi-chart-line' }}</v-icon>
-                <span>Activity</span>
+                <span>{{ t('tabs.activity') }}</span>
             </button>
         </nav>
 
@@ -782,24 +849,23 @@ const activityEvents = computed(() => {
     position: relative;
 }
 
-/* Profile Card (iOS style) */
-.ios-profile-card {
-    background-color: var(--ios-surface);
-    border: 1px solid var(--ios-border);
-    border-radius: 14px;
-    padding: 0.625rem 0.875rem;
+.et-network-chip {
+    background-color: var(--et-surface);
+    border: 1px solid var(--et-border);
+    border-radius: 16px;
+    padding: 0.7rem 0.9rem;
+    min-height: 56px;
     cursor: pointer;
-    transition: background-color 0.15s ease;
 }
 
-.ios-profile-card:active {
-    background-color: var(--ios-surface-secondary);
+.et-network-chip:active {
+    background-color: var(--et-surface-2);
 }
 
 .hero-net-name {
     font-size: 1rem;
-    font-weight: var(--fw-bold);
-    letter-spacing: -0.01em;
+    font-weight: 700;
+    letter-spacing: -0.02em;
 }
 
 .rm-empty-hint {
@@ -810,11 +876,17 @@ const activityEvents = computed(() => {
 .network-content {
     flex: 1;
     overflow-y: auto;
-    padding: 0.25rem 0 4.5rem;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.25rem 0 calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
 }
 
-.ios-menu-list {
-    background-color: var(--ios-surface) !important;
+.has-tab-bar :deep(.et-sticky-run) {
+    bottom: calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0.75rem;
+}
+
+.et-menu-list {
+    background-color: var(--et-surface) !important;
 }
 
 .truncate {

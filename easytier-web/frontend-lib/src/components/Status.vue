@@ -39,7 +39,6 @@ const peerRouteInfos = computed<any[]>(() => {
   return []
 })
 
-// Peer filter & search
 const peerFilter = ref<'all' | 'direct' | 'relay' | 'server'>('all')
 const peerSearch = ref('')
 
@@ -66,16 +65,15 @@ const filteredPeers = computed(() => {
 })
 
 function routeCost(info: any) {
-  if (info.route) {
-    const cost = info.route.cost
-    return cost ? cost === 1 ? 'p2p' : `relay(${cost})` : t('status.local')
+  if (!info?.route) {
+    return '?'
   }
-
-  return '?'
+  const cost = info.route.cost
+  return cost ? cost === 1 ? 'p2p' : `relay(${cost})` : t('status.local')
 }
 
 function peerDeviceIcon(info: any): string {
-  if (!info.route?.cost) return 'mdi-laptop'
+  if (!info?.route?.cost) return 'mdi-laptop'
   const hostname = (info.route?.hostname || '').toLowerCase()
   if (hostname.includes('phone') || hostname.includes('iphone') || hostname.includes('android')) return 'mdi-cellphone'
   if (hostname.includes('nas') || hostname.includes('server')) return 'mdi-server'
@@ -84,7 +82,7 @@ function peerDeviceIcon(info: any): string {
 }
 
 function peerRouteCostColor(info: any): string {
-  if (!info.route?.cost) return 'primary'
+  if (!info?.route?.cost) return 'primary'
   return info.route.cost === 1 ? 'success' : 'warning'
 }
 
@@ -94,7 +92,7 @@ function resolveObjPath(path: string, obj: any = globalThis, separator = '.') {
 }
 
 function statsCommon(info: any, field: string): number | undefined {
-  if (!info.peer)
+  if (!info?.peer)
     return undefined
 
   let sum = 0
@@ -141,10 +139,12 @@ function rxBytes(info: PeerRoutePair) {
 }
 
 function version(info: PeerRoutePair) {
-  return info.route.version === '' ? 'unknown' : info.route.version
+  return info?.route?.version === '' ? 'unknown' : (info?.route?.version ?? '—')
 }
 
 function ipFormat(info: PeerRoutePair) {
+  if (!info?.route)
+    return ''
   const ip = info.route.ipv4_addr
   if (typeof ip === 'string')
     return ip
@@ -200,17 +200,27 @@ enum NatType {
   SymmetricEasyDec = 9,
 }
 
-const udpNatTypeStrMap = {
-  [NatType.Unknown]: 'Unknown',
-  [NatType.OpenInternet]: 'Open Internet',
-  [NatType.NoPAT]: 'No PAT',
-  [NatType.FullCone]: 'Full Cone',
-  [NatType.Restricted]: 'Restricted',
-  [NatType.PortRestricted]: 'Port Restricted',
-  [NatType.Symmetric]: 'Symmetric',
-  [NatType.SymUdpFirewall]: 'Symmetric UDP Firewall',
-  [NatType.SymmetricEasyInc]: 'Symmetric Easy Inc',
-  [NatType.SymmetricEasyDec]: 'Symmetric Easy Dec',
+const udpNatTypeKeyMap: Record<number, string> = {
+  [NatType.Unknown]: 'nat.unknown',
+  [NatType.OpenInternet]: 'nat.open_internet',
+  [NatType.NoPAT]: 'nat.no_pat',
+  [NatType.FullCone]: 'nat.full_cone',
+  [NatType.Restricted]: 'nat.restricted',
+  [NatType.PortRestricted]: 'nat.port_restricted',
+  [NatType.Symmetric]: 'nat.symmetric',
+  [NatType.SymUdpFirewall]: 'nat.sym_udp_firewall',
+  [NatType.SymmetricEasyInc]: 'nat.symmetric_easy_inc',
+  [NatType.SymmetricEasyDec]: 'nat.symmetric_easy_dec',
+}
+
+function natTypeLabel(nat: number | undefined): string {
+  if (nat === undefined)
+    return ''
+  return t(udpNatTypeKeyMap[nat] ?? 'nat.unknown')
+}
+
+function dash(value: string | undefined | null): string {
+  return value ? value : '—'
 }
 
 const myNodeInfoChips = computed(() => {
@@ -222,13 +232,11 @@ const myNodeInfoChips = computed(() => {
   if (!my_node_info)
     return chips
 
-  // peer id
   chips.push({
-    label: `Peer ID: ${my_node_info.peer_id}`,
+    label: `${t('status.peer_id')}: ${my_node_info.peer_id}`,
     icon: 'mdi-identifier',
   } as Chip)
 
-  // TUN Device Name
   const dev_name = props.curNetworkInst.detail?.dev_name
   if (dev_name) {
     chips.push({
@@ -237,35 +245,31 @@ const myNodeInfoChips = computed(() => {
     } as Chip)
   }
 
-  // virtual ipv4
   chips.push({
     label: `IPv4: ${ipv4InetToString(my_node_info.virtual_ipv4)}`,
     icon: 'mdi-ip',
   } as Chip)
 
-  // local ipv4s
   const local_ipv4s = my_node_info.ips?.interface_ipv4s
   for (const [idx, ip] of local_ipv4s?.entries() ?? []) {
     chips.push({
-      label: `Local IPv4 (${idx}): ${ipv4ToString(ip)}`,
+      label: `IPv4 (${idx}): ${ipv4ToString(ip)}`,
       icon: 'mdi-lan',
     } as Chip)
   }
 
-  // local ipv6s
   const local_ipv6s = my_node_info.ips?.interface_ipv6s
   for (const [idx, ip] of local_ipv6s?.entries() ?? []) {
     chips.push({
-      label: `Local IPv6 (${idx}): ${ipv6ToString(ip)}`,
+      label: `IPv6 (${idx}): ${ipv6ToString(ip)}`,
       icon: 'mdi-lan',
     } as Chip)
   }
 
-  // public ip
   const public_ip = my_node_info.ips?.public_ipv4
   if (public_ip) {
     chips.push({
-      label: `Public IPv4: ${ipv4ToString(public_ip)}`,
+      label: `${t('status.public_ipv4')}: ${ipv4ToString(public_ip)}`,
       icon: 'mdi-earth',
     } as Chip)
   }
@@ -273,16 +277,15 @@ const myNodeInfoChips = computed(() => {
   const public_ipv6 = my_node_info.ips?.public_ipv6
   if (public_ipv6) {
     chips.push({
-      label: `Public IPv6: ${ipv6ToString(public_ipv6)}`,
+      label: `${t('status.public_ipv6')}: ${ipv6ToString(public_ipv6)}`,
       icon: 'mdi-earth',
     } as Chip)
   }
 
-  // listeners
   const listeners = my_node_info.listeners
   for (const [idx, listener] of listeners?.entries() ?? []) {
     chips.push({
-      label: `Listener ${idx}: ${listener.url}`,
+      label: `${t('status.listener')} ${idx}: ${listener.url}`,
       icon: 'mdi-access-point',
     } as Chip)
   }
@@ -290,7 +293,7 @@ const myNodeInfoChips = computed(() => {
   const udpNatType: NatType = my_node_info.stun_info?.udp_nat_type
   if (udpNatType !== undefined) {
     chips.push({
-      label: `UDP NAT: ${udpNatTypeStrMap[udpNatType] ?? 'Unknown'}`,
+      label: `NAT: ${natTypeLabel(udpNatType)}`,
       icon: 'mdi-shield-check',
     } as Chip)
   }
@@ -323,11 +326,7 @@ const totalTxFormatted = computed(() => humanFileSize(txGlobalSum()))
 const totalRxFormatted = computed(() => humanFileSize(rxGlobalSum()))
 
 function natType(info: PeerRoutePair): string {
-  const udpNatType = info.route?.stun_info?.udp_nat_type;
-  if (udpNatType !== undefined)
-    return udpNatTypeStrMap[udpNatType as NatType] ?? ''
-
-  return ''
+  return natTypeLabel(info?.route?.stun_info?.udp_nat_type)
 }
 
 function isPublicServerRoute(info: PeerRoutePair): boolean {
@@ -338,14 +337,6 @@ function shouldAvoidRelayData(info: PeerRoutePair): boolean {
   return info.route?.feature_flag?.avoid_relay_data ?? false
 }
 
-const peerCount = computed(() => {
-  if (!peerRouteInfos.value)
-    return 0
-
-  return peerRouteInfos.value.length
-})
-
-// calculate tx/rx rate every 2 seconds
 let rateIntervalId = 0
 const rateInterval = 2000
 let prevTxSum = 0
@@ -363,7 +354,10 @@ function inspectPeer(info: any) {
 }
 
 const ipCopied = ref(false)
+const copyToast = ref(false)
 async function copyText(text: string) {
+  if (!text)
+    return
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -378,6 +372,7 @@ async function copyText(text: string) {
       textarea.remove()
     }
     ipCopied.value = true
+    copyToast.value = true
     setTimeout(() => { ipCopied.value = false }, 2000)
   } catch (e) {
     console.error('Failed to copy', e)
@@ -499,11 +494,15 @@ const myVirtualIp = computed(() => {
 
 const myNatTypeStr = computed(() => {
   const nat = props.curNetworkInst?.detail?.my_node_info?.stun_info?.udp_nat_type
-  if (nat !== undefined) {
-    return udpNatTypeStrMap[nat as NatType] || 'Unknown'
-  }
-  return 'Unknown'
+  return nat !== undefined ? natTypeLabel(nat) : t('nat.unknown')
 })
+
+const otherPeerCount = computed(() => {
+  return props.curNetworkInst?.detail?.peer_route_pairs?.length ?? 0
+})
+
+const showHome = computed(() => props.activeTab === 'home' || props.activeTab === 'all')
+const showDevices = computed(() => props.activeTab === 'devices')
 
 const myDevName = computed(() => {
   return props.curNetworkInst?.detail?.dev_name || 'tun'
@@ -521,9 +520,8 @@ const myHostname = computed(() => {
 
 <template>
   <div class="frontend-lib status-root">
-    <!-- ================= VPN Portal & Event Log Dialogs ================= -->
     <v-dialog v-model="dialogVisible" max-width="500px" :fullscreen="smAndDown">
-      <v-card :title="t(dialogHeader)" rounded="xl" class="ios-dialog-sheet">
+      <v-card :title="t(dialogHeader)" rounded="xl" class="et-dialog-sheet">
         <v-card-text class="pa-4">
           <div v-if="dialogHeader === 'vpn_portal_config'" class="vpn-dialog-body">
             <div v-if="vpnPortalLoading" class="pa-8 text-center text-medium-emphasis">
@@ -539,19 +537,19 @@ const myHostname = computed(() => {
               <div>{{ t('vpn_portal_not_configured') }}</div>
             </div>
             <div v-else class="d-flex flex-column ga-3">
-              <div class="ios-group pa-3 mb-2">
-                <div class="text-caption text-medium-emphasis mb-1">PORTAL INFO</div>
+              <div class="et-group pa-3 mb-2">
+                <div class="text-caption text-medium-emphasis mb-1">{{ t('status.vpn_portal') }}</div>
                 <div class="d-flex justify-space-between py-1 border-b text-body-2">
-                  <span>Type</span>
+                  <span>{{ t('vpn_portal_type') }}</span>
                   <span class="font-weight-medium">{{ vpnPortalInfo.vpn_type }}</span>
                 </div>
                 <div class="d-flex justify-space-between py-1 text-body-2">
-                  <span>Listener</span>
-                  <span class="text-mono font-weight-medium">{{ vpnPortalInfo.listener }}</span>
+                  <span>{{ t('vpn_portal_listener') }}</span>
+                  <span class="text-mono font-weight-medium et-selectable">{{ vpnPortalInfo.listener }}</span>
                 </div>
               </div>
 
-              <div v-for="client in vpnPortalClients" :key="client.name" class="ios-group pa-3 mb-2">
+              <div v-for="client in vpnPortalClients" :key="client.name" class="et-group pa-3 mb-2">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <div class="font-weight-bold text-body-1">{{ client.name }} · {{ client.virtual_ip }}</div>
                   <v-chip :color="vpnPortalStateColor(client.state)" size="x-small" variant="tonal" class="font-weight-medium">
@@ -559,8 +557,8 @@ const myHostname = computed(() => {
                   </v-chip>
                 </div>
                 <div class="text-caption text-medium-emphasis mb-2">
-                  <span v-if="client.groups.length">Groups: {{ client.groups.join(', ') }}</span>
-                  <span v-if="client.endpoint" class="ms-2">Endpoint: {{ client.endpoint }}</span>
+                  <span v-if="client.groups.length">{{ t('vpn_portal_client_groups') }}: {{ client.groups.join(', ') }}</span>
+                  <span v-if="client.endpoint" class="ms-2">{{ t('vpn_portal_endpoint') }}: {{ client.endpoint }}</span>
                 </div>
                 <div class="d-flex align-center justify-space-between pt-1">
                   <span class="text-caption font-weight-medium">Config</span>
@@ -569,12 +567,11 @@ const myHostname = computed(() => {
                     {{ copiedVpnPortalClient === client.name ? t('config_copied') : t('vpn_portal_copy_client_config') }}
                   </v-btn>
                 </div>
-                <pre class="vpn-client-config mt-2">{{ client.client_config }}</pre>
+                <pre class="vpn-client-config mt-2 et-selectable">{{ client.client_config }}</pre>
               </div>
             </div>
           </div>
 
-          <!-- Event log timeline -->
           <div v-else class="event-log-body">
             <v-timeline v-if="dialogContent.length" side="end" density="compact" class="pa-2">
               <v-timeline-item
@@ -587,7 +584,7 @@ const myHostname = computed(() => {
                 <HumanEvent :event="item.event" />
               </v-timeline-item>
             </v-timeline>
-            <div v-else class="pa-8 text-center text-medium-emphasis">{{ t('web.common.loading') }}</div>
+            <div v-else class="pa-8 text-center text-medium-emphasis">{{ t('no_events') }}</div>
           </div>
         </v-card-text>
         <v-card-actions>
@@ -597,76 +594,49 @@ const myHostname = computed(() => {
       </v-card>
     </v-dialog>
 
-    <!-- Run Network Error Banner -->
     <v-card v-if="curNetworkInst?.error_msg" class="mb-4" color="error" variant="tonal" rounded="xl">
-      <v-card-title class="text-subtitle-1 font-weight-bold">Run Network Error</v-card-title>
+      <v-card-title class="text-subtitle-1 font-weight-bold">{{ t('error_msg') }}</v-card-title>
       <v-card-text class="text-error">{{ curNetworkInst.error_msg }}</v-card-text>
     </v-card>
 
     <template v-else>
-      <!-- ================= 1. HOME TAB VIEW (iOS Hero + Inset Grouped + Big Power Control) ================= -->
-      <div v-if="activeTab === 'home' || activeTab === 'all'" class="home-tab-content">
-        <!-- Master Connection Power Orb Hero -->
-        <div class="ios-hero-banner text-center py-6 mb-4">
-          <!-- Interactive Power Orb -->
-          <div class="ios-orb-container mb-3" @click="$emit('toggle-network')">
-            <div class="ios-power-orb pressable" :class="{ 'orb-connected': isRunning }">
-              <v-icon size="44" :color="isRunning ? '#30D158' : '#8E8E93'">
-                {{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}
-              </v-icon>
-            </div>
-          </div>
+      <div v-if="showHome" class="home-tab-content">
+        <div class="et-hero">
+          <div class="et-hero-mesh" aria-hidden="true" />
+          <button
+            type="button"
+            class="et-power-orb"
+            :class="{ 'is-on': isRunning }"
+            :aria-pressed="isRunning"
+            :aria-label="isRunning ? t('status.disconnect') : t('status.connect')"
+            @click="$emit('toggle-network')"
+          >
+            <span class="et-orb-ring" />
+            <v-icon size="40">{{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+          </button>
 
-          <!-- Status Headline -->
-          <div class="ios-status-headline font-weight-bold" :class="isRunning ? 'text-ios-green' : 'text-ios-gray'">
-            {{ isRunning ? 'CONNECTED' : 'DISCONNECTED' }}
+          <div class="et-hero-state" :class="isRunning ? 'is-on' : 'is-off'">
+            {{ isRunning ? t('status.connected') : t('status.disconnected') }}
           </div>
-          <div class="text-caption text-medium-emphasis mt-1 mb-4">
-            {{ myHostname }} · {{ myDevName }} · NAT: {{ myNatTypeStr }} · {{ peerCount }} {{ t('peer_count') }}
+          <div class="et-hero-meta">
+            {{ myHostname }} · {{ otherPeerCount }} {{ t('status.devices_unit') }}
           </div>
-
-          <!-- PROMINENT MASTER START / STOP BUTTON (启停核心操作) -->
-          <div class="d-flex justify-center w-100 px-4 mb-2">
-            <v-btn
-              v-if="isRunning"
-              color="error"
-              variant="flat"
-              size="large"
-              rounded="pill"
-              class="ios-hero-cta font-weight-bold"
-              prepend-icon="mdi-power"
-              @click="$emit('stop-network')"
-            >
-              {{ t('web.device_management.disable_network') || 'Disconnect' }}
-            </v-btn>
-            <v-btn
-              v-else
-              color="success"
-              variant="flat"
-              size="large"
-              rounded="pill"
-              class="ios-hero-cta font-weight-bold"
-              prepend-icon="mdi-play"
-              @click="$emit('start-network')"
-            >
-              {{ t('run_network') || 'Connect Now' }}
-            </v-btn>
+          <div class="et-hero-hint">
+            {{ isRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}
           </div>
         </div>
 
-        <!-- Section 1: Mesh Identity (iOS Inset Grouped) -->
-        <div class="ios-section">
-          <div class="ios-section-header">NETWORK IDENTITY</div>
-          <div class="ios-group">
-            <!-- Virtual IP Row -->
-            <div v-if="myVirtualIp" class="ios-row ios-row-pressable" @click="copyText(myVirtualIp)">
-              <div class="d-flex align-center ga-3">
-                <div class="ios-squircle bg-primary">
-                  <v-icon size="18" color="white">mdi-ip-network-outline</v-icon>
+        <div class="et-section">
+          <div class="et-section-label">{{ t('status.network_identity') }}</div>
+          <div class="et-group">
+            <div v-if="myVirtualIp" class="et-row et-row-pressable" @click="copyText(myVirtualIp)">
+              <div class="d-flex align-center ga-3 min-w-0">
+                <div class="et-squircle" style="background: var(--et-accent);">
+                  <v-icon size="18" color="onPrimary">mdi-ip-network-outline</v-icon>
                 </div>
-                <div>
-                  <div class="text-caption text-medium-emphasis">Virtual IPv4</div>
-                  <div class="text-body-1 font-weight-bold text-mono">{{ myVirtualIp }}</div>
+                <div class="min-w-0">
+                  <div class="text-caption text-medium-emphasis">{{ t('status.virtual_ip') }}</div>
+                  <div class="text-body-1 font-weight-bold text-mono et-selectable">{{ myVirtualIp }}</div>
                 </div>
               </div>
               <v-btn
@@ -674,96 +644,87 @@ const myHostname = computed(() => {
                 :color="ipCopied ? 'success' : 'default'"
                 variant="text"
                 size="small"
+                :aria-label="t('status.copy_ip')"
               />
             </div>
 
-            <!-- TUN & NAT Row -->
-            <div class="ios-row">
+            <div class="et-row">
               <div class="d-flex align-center ga-3">
-                <div class="ios-squircle bg-info">
+                <div class="et-squircle" style="background: var(--et-info);">
                   <v-icon size="18" color="white">mdi-router-wireless</v-icon>
                 </div>
-                <span class="text-body-2 font-weight-medium">TUN Interface</span>
+                <span class="text-body-2 font-weight-medium">{{ t('status.tun_interface') }}</span>
               </div>
               <span class="text-body-2 text-mono text-medium-emphasis">{{ myDevName }}</span>
             </div>
 
-            <!-- NAT Type Row -->
-            <div class="ios-row">
+            <div class="et-row">
               <div class="d-flex align-center ga-3">
-                <div class="ios-squircle bg-warning">
+                <div class="et-squircle" style="background: var(--et-warning);">
                   <v-icon size="18" color="white">mdi-shield-outline</v-icon>
                 </div>
-                <span class="text-body-2 font-weight-medium">NAT Type</span>
+                <span class="text-body-2 font-weight-medium">{{ t('nat_type') }}</span>
               </div>
               <span class="text-body-2 text-medium-emphasis">{{ myNatTypeStr }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Section 2: Real-time Bandwidth Speedometer -->
-        <div class="ios-section">
-          <div class="ios-section-header">LIVE BANDWIDTH</div>
+        <div class="et-section">
+          <div class="et-section-label">{{ t('status.live_bandwidth') }}</div>
           <div class="speed-cards-grid mb-2">
-            <div class="speed-box speed-box-up">
-              <div class="d-flex align-center ga-1 text-caption text-success font-weight-bold">
-                <v-icon size="14" color="success">mdi-arrow-up</v-icon>
+            <div class="speed-box">
+              <div class="d-flex align-center ga-1 text-caption font-weight-bold" style="color: var(--et-accent);">
+                <v-icon size="14" color="primary">mdi-arrow-up</v-icon>
                 <span>{{ t('upload') }}</span>
               </div>
-              <div class="speed-val text-mono text-success">{{ txRate }}/s</div>
-              <div class="text-caption text-medium-emphasis text-mono">{{ totalTxFormatted }} total</div>
+              <div class="speed-val text-mono">{{ txRate }}/s</div>
+              <div class="text-caption text-medium-emphasis text-mono">{{ totalTxFormatted }} {{ t('status.total') }}</div>
             </div>
-
-            <div class="speed-box speed-box-down">
-              <div class="d-flex align-center ga-1 text-caption text-info font-weight-bold">
+            <div class="speed-box">
+              <div class="d-flex align-center ga-1 text-caption font-weight-bold" style="color: var(--et-info);">
                 <v-icon size="14" color="info">mdi-arrow-down</v-icon>
                 <span>{{ t('download') }}</span>
               </div>
-              <div class="speed-val text-mono text-info">{{ rxRate }}/s</div>
-              <div class="text-caption text-medium-emphasis text-mono">{{ totalRxFormatted }} total</div>
+              <div class="speed-val text-mono">{{ rxRate }}/s</div>
+              <div class="text-caption text-medium-emphasis text-mono">{{ totalRxFormatted }} {{ t('status.total') }}</div>
             </div>
           </div>
-
-          <!-- Waveform Chart inside Grouped Inset -->
-          <div class="ios-group pa-2">
+          <div class="et-group pa-2">
             <NetworkChart :upload-rate="txRate" :download-rate="rxRate" />
           </div>
         </div>
 
-        <!-- Section 3: Features & Diagnostics -->
-        <div class="ios-section">
-          <div class="ios-section-header">FEATURES & DIAGNOSTICS</div>
-          <div class="ios-group">
-            <!-- VPN Portal Row -->
-            <div class="ios-row ios-row-pressable" @click="showVpnPortalConfig">
+        <div class="et-section">
+          <div class="et-section-label">{{ t('status.features') }}</div>
+          <div class="et-group">
+            <div class="et-row et-row-pressable" @click="showVpnPortalConfig">
               <div class="d-flex align-center ga-3">
-                <div class="ios-squircle" style="background: var(--ios-purple);">
+                <div class="et-squircle" style="background: #7c5cbf;">
                   <v-icon size="18" color="white">mdi-vpn</v-icon>
                 </div>
-                <span class="text-body-2 font-weight-medium">VPN Portal</span>
+                <span class="text-body-2 font-weight-medium">{{ t('status.vpn_portal') }}</span>
               </div>
-              <v-btn variant="tonal" size="small" color="primary" rounded="pill" @click.stop="showVpnPortalConfig">
+              <v-btn variant="text" size="small" color="primary" rounded="pill" @click.stop="showVpnPortalConfig">
                 {{ t('show_vpn_portal_config') }}
               </v-btn>
             </div>
 
-            <!-- Event Logs Row -->
-            <div class="ios-row ios-row-pressable" @click="showEventLogs">
+            <div class="et-row et-row-pressable" @click="showEventLogs">
               <div class="d-flex align-center ga-3">
-                <div class="ios-squircle" style="background: var(--ios-orange);">
+                <div class="et-squircle" style="background: var(--et-warning);">
                   <v-icon size="18" color="white">mdi-pulse</v-icon>
                 </div>
-                <span class="text-body-2 font-weight-medium">Event Log</span>
+                <span class="text-body-2 font-weight-medium">{{ t('event_log') }}</span>
               </div>
-              <v-btn variant="tonal" size="small" color="primary" rounded="pill" @click.stop="showEventLogs">
+              <v-btn variant="text" size="small" color="primary" rounded="pill" @click.stop="showEventLogs">
                 {{ t('show_event_log') }}
               </v-btn>
             </div>
 
-            <!-- Technical Node Details Row -->
-            <div class="ios-row ios-row-pressable" @click="showNodeDetails = !showNodeDetails">
+            <div class="et-row et-row-pressable" @click="showNodeDetails = !showNodeDetails">
               <div class="d-flex align-center ga-3">
-                <div class="ios-squircle" style="background: var(--ios-teal);">
+                <div class="et-squircle" style="background: var(--et-info);">
                   <v-icon size="18" color="white">mdi-information-outline</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ showNodeDetails ? t('hide_node_details') : t('show_node_details') }}</span>
@@ -772,7 +733,6 @@ const myHostname = computed(() => {
             </div>
           </div>
 
-          <!-- Technical detail chips -->
           <v-expand-transition>
             <div v-show="showNodeDetails" class="mt-2 px-1">
               <div class="d-flex flex-wrap ga-1">
@@ -786,70 +746,65 @@ const myHostname = computed(() => {
         </div>
       </div>
 
-      <!-- ================= 2. DEVICES TAB VIEW (Find-My / Tailscale Style) ================= -->
-      <div v-if="activeTab === 'devices' || activeTab === 'all'" class="devices-tab-content">
-        <!-- Search bar (iOS Style) -->
-        <div class="ios-search-bar mb-3">
+      <div v-if="showDevices" class="devices-tab-content">
+        <div class="et-search mb-3">
           <v-text-field
             v-model="peerSearch"
             prepend-inner-icon="mdi-magnify"
-            placeholder="Search devices or virtual IPs..."
+            :placeholder="t('status.search_devices')"
             variant="solo"
             flat
-            density="compact"
             hide-details
-            class="ios-search-field"
+            type="search"
+            enterkeyhint="search"
+            autocomplete="off"
+            class="et-search-field"
           />
         </div>
 
-        <!-- Segmented Control Filters (iOS UISegmentedControl) -->
-        <div class="ios-segmented-control mb-3">
-          <div class="segment-btn" :class="{ 'segment-active': peerFilter === 'all' }" @click="peerFilter = 'all'">
-            All ({{ peerRouteInfos.length }})
-          </div>
-          <div class="segment-btn" :class="{ 'segment-active': peerFilter === 'direct' }" @click="peerFilter = 'direct'">
-            Direct
-          </div>
-          <div class="segment-btn" :class="{ 'segment-active': peerFilter === 'relay' }" @click="peerFilter = 'relay'">
-            Relay
-          </div>
-          <div class="segment-btn" :class="{ 'segment-active': peerFilter === 'server' }" @click="peerFilter = 'server'">
-            Server
-          </div>
+        <div class="et-filter-scroll mb-3" role="tablist">
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'all' }" @click="peerFilter = 'all'">
+            {{ t('status.filter_all') }} {{ peerRouteInfos.length }}
+          </button>
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'direct' }" @click="peerFilter = 'direct'">
+            {{ t('status.filter_direct') }}
+          </button>
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'relay' }" @click="peerFilter = 'relay'">
+            {{ t('status.filter_relay') }}
+          </button>
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'server' }" @click="peerFilter = 'server'">
+            {{ t('status.filter_server') }}
+          </button>
         </div>
 
-        <!-- Inset Grouped Device List -->
-        <div class="ios-section">
-          <div class="ios-section-header">MESH DEVICES ({{ filteredPeers.length }})</div>
-          
-          <div v-if="smAndDown || activeTab === 'devices'" class="ios-group">
+        <div class="et-section">
+          <div class="et-section-label">{{ t('status.mesh_devices') }} ({{ filteredPeers.length }})</div>
+          <div class="et-group">
             <div
               v-for="(info, i) in filteredPeers"
               :key="i"
-              class="ios-device-cell ios-row-pressable"
+              class="et-device-cell et-row-pressable"
               @click="inspectPeer(info)"
             >
               <div class="d-flex align-center ga-3 min-w-0">
                 <div class="device-icon-wrap">
-                  <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'squircle-success' : 'squircle-warning'">
+                  <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'">
                     <v-icon size="18" color="white">{{ peerDeviceIcon(info) }}</v-icon>
                   </div>
-                  <div class="ping-signal-dot" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'dot-green' : 'dot-amber'"></div>
+                  <div class="ping-dot" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'" />
                 </div>
-
                 <div class="min-w-0">
                   <div class="d-flex align-center ga-1">
-                    <span class="device-cell-hostname truncate font-weight-bold">{{ info.route.hostname }}</span>
-                    <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">Server</v-chip>
-                    <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">Relay</v-chip>
+                    <span class="device-name truncate font-weight-bold">{{ info.route.hostname }}</span>
+                    <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">{{ t('status.server') }}</v-chip>
+                    <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">{{ t('status.relay') }}</v-chip>
                   </div>
-                  <div class="text-caption text-mono text-medium-emphasis">{{ ipFormat(info) }}</div>
+                  <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(info) }}</div>
                 </div>
               </div>
-
               <div class="d-flex align-center ga-2 flex-shrink-0">
                 <div class="text-end">
-                  <div class="text-mono text-caption font-weight-bold text-success">{{ latencyMs(info) || '13 ms' }}</div>
+                  <div class="text-mono text-caption font-weight-bold" style="color: var(--et-accent);">{{ dash(latencyMs(info)) }}</div>
                   <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill">
                     {{ routeCost(info) }}
                   </v-chip>
@@ -858,120 +813,83 @@ const myHostname = computed(() => {
               </div>
             </div>
 
-            <div v-if="filteredPeers.length === 0" class="text-center py-8 text-medium-emphasis">
+            <div v-if="filteredPeers.length === 0" class="text-center py-10 text-medium-emphasis">
               <v-icon size="36" class="mb-2">mdi-devices</v-icon>
-              <div>No devices found</div>
+              <div>{{ t('status.no_devices') }}</div>
             </div>
-          </div>
-
-          <!-- Desktop Fallback Table -->
-          <div v-else class="peer-table-wrap">
-            <v-table density="compact" class="peer-table">
-              <thead>
-                <tr>
-                  <th>{{ t('virtual_ipv4') }}</th>
-                  <th>{{ t('hostname') }}</th>
-                  <th>{{ t('route_cost') }}</th>
-                  <th>{{ t('tunnel_proto') }}</th>
-                  <th>{{ t('latency') }}</th>
-                  <th>{{ t('upload_bytes') }}</th>
-                  <th>{{ t('download_bytes') }}</th>
-                  <th>{{ t('loss_rate') }}</th>
-                  <th>{{ t('nat_type') }}</th>
-                  <th>{{ t('status.version') }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(info, i) in filteredPeers" :key="i" class="peer-table-row" @click="inspectPeer(info)">
-                  <td class="text-mono font-weight-bold">{{ ipFormat(info) }}</td>
-                  <td>
-                    <div class="d-flex align-center ga-1">
-                      <span class="font-weight-medium">{{ info.route.hostname }}</span>
-                      <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">{{ t('status.server') }}</v-chip>
-                      <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">{{ t('status.relay') }}</v-chip>
-                    </div>
-                  </td>
-                  <td>
-                    <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill">
-                      {{ routeCost(info) }}
-                    </v-chip>
-                  </td>
-                  <td class="text-mono">{{ tunnelProto(info) }}</td>
-                  <td class="text-mono text-success font-weight-bold">{{ latencyMs(info) || '13 ms' }}</td>
-                  <td class="text-mono">{{ txBytes(info) }}</td>
-                  <td class="text-mono">{{ rxBytes(info) }}</td>
-                  <td>{{ lossRate(info) || '0%' }}</td>
-                  <td>{{ natType(info) || 'Full Cone' }}</td>
-                  <td class="text-mono">{{ version(info) }}</td>
-                </tr>
-              </tbody>
-            </v-table>
           </div>
         </div>
       </div>
     </template>
 
-    <!-- Device Details Sheet (iOS Modal Sheet) -->
     <v-bottom-sheet v-model="peerSheetOpen" scrollable>
-      <v-card rounded="t-xl" class="ios-detail-sheet">
-        <div class="sheet-grabber" @click="peerSheetOpen = false"></div>
+      <v-card rounded="t-xl" class="et-sheet">
+        <div class="sheet-grabber" @click="peerSheetOpen = false" />
         <v-card-title class="d-flex align-center ga-3 pt-2">
-          <div class="device-squircle squircle-primary">
+          <div class="device-squircle is-direct">
             <v-icon size="20" color="white">{{ peerDeviceIcon(selectedPeer) }}</v-icon>
           </div>
           <div class="min-w-0">
             <div class="text-subtitle-1 font-weight-bold truncate">{{ selectedPeer?.route?.hostname }}</div>
-            <div class="text-caption text-mono text-medium-emphasis">{{ ipFormat(selectedPeer) }}</div>
+            <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(selectedPeer) }}</div>
           </div>
         </v-card-title>
         <v-card-text class="pa-4 pt-0">
-          <div class="ios-section mb-3">
-            <div class="ios-section-header">CONNECTIVITY</div>
-            <div class="ios-group">
-              <div class="ios-row">
-                <span>Route Cost</span>
+          <div class="et-section mb-3">
+            <div class="et-section-label">{{ t('status.connectivity') }}</div>
+            <div class="et-group">
+              <div class="et-row">
+                <span>{{ t('status.route_cost') }}</span>
                 <span class="font-weight-medium">{{ routeCost(selectedPeer) }}</span>
               </div>
-              <div class="ios-row">
-                <span>Ping Latency</span>
-                <span class="text-mono font-weight-bold text-success">{{ latencyMs(selectedPeer) || '13 ms' }}</span>
+              <div class="et-row">
+                <span>{{ t('status.ping') }}</span>
+                <span class="text-mono font-weight-bold" style="color: var(--et-accent);">{{ selectedPeer ? dash(latencyMs(selectedPeer)) : '—' }}</span>
               </div>
-              <div class="ios-row">
-                <span>Packet Loss</span>
-                <span class="text-mono">{{ lossRate(selectedPeer) || '0%' }}</span>
+              <div class="et-row">
+                <span>{{ t('status.packet_loss') }}</span>
+                <span class="text-mono">{{ selectedPeer ? dash(lossRate(selectedPeer)) : '—' }}</span>
               </div>
-              <div class="ios-row">
-                <span>Tunnel Protocol</span>
-                <span class="text-mono">{{ tunnelProto(selectedPeer) || 'tcp' }}</span>
+              <div class="et-row">
+                <span>{{ t('tunnel_proto') }}</span>
+                <span class="text-mono">{{ selectedPeer ? dash(tunnelProto(selectedPeer)) : '—' }}</span>
               </div>
-              <div class="ios-row">
-                <span>NAT Type</span>
-                <span>{{ natType(selectedPeer) || 'Full Cone' }}</span>
+              <div class="et-row">
+                <span>{{ t('nat_type') }}</span>
+                <span>{{ selectedPeer ? dash(natType(selectedPeer)) : '—' }}</span>
+              </div>
+              <div class="et-row">
+                <span>{{ t('status.version') }}</span>
+                <span class="text-mono">{{ selectedPeer ? version(selectedPeer) : '—' }}</span>
               </div>
             </div>
           </div>
 
-          <div class="ios-section mb-3">
-            <div class="ios-section-header">TRAFFIC STATS</div>
-            <div class="ios-group">
-              <div class="ios-row">
-                <span>Uploaded</span>
-                <span class="text-mono">{{ txBytes(selectedPeer) }}</span>
+          <div class="et-section mb-4">
+            <div class="et-section-label">{{ t('status.traffic') }}</div>
+            <div class="et-group">
+              <div class="et-row">
+                <span>{{ t('status.uploaded') }}</span>
+                <span class="text-mono">{{ selectedPeer ? txBytes(selectedPeer) : '—' }}</span>
               </div>
-              <div class="ios-row">
-                <span>Downloaded</span>
-                <span class="text-mono">{{ rxBytes(selectedPeer) }}</span>
+              <div class="et-row">
+                <span>{{ t('status.downloaded') }}</span>
+                <span class="text-mono">{{ selectedPeer ? rxBytes(selectedPeer) : '—' }}</span>
               </div>
             </div>
           </div>
 
           <v-btn block color="primary" variant="flat" size="large" rounded="pill" @click="copyText(ipFormat(selectedPeer))">
             <v-icon start>mdi-content-copy</v-icon>
-            Copy IP Address
+            {{ t('status.copy_ip') }}
           </v-btn>
         </v-card-text>
       </v-card>
     </v-bottom-sheet>
+
+    <v-snackbar v-model="copyToast" timeout="1600" location="top" rounded="pill" color="success">
+      {{ t('status.copied') }}
+    </v-snackbar>
   </div>
 </template>
 
@@ -980,70 +898,90 @@ const myHostname = computed(() => {
   width: 100%;
 }
 
-/* ================= iOS Master Connection Orb ================= */
-.ios-hero-banner {
+.et-hero {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 1.25rem 0 1.5rem;
+  overflow: hidden;
 }
 
-.ios-orb-container {
+.et-hero-mesh {
+  position: absolute;
+  inset: -20% -10% 20%;
+  background:
+    radial-gradient(circle at 50% 40%, var(--et-accent-dim), transparent 58%),
+    repeating-radial-gradient(circle at 50% 42%, transparent 0 18px, rgba(30, 200, 163, 0.05) 19px 20px);
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 40%, transparent);
+}
+
+.et-power-orb {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.ios-power-orb {
-  width: 90px;
-  height: 90px;
+  width: 112px;
+  height: 112px;
   border-radius: 50%;
-  background: var(--ios-surface);
-  border: 2px solid var(--ios-border);
+  border: none;
+  background: var(--et-surface);
+  color: var(--et-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.ios-power-orb.orb-connected {
-  background: rgba(48, 209, 88, 0.12);
-  border-color: rgba(48, 209, 88, 0.5);
-  box-shadow: 0 0 32px rgba(48, 209, 88, 0.35);
-  animation: orb-pulse 3s ease-in-out infinite;
+.et-orb-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--et-border);
 }
 
-@keyframes orb-pulse {
-  0% { transform: scale(1); box-shadow: 0 0 20px rgba(48, 209, 88, 0.25); }
-  50% { transform: scale(1.04); box-shadow: 0 0 36px rgba(48, 209, 88, 0.45); }
-  100% { transform: scale(1); box-shadow: 0 0 20px rgba(48, 209, 88, 0.25); }
+.et-power-orb.is-on {
+  color: var(--et-accent);
+  background: color-mix(in srgb, var(--et-accent) 14%, var(--et-surface));
 }
 
-.ios-status-headline {
-  font-size: 1.375rem;
-  font-weight: var(--fw-bold);
-  letter-spacing: 0.12em;
+.et-power-orb.is-on .et-orb-ring {
+  border-color: color-mix(in srgb, var(--et-accent) 55%, transparent);
+  box-shadow: 0 0 28px var(--et-glow);
+  animation: et-orb 2.8s ease-in-out infinite;
 }
 
-.ios-hero-cta {
-  width: 100%;
-  max-width: 20rem;
-  height: 48px;
-  font-size: 1rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+.et-power-orb:active {
+  transform: scale(0.94);
 }
 
-.text-ios-green {
-  color: var(--ios-green) !important;
+@keyframes et-orb {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.04); opacity: 0.85; }
 }
 
-.text-ios-gray {
-  color: var(--ios-text-secondary) !important;
+.et-hero-state {
+  margin-top: 0.85rem;
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  z-index: 1;
 }
 
-/* Speed Cards */
+.et-hero-state.is-on { color: var(--et-accent); }
+.et-hero-state.is-off { color: var(--et-text-secondary); }
+
+.et-hero-meta,
+.et-hero-hint {
+  z-index: 1;
+  color: var(--et-text-secondary);
+  font-size: 0.78rem;
+  margin-top: 0.25rem;
+}
+
+.et-hero-hint { opacity: 0.8; }
+
 .speed-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1051,67 +989,63 @@ const myHostname = computed(() => {
 }
 
 .speed-box {
-  background-color: var(--ios-surface);
+  background: var(--et-surface);
   border-radius: 14px;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--ios-border);
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--et-border);
 }
 
 .speed-val {
-  font-size: 1.25rem;
-  font-weight: var(--fw-bold);
-  letter-spacing: -0.02em;
-  margin: 2px 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 4px 0 2px;
 }
 
-/* Search Bar */
-.ios-search-bar :deep(.v-field) {
-  background-color: var(--ios-surface) !important;
-  border-radius: 12px !important;
-  border: 1px solid var(--ios-border);
+.et-search-field :deep(.v-field) {
+  background: var(--et-surface) !important;
+  border-radius: 14px !important;
+  border: 1px solid var(--et-border);
+  min-height: 44px;
 }
 
-/* Segmented Control */
-.ios-segmented-control {
+.et-filter-scroll {
   display: flex;
-  background-color: var(--ios-surface);
-  border-radius: 10px;
-  padding: 2px;
-  border: 1px solid var(--ios-border);
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
 }
 
-.segment-btn {
-  flex: 1;
-  text-align: center;
-  padding: 6px 0;
+.et-filter {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--et-border);
+  background: var(--et-surface);
+  color: var(--et-text-secondary);
   font-size: 0.8125rem;
-  font-weight: var(--fw-medium);
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--ios-text-secondary);
-  transition: all 0.15s ease;
+  font-weight: 600;
 }
 
-.segment-active {
-  background-color: var(--ios-surface-secondary);
-  color: var(--ios-text);
-  font-weight: var(--fw-semibold);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+.et-filter.is-on {
+  background: var(--et-accent-dim);
+  color: var(--et-accent);
+  border-color: transparent;
 }
 
-/* Device Cell */
-.ios-device-cell {
+.et-device-cell {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.8rem 1rem;
+  min-height: 56px;
   cursor: pointer;
-  border-bottom: 1px solid var(--ios-border-hairline);
+  border-bottom: 1px solid var(--et-border-hairline);
 }
 
-.ios-device-cell:last-child {
-  border-bottom: none;
-}
+.et-device-cell:last-child { border-bottom: none; }
 
 .device-icon-wrap {
   position: relative;
@@ -1127,53 +1061,38 @@ const myHostname = computed(() => {
   justify-content: center;
 }
 
-.squircle-success {
-  background: linear-gradient(135deg, #30D158, #28CD41);
+.device-squircle.is-direct {
+  background: linear-gradient(135deg, #1ec8a3, #0f9d7e);
 }
 
-.squircle-warning {
-  background: linear-gradient(135deg, #FF9F0A, #FF9500);
+.device-squircle.is-relay {
+  background: linear-gradient(135deg, #f5b942, #c98500);
 }
 
-.squircle-primary {
-  background: linear-gradient(135deg, #0A84FF, #007AFF);
-}
-
-.ping-signal-dot {
+.ping-dot {
   position: absolute;
   bottom: -2px;
   right: -2px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--ios-surface);
+  border: 2px solid var(--et-surface);
 }
 
-.dot-green { background-color: var(--ios-green); }
-.dot-amber { background-color: var(--ios-orange); }
+.ping-dot.is-direct { background: var(--et-accent); }
+.ping-dot.is-relay { background: var(--et-warning); }
 
-.device-cell-hostname {
+.device-name {
   font-size: 0.9375rem;
-  font-weight: var(--fw-semibold);
   letter-spacing: -0.01em;
 }
 
-/* Bottom Sheet */
-.sheet-grabber {
-  width: 2.5rem;
-  height: 0.25rem;
-  border-radius: 999px;
-  background: var(--ios-border);
-  margin: 0.5rem auto 0.25rem;
-  cursor: pointer;
-}
-
-.ios-detail-sheet, .ios-dialog-sheet {
-  background-color: var(--ios-surface) !important;
+.et-sheet, .et-dialog-sheet {
+  background: var(--et-surface) !important;
 }
 
 .vpn-client-config {
-  background: var(--ios-surface-secondary);
+  background: var(--et-surface-2);
   padding: 0.625rem;
   border-radius: 8px;
   font-size: 0.75rem;
@@ -1181,23 +1100,8 @@ const myHostname = computed(() => {
   overflow-x: auto;
 }
 
-.peer-table-wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-.peer-table {
-  min-width: 56rem;
-  background: transparent;
-}
-.peer-table-row {
-  cursor: pointer;
-}
-.peer-table-row:hover {
-  background: var(--ios-surface-secondary);
-}
-
 .border-b {
-  border-bottom: 1px solid var(--ios-border-hairline);
+  border-bottom: 1px solid var(--et-border-hairline);
 }
 
 .truncate {
@@ -1205,7 +1109,12 @@ const myHostname = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .text-mono {
   font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .et-power-orb.is-on .et-orb-ring { animation: none; }
 }
 </style>

@@ -53,36 +53,45 @@ interface BoolFlag {
   field: keyof NetworkConfig
   help: string
   icon?: string
+  group: 'path' | 'protocol' | 'p2p' | 'stack' | 'security'
 }
 
 const bool_flags: BoolFlag[] = [
-  { field: 'latency_first', help: 'latency_first_help', icon: 'mdi-speedometer' },
-  { field: 'use_smoltcp', help: 'use_smoltcp_help', icon: 'mdi-network' },
-  { field: 'disable_ipv6', help: 'disable_ipv6_help', icon: 'mdi-ip' },
-  { field: 'ipv6_public_addr_auto', help: 'ipv6_public_addr_auto_help', icon: 'mdi-earth' },
-  { field: 'enable_kcp_proxy', help: 'enable_kcp_proxy_help', icon: 'mdi-rocket-launch' },
-  { field: 'disable_kcp_input', help: 'disable_kcp_input_help', icon: 'mdi-cancel' },
-  { field: 'enable_quic_proxy', help: 'enable_quic_proxy_help', icon: 'mdi-lightning-bolt' },
-  { field: 'disable_quic_input', help: 'disable_quic_input_help', icon: 'mdi-cancel' },
-  { field: 'disable_p2p', help: 'disable_p2p_help', icon: 'mdi-lan-disconnect' },
-  { field: 'p2p_only', help: 'p2p_only_help', icon: 'mdi-lan-connect' },
-  { field: 'lazy_p2p', help: 'lazy_p2p_help', icon: 'mdi-timer-sand' },
-  { field: 'bind_device', help: 'bind_device_help', icon: 'mdi-router-wireless' },
-  { field: 'no_tun', help: 'no_tun_help', icon: 'mdi-shield-off' },
-  { field: 'enable_exit_node', help: 'enable_exit_node_help', icon: 'mdi-exit-run' },
-  { field: 'relay_all_peer_rpc', help: 'relay_all_peer_rpc_help', icon: 'mdi-transit-connection' },
-  { field: 'need_p2p', help: 'need_p2p_help', icon: 'mdi-vector-link' },
-  { field: 'multi_thread', help: 'multi_thread_help', icon: 'mdi-cpu-64-bit' },
-  { field: 'proxy_forward_by_system', help: 'proxy_forward_by_system_help', icon: 'mdi-swap-horizontal' },
-  { field: 'disable_encryption', help: 'disable_encryption_help', icon: 'mdi-lock-open-outline' },
-  { field: 'disable_tcp_hole_punching', help: 'disable_tcp_hole_punching_help', icon: 'mdi-shield-remove' },
-  { field: 'disable_udp_hole_punching', help: 'disable_udp_hole_punching_help', icon: 'mdi-shield-remove' },
-  { field: 'enable_udp_broadcast_relay', help: 'enable_udp_broadcast_relay_help', icon: 'mdi-broadcast' },
-  { field: 'disable_upnp', help: 'disable_upnp_help', icon: 'mdi-server-network-off' },
-  { field: 'disable_sym_hole_punching', help: 'disable_sym_hole_punching_help', icon: 'mdi-shield-remove' },
-  { field: 'enable_magic_dns', help: 'enable_magic_dns_help', icon: 'mdi-dns' },
-  { field: 'enable_private_mode', help: 'enable_private_mode_help', icon: 'mdi-incognito' },
+  { field: 'latency_first', help: 'latency_first_help', icon: 'mdi-speedometer', group: 'path' },
+  { field: 'relay_all_peer_rpc', help: 'relay_all_peer_rpc_help', icon: 'mdi-transit-connection', group: 'path' },
+  { field: 'proxy_forward_by_system', help: 'proxy_forward_by_system_help', icon: 'mdi-swap-horizontal', group: 'path' },
+  { field: 'use_smoltcp', help: 'use_smoltcp_help', icon: 'mdi-network', group: 'protocol' },
+  { field: 'enable_kcp_proxy', help: 'enable_kcp_proxy_help', icon: 'mdi-rocket-launch', group: 'protocol' },
+  { field: 'disable_kcp_input', help: 'disable_kcp_input_help', icon: 'mdi-cancel', group: 'protocol' },
+  { field: 'enable_quic_proxy', help: 'enable_quic_proxy_help', icon: 'mdi-lightning-bolt', group: 'protocol' },
+  { field: 'disable_quic_input', help: 'disable_quic_input_help', icon: 'mdi-cancel', group: 'protocol' },
+  { field: 'multi_thread', help: 'multi_thread_help', icon: 'mdi-cpu-64-bit', group: 'protocol' },
+  { field: 'disable_p2p', help: 'disable_p2p_help', icon: 'mdi-lan-disconnect', group: 'p2p' },
+  { field: 'p2p_only', help: 'p2p_only_help', icon: 'mdi-lan-connect', group: 'p2p' },
+  { field: 'lazy_p2p', help: 'lazy_p2p_help', icon: 'mdi-timer-sand', group: 'p2p' },
+  { field: 'need_p2p', help: 'need_p2p_help', icon: 'mdi-vector-link', group: 'p2p' },
+  { field: 'disable_tcp_hole_punching', help: 'disable_tcp_hole_punching_help', icon: 'mdi-shield-remove', group: 'p2p' },
+  { field: 'disable_udp_hole_punching', help: 'disable_udp_hole_punching_help', icon: 'mdi-shield-remove', group: 'p2p' },
+  { field: 'disable_sym_hole_punching', help: 'disable_sym_hole_punching_help', icon: 'mdi-shield-remove', group: 'p2p' },
+  { field: 'disable_upnp', help: 'disable_upnp_help', icon: 'mdi-server-network-off', group: 'p2p' },
+  { field: 'enable_udp_broadcast_relay', help: 'enable_udp_broadcast_relay_help', icon: 'mdi-broadcast', group: 'p2p' },
+  { field: 'disable_ipv6', help: 'disable_ipv6_help', icon: 'mdi-ip', group: 'stack' },
+  { field: 'ipv6_public_addr_auto', help: 'ipv6_public_addr_auto_help', icon: 'mdi-earth', group: 'stack' },
+  { field: 'bind_device', help: 'bind_device_help', icon: 'mdi-router-wireless', group: 'stack' },
+  { field: 'no_tun', help: 'no_tun_help', icon: 'mdi-shield-off', group: 'stack' },
+  { field: 'enable_exit_node', help: 'enable_exit_node_help', icon: 'mdi-exit-run', group: 'stack' },
+  { field: 'enable_magic_dns', help: 'enable_magic_dns_help', icon: 'mdi-dns', group: 'stack' },
+  { field: 'disable_encryption', help: 'disable_encryption_help', icon: 'mdi-lock-open-outline', group: 'security' },
+  { field: 'enable_private_mode', help: 'enable_private_mode_help', icon: 'mdi-incognito', group: 'security' },
 ]
+
+const flagGroupOrder = ['path', 'protocol', 'p2p', 'stack', 'security'] as const
+const flagGroups = computed(() => {
+  return flagGroupOrder.map((key) => ({
+    key,
+    flags: bool_flags.filter((flag) => flag.group === key),
+  }))
+})
 
 const portForwardProtocolOptions = ref(["tcp", "udp"]);
 const editingPortForward = ref(false);
@@ -224,6 +233,7 @@ function removeVpnPortalClient(index: number) {
 
 const showNetworkSecret = ref(false)
 const showVpnKey = ref(false)
+const basicPanel = ref<number | undefined>(0)
 
 watch(
   curNetwork,
@@ -240,8 +250,8 @@ watch(
 <template>
   <div class="config-root">
     <!-- ============ SECTION 1: BASIC SETTINGS ============ -->
-    <v-expansion-panels variant="accordion" class="ios-config-panel-group mb-3">
-      <v-expansion-panel :title="t('basic_settings')" class="ios-config-panel">
+    <v-expansion-panels v-model="basicPanel" variant="accordion" class="et-config-panel-group mb-3">
+      <v-expansion-panel :title="t('basic_settings')" class="et-config-panel">
         <template #text>
           <div class="d-flex flex-column ga-4">
             <!-- Network name + secret -->
@@ -276,16 +286,17 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center justify-space-between mb-1">
                 <label for="virtual_ip" class="config-label">{{ t('virtual_ipv4') }}</label>
-                <div class="d-flex align-center ga-1">
-                  <v-checkbox
+                <div class="d-flex align-center ga-2">
+                  <label for="virtual_ip_auto" class="text-caption">{{ t('virtual_ipv4_dhcp') }}</label>
+                  <v-switch
                     id="virtual_ip_auto"
                     v-model="curNetwork.dhcp"
                     color="primary"
                     hide-details
+                    inset
                     density="compact"
                     class="ma-0 pa-0"
                   />
-                  <label for="virtual_ip_auto" class="text-caption cursor-pointer">{{ t('virtual_ipv4_dhcp') }}</label>
                 </div>
               </div>
               <div class="d-flex align-center ga-2">
@@ -344,28 +355,30 @@ watch(
     </v-expansion-panels>
 
     <!-- ============ SECTION 2: ADVANCED SETTINGS ============ -->
-    <v-expansion-panels variant="accordion" class="ios-config-panel-group mb-3">
-      <v-expansion-panel :title="t('advanced_settings')" class="ios-config-panel">
+    <v-expansion-panels variant="accordion" class="et-config-panel-group mb-3">
+      <v-expansion-panel :title="t('advanced_settings')" class="et-config-panel">
         <template #text>
           <div class="d-flex flex-column ga-4">
             <!-- Feature Flags Switch List -->
             <div class="config-field">
               <div class="config-label font-weight-bold mb-2">{{ t('flags_switch') }}</div>
-              <div class="flags-ios-grid">
-                <div v-for="flag in bool_flags" :key="flag.field" class="flag-ios-row">
-                  <div class="d-flex align-center justify-space-between w-100">
+              <div v-for="group in flagGroups" :key="group.key" class="mb-3">
+                <div class="et-section-label px-1">{{ t(`flags_group.${group.key}`) }}</div>
+                <div class="et-group">
+                  <div v-for="flag in group.flags" :key="flag.field" class="et-row">
                     <div class="d-flex align-center ga-2 min-w-0 pr-2">
                       <v-icon v-if="flag.icon" size="18" color="primary">{{ flag.icon }}</v-icon>
                       <div class="min-w-0">
-                        <label :for="flag.field" class="flag-title text-body-2 font-weight-medium d-block truncate">{{ t(flag.field) }}</label>
-                        <span class="flag-desc text-caption text-medium-emphasis truncate d-block">{{ t(flag.help) }}</span>
+                        <label :for="flag.field" class="flag-title text-body-2 font-weight-medium d-block">{{ t(flag.field) }}</label>
+                        <span class="flag-desc text-caption text-medium-emphasis d-block">{{ t(flag.help) }}</span>
                       </div>
                     </div>
-                    <v-checkbox
+                    <v-switch
                       v-model="curNetwork[flag.field]"
                       :id="flag.field"
                       color="primary"
                       hide-details
+                      inset
                       density="compact"
                       class="ma-0 pa-0 flex-shrink-0"
                     />
@@ -411,9 +424,9 @@ watch(
               <div class="d-flex align-center justify-space-between mb-2">
                 <div class="d-flex align-center ga-2">
                   <v-icon color="primary" size="18">mdi-vpn</v-icon>
-                  <label class="config-label font-weight-bold">VPN Portal (WireGuard)</label>
+                  <label class="config-label font-weight-bold">{{ t('vpn_portal_label') }}</label>
                 </div>
-                <v-switch v-model="vpnPortalEnabled" color="primary" hide-details density="compact" />
+                <v-switch id="vpn_portal_enabled" v-model="vpnPortalEnabled" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="vpnPortalEnabled" class="d-flex flex-column ga-3 vpn-portal-section pa-3 rounded-lg">
                 <div class="d-flex flex-column flex-sm-row ga-3">
@@ -594,7 +607,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details density="compact" />
+                <v-switch id="enable_relay_network_whitelist" v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_relay_network_whitelist" class="mt-2">
                 <v-combobox
@@ -623,7 +636,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch v-model="curNetwork.enable_manual_routes" color="primary" hide-details density="compact" />
+                <v-switch id="enable_manual_routes" v-model="curNetwork.enable_manual_routes" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_manual_routes" class="mt-2">
                 <v-combobox
@@ -652,7 +665,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch v-model="curNetwork.enable_socks5" color="primary" hide-details density="compact" />
+                <v-switch id="enable_socks5" v-model="curNetwork.enable_socks5" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_socks5" class="mt-2">
                 <v-text-field
@@ -711,8 +724,8 @@ watch(
     </v-expansion-panels>
 
     <!-- ============ SECTION 3: PORT FORWARDS ============ -->
-    <v-expansion-panels variant="accordion" class="ios-config-panel-group mb-3">
-      <v-expansion-panel :title="t('port_forwards')" class="ios-config-panel">
+    <v-expansion-panels variant="accordion" class="et-config-panel-group mb-3">
+      <v-expansion-panel :title="t('port_forwards')" class="et-config-panel">
         <template #text>
           <div ref="portForwardContainer" class="d-flex flex-column ga-2">
             <div class="config-field">
@@ -778,8 +791,8 @@ watch(
     </v-expansion-panels>
 
     <!-- ============ SECTION 4: ACL ============ -->
-    <v-expansion-panels variant="accordion" class="ios-config-panel-group mb-3">
-      <v-expansion-panel :title="t('acl.title')" class="ios-config-panel">
+    <v-expansion-panels variant="accordion" class="et-config-panel-group mb-3">
+      <v-expansion-panel :title="t('acl.title')" class="et-config-panel">
         <template #text>
           <div v-if="curNetwork.acl" class="d-flex flex-column ga-2">
             <AclManager v-model="curNetwork.acl" />
@@ -814,7 +827,7 @@ watch(
               <v-text-field v-model="editingPortForwardData.bind_ip" variant="outlined" density="compact" hide-details />
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">Bind Port</label>
+              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_bind_port') }}</label>
               <v-text-field v-model="editingPortForwardData.bind_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
             </div>
             <div>
@@ -822,7 +835,7 @@ watch(
               <v-text-field v-model="editingPortForwardData.dst_ip" variant="outlined" density="compact" hide-details />
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">Destination Port</label>
+              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_dst_port') }}</label>
               <v-text-field v-model="editingPortForwardData.dst_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
             </div>
           </div>
@@ -836,14 +849,14 @@ watch(
     </v-dialog>
 
     <!-- Sticky Bottom Run Bar (iOS floating button) -->
-    <div class="ios-sticky-run-bar">
+    <div class="et-sticky-run">
       <v-btn
         color="primary"
         size="large"
         variant="flat"
         rounded="pill"
         :prepend-icon="'mdi-play-circle-outline'"
-        class="ios-run-btn"
+        class="et-run-btn"
         :disabled="configInvalid"
         @click="$emit('runNetwork', curNetwork)"
       >
@@ -859,78 +872,71 @@ watch(
   position: relative;
 }
 
-.ios-config-panel {
-  background: var(--ios-surface) !important;
-  border: 1px solid var(--ios-border);
-  border-radius: 14px !important;
+.et-config-panel {
+  background: var(--et-surface) !important;
+  border: 1px solid var(--et-border);
+  border-radius: 16px !important;
+}
+
+.et-config-panel :deep(.v-expansion-panel-title) {
+  min-height: 48px;
+  font-weight: 650;
 }
 
 .config-label {
   font-size: 0.8125rem;
-  font-weight: var(--fw-medium);
-  color: var(--ios-text);
+  font-weight: 600;
+  color: var(--et-text);
 }
 
 .config-slash {
   font-size: 1.125rem;
-  font-weight: var(--fw-bold);
-  color: var(--ios-text-secondary);
-}
-
-.flags-ios-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.5rem;
-}
-
-@media (min-width: 600px) {
-  .flags-ios-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.flag-ios-row {
-  background: var(--ios-surface-secondary);
-  border-radius: 12px;
-  padding: 0.5rem 0.75rem;
+  font-weight: 700;
+  color: var(--et-text-secondary);
 }
 
 .flag-title {
-  font-weight: var(--fw-medium) !important;
+  font-weight: 600 !important;
 }
 
 .flag-desc {
-  font-size: 0.725rem;
-  font-weight: var(--fw-regular);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .vpn-portal-section {
-  background: var(--ios-surface-secondary);
+  background: var(--et-surface-2);
   border-radius: 12px;
 }
 
 .vpn-client-row {
-  background: var(--ios-surface);
-  border: 1px solid var(--ios-border);
+  background: var(--et-surface);
+  border: 1px solid var(--et-border);
 }
 
 .pf-row-compact {
-  background: var(--ios-surface-secondary);
-  border: 1px solid var(--ios-border);
+  background: var(--et-surface-2);
+  border: 1px solid var(--et-border);
+  min-height: 44px;
 }
 
+.et-dialog-sheet,
 .ios-dialog-sheet {
-  background: var(--ios-surface) !important;
+  background: var(--et-surface) !important;
 }
 
-/* Sticky Run Bar (iOS Translucent Floating CTA) */
-.ios-sticky-run-bar {
+.et-sticky-run {
   position: sticky;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--ios-bg) 80%, transparent);
+  padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--et-bg) 80%, transparent);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   z-index: 10;
@@ -938,14 +944,13 @@ watch(
   justify-content: center;
 }
 
-.ios-run-btn {
+.et-run-btn {
   width: 100%;
   max-width: 24rem;
-  height: 50px;
-  font-weight: var(--fw-bold);
+  min-height: 48px;
+  font-weight: 700;
   font-size: 0.9375rem;
-  letter-spacing: 0.02em;
-  box-shadow: 0 4px 20px rgba(10, 132, 255, 0.4);
+  box-shadow: 0 8px 24px var(--et-glow);
 }
 
 .truncate {

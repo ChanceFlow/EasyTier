@@ -116,7 +116,10 @@ const RUNNING_DETAIL = {
   dev_name: 'tun0',
   running: true,
   error_msg: '',
-  events: [],
+  events: [
+    JSON.stringify({ time: new Date(Date.now() - 90000).toISOString(), event: { PeerAdded: { peer_id: 2 } } }),
+    JSON.stringify({ time: new Date(Date.now() - 30000).toISOString(), event: { PeerConnAdded: { peer_id: 2 } } }),
+  ],
   routes: [],
   peers: [],
   peer_route_pairs: [

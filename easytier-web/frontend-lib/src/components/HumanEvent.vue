@@ -22,17 +22,30 @@ const eventValue = computed(() => {
 </script>
 
 <template>
-  <v-expansion-panels variant="accordion" class="mb-2">
-    <v-expansion-panel :title="t(`event.${eventKey}`)">
-      <template #text>
-        <div v-if="eventKey !== 'Unknown'">
-          <div v-if="event.DhcpIpv4Changed">
-            {{ `${eventValue[0]} -> ${eventValue[1]}` }}
-          </div>
-          <pre v-else class="text-mono text-body-2">{{ eventValue }}</pre>
-        </div>
-        <pre v-else class="text-mono text-body-2">{{ eventValue }}</pre>
-      </template>
-    </v-expansion-panel>
-  </v-expansion-panels>
+  <div class="et-event">
+    <div class="et-event-title">{{ t(`event.${eventKey}`) }}</div>
+    <div v-if="eventKey !== 'Unknown'" class="et-event-body">
+      <div v-if="event.DhcpIpv4Changed">
+        {{ `${eventValue[0]} -> ${eventValue[1]}` }}
+      </div>
+      <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+    </div>
+    <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+  </div>
 </template>
+
+<style scoped>
+.et-event-title {
+  font-weight: 650;
+  font-size: 0.875rem;
+}
+.et-event-body {
+  margin-top: 4px;
+  color: var(--et-text-secondary);
+}
+.text-mono {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>

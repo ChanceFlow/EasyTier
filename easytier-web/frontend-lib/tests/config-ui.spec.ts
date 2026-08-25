@@ -377,13 +377,9 @@ describe('Config.vue network config projection', () => {
       await nextTick()
     }
 
-    // First .v-switch is the VPN Portal enable switch; the next three are the
-    // relay whitelist / manual routes / socks5 toggles.
-    const switchInputs = wrapper.findAll('.v-switch input')
-    expect(switchInputs).toHaveLength(CONFIG_TOGGLE_FIELDS.length + 1)
-    for (const [index, field] of CONFIG_TOGGLE_FIELDS.entries()) {
+    for (const field of CONFIG_TOGGLE_FIELDS) {
       const value = originalFlagValues.get(field)
-      const switchEl = switchInputs[index + 1]
+      const switchEl = wrapper.find(`#${field}`)
       expect((switchEl.element as HTMLInputElement).checked, `${field} should project into UI`)
         .toBe(value)
       await switchEl.setValue(!value)
@@ -403,7 +399,7 @@ describe('Config.vue network config projection', () => {
     const { curNetwork, wrapper } = mountConfig(config)
     await expandAllPanels(wrapper)
 
-    const portalSwitch = wrapper.findAll('.v-switch input')[0]
+    const portalSwitch = wrapper.find('#vpn_portal_enabled')
     expect((portalSwitch.element as HTMLInputElement).checked).toBe(false)
 
     await portalSwitch.setValue(true)

@@ -15,13 +15,16 @@ import { loadMode, saveMode, WebClientConfig, type Mode } from '~/composables/mo
 import { saveLastNetworkInstanceId, loadLastNetworkInstanceId } from '~/composables/config'
 import ModeSwitcher from '~/components/ModeSwitcher.vue'
 import { getEasytierVersion, getServiceStatus } from '~/composables/backend'
-import { useDisplay } from 'vuetify'
+import { useDisplay, useTheme } from 'vuetify'
 
 const { t, locale } = useI18n()
-// 移动端(小屏)弹窗全屏展示
 const { smAndDown: mobileUI } = useDisplay()
+const theme = useTheme()
 const aboutVisible = ref(false)
 const modeDialogVisible = ref(false)
+const settingsSheetOpen = ref(false)
+const logSheetOpen = ref(false)
+const currentLogLevel = ref('off')
 const currentMode = ref<Mode>({ mode: 'normal' })
 const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
@@ -303,57 +306,50 @@ onMounted(async () => {
   }, 1000)
 })
 
-let current_log_level = 'off'
+const isAndroid = computed(() => {
+  try {
+    return type() === 'android'
+  }
+  catch {
+    return false
+  }
+})
+
+const isDarkTheme = computed(() => theme.global.name.value === 'm3Dark')
+
+function toggleTheme(): void {
+  const next = isDarkTheme.value ? 'm3Light' : 'm3Dark'
+  theme.global.name.value = next
+  localStorage.setItem('et-theme', next)
+}
+
+const logLevels: Array<'off' | 'warn' | 'info' | 'debug' | 'trace'> = ['off', 'warn', 'info', 'debug', 'trace']
+
+async function applyLogLevel(level: typeof logLevels[number]): Promise<void> {
+  currentLogLevel.value = level
+  await setLoggingLevel(level)
+}
 
 // 从后端获取正确的日志路径
 async function getLogDirPath(): Promise<string> {
   return await invoke<string>('get_log_dir_path')
 }
 
-const logMenuOpen = ref(false)
-const logMenuItems: { key: string, label: string, command: () => void }[] = [
-  ...(['off', 'warn', 'info', 'debug', 'trace'].map(level => ({
-    key: 'level_' + level,
-    label: t(`logging_level_${level}`) + (current_log_level === level ? ' ✓' : ''),
-    command: async () => {
-      current_log_level = level
-      await setLoggingLevel(level)
-    },
-  }))),
-  {
-    key: 'separator',
-    label: '---',
-    command: () => {},
-  },
-  {
-    key: 'open_dir',
-    label: t('logging_open_dir'),
-    command: async () => {
-      await open(await getLogDirPath())
-    },
-  },
-  {
-    key: 'copy_dir',
-    label: t('logging_copy_dir'),
-    command: async () => {
-      await writeText(await getLogDirPath())
-    },
-  },
-]
+interface SettingsSheetItem {
+  key: string
+  label: string
+  icon: string
+  value: string
+  command: () => void | Promise<void>
+  visible?: boolean
+}
 
-const logMenuFiltered = computed(() => {
-  if (type() === 'android') {
-    return logMenuItems.filter(item => item.key !== 'open_dir')
-  }
-  return logMenuItems
-})
-
-const settingsMenuOpen = ref(false)
-const settingsMenuItems = computed(() => [
+const settingsSheetItems = computed<SettingsSheetItem[]>(() => [
   {
     key: 'language',
     label: t('exchange_language'),
     icon: 'mdi-translate',
+    value: locale.value === 'en' ? 'EN' : '中文',
     command: async () => {
       await I18nUtils.loadLanguageAsync((locale.value === 'en' ? 'cn' : 'en'))
       await setTrayMenu([
@@ -363,43 +359,50 @@ const settingsMenuItems = computed(() => [
     },
   },
   {
+    key: 'theme',
+    label: t('status.appearance'),
+    icon: 'mdi-theme-light-dark',
+    value: isDarkTheme.value ? t('status.appearance_dark') : t('status.appearance_light'),
+    command: toggleTheme,
+  },
+  {
     key: 'mode',
-    label: `${t('mode.switch_mode')}: ${t('mode.' + currentMode.value.mode)}`,
+    label: t('mode.switch_mode'),
     icon: 'mdi-sync',
-    command: openModeDialog,
-    visible: () => type() !== 'android',
+    value: t('mode.' + currentMode.value.mode),
+    command: () => {
+      settingsSheetOpen.value = false
+      void openModeDialog()
+    },
+    visible: !isAndroid.value,
   },
   {
     key: 'config-server',
-    label: `${t('config-server.title')}${t('config-server.' + configServerConnectionStatus.value)}`,
+    label: t('config-server.title'),
     icon: 'mdi-web',
-    command: openConfigServerDialog,
-    visible: () => ["normal", "service"].includes(currentMode.value.mode),
+    value: t('config-server.' + configServerConnectionStatus.value).replace(/^:\s*/, ''),
+    command: () => {
+      settingsSheetOpen.value = false
+      void openConfigServerDialog()
+    },
+    visible: ['normal', 'service'].includes(currentMode.value.mode),
   },
   {
     key: 'logging',
     label: t('logging'),
     icon: 'mdi-file-document',
-    items: logMenuItems,
-    visible: () => true,
-  },
-  {
-    key: 'about',
-    label: t('about.title'),
-    icon: 'mdi-at',
-    command: async () => {
-      aboutVisible.value = true
-    },
-  },
-  {
-    key: 'exit',
-    label: t('exit'),
-    icon: 'mdi-power',
-    command: async () => {
-      await exit(1)
-    },
+    value: t(`logging_level_${currentLogLevel.value}`),
+    command: () => { logSheetOpen.value = true },
   },
 ])
+
+async function openLogDir(): Promise<void> {
+  await open(await getLogDirPath())
+}
+
+async function copyLogDir(): Promise<void> {
+  await writeText(await getLogDirPath())
+}
 
 async function connectRpcClient(isNormalMode: boolean, url?: string) {
   await initRpcConnection(isNormalMode, url)
@@ -454,98 +457,132 @@ const configServerConnectionStatus = computed(() => {
   return configServerConnected.value ? 'connected' : 'connecting'
 })
 
-// --- mobile-first nav ---
+function visibleSettingsItems(): SettingsSheetItem[] {
+  return settingsSheetItems.value.filter((item: SettingsSheetItem) => item.visible !== false)
+}
 
-function runSettingsAction(item: any) {
-  settingsMenuOpen.value = false
-  if (item.items) {
-    // submenu (logging)
-    logMenuOpen.value = true
-    return
-  }
-  item.command?.()
+async function exitApp(): Promise<void> {
+  await exit(1)
 }
 
 </script>
 
 <template>
-  <div id="root" class="ios-app-root">
-    <!-- iOS App Navigation Bar -->
-    <header class="ios-nav-bar d-flex align-center justify-space-between px-3">
-      <div class="d-flex align-center ga-2">
-        <div class="ios-squircle bg-primary">
-          <v-icon size="18" color="white">mdi-shield-outline</v-icon>
-        </div>
-        <span class="ios-nav-title">EasyTier</span>
-      </div>
-
-      <div class="d-flex align-center ga-1">
-        <!-- Status Indicator Pill -->
-        <div
-          v-if="clientRunning"
-          class="ios-status-pill pill-online d-flex align-center ga-1 px-2 py-1"
-        >
-          <div class="status-pulse-dot"></div>
-          <span>{{ t('network_running') }}</span>
-        </div>
-        <div
-          v-else
-          class="ios-status-pill pill-offline d-flex align-center ga-1 px-2 py-1"
-        >
-          <v-icon size="12">mdi-wifi-off</v-icon>
-          <span>{{ t('client.not_running') }}</span>
+  <div id="root" class="et-app">
+    <header class="et-nav">
+      <div class="et-nav-inner">
+        <div class="d-flex align-center ga-2 min-w-0">
+          <div class="et-squircle" style="background: var(--et-accent);">
+            <v-icon size="18" color="onPrimary">mdi-shield-outline</v-icon>
+          </div>
+          <span class="et-nav-title">EasyTier</span>
         </div>
 
-        <!-- Language switcher -->
-        <v-btn icon="mdi-translate" variant="text" size="small" @click="I18nUtils.toggleLanguage" />
-
-        <!-- Settings menu -->
-        <v-menu v-model="settingsMenuOpen" location="bottom end">
-          <template #activator="{ props: menuProps }">
-            <v-btn icon="mdi-dots-horizontal-circle-outline" v-bind="menuProps" variant="text" size="small" />
-          </template>
-          <v-list density="comfortable" min-width="220" rounded="xl" class="ios-menu-list">
-            <template v-for="item in settingsMenuItems" :key="item.key">
-              <v-divider v-if="item.key === 'exit' && item.visible?.()" class="my-1" />
-              <v-list-item
-                v-if="(item.visible === undefined || item.visible()) && item.key !== 'logging'"
-                :prepend-icon="item.icon"
-                @click="runSettingsAction(item)"
-              >
-                <v-list-item-title>{{ item.label }}</v-list-item-title>
-              </v-list-item>
-              <!-- Logging submenu item (opens log menu) -->
-              <v-list-item v-if="(item.visible === undefined || item.visible()) && item.key === 'logging'">
-                <v-list-item-title>
-                  <v-menu v-model="logMenuOpen" location="end" open-on-hover>
-                    <template #activator="{ props: subProps }">
-                      <span v-bind="subProps" class="d-flex align-center justify-space-between">
-                        <span><v-icon start :icon="item.icon" size="small" />{{ item.label }}</span>
-                        <v-icon size="small">mdi-chevron-right</v-icon>
-                      </span>
-                    </template>
-                    <v-list density="comfortable" min-width="180" rounded="xl">
-                      <v-list-item
-                        v-for="sub in logMenuFiltered"
-                        :key="sub.key"
-                        @click="sub.command()"
-                      >
-                        <v-list-item-title>{{ sub.label }}</v-list-item-title>
-                      </v-list-item>
-                    </v-list>
-                  </v-menu>
-                </v-list-item-title>
-              </v-list-item>
-            </template>
-          </v-list>
-        </v-menu>
+        <div class="d-flex align-center ga-1">
+          <div v-if="clientRunning" class="et-status-pill is-on">
+            <div class="et-pulse-dot" />
+            <span class="truncate">{{ t('status.connected') }}</span>
+          </div>
+          <div v-else class="et-status-pill is-off">
+            <v-icon size="12">mdi-wifi-off</v-icon>
+            <span class="truncate">{{ t('status.disconnected') }}</span>
+          </div>
+          <v-btn
+            icon="mdi-cog-outline"
+            variant="text"
+            size="small"
+            :aria-label="t('web.settings.title')"
+            @click="settingsSheetOpen = true"
+          />
+        </div>
       </div>
     </header>
 
-    <!-- Dialogs -->
+    <v-bottom-sheet v-model="settingsSheetOpen">
+      <v-card class="et-sheet-card pb-4">
+        <div class="sheet-grabber" />
+        <v-card-title class="text-subtitle-1 font-weight-bold pt-1">{{ t('web.settings.title') }}</v-card-title>
+        <v-card-text class="pt-2">
+          <div class="et-group mb-3">
+            <div
+              v-for="item in visibleSettingsItems()"
+              :key="item.key"
+              class="et-row et-row-pressable"
+              @click="item.command()"
+            >
+              <div class="d-flex align-center ga-3 min-w-0">
+                <div class="et-squircle" style="background: var(--et-surface-2);">
+                  <v-icon size="18" color="primary">{{ item.icon }}</v-icon>
+                </div>
+                <span class="font-weight-medium">{{ item.label }}</span>
+              </div>
+              <div class="d-flex align-center ga-1 flex-shrink-0">
+                <span class="text-caption text-medium-emphasis">{{ item.value }}</span>
+                <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
+              </div>
+            </div>
+          </div>
+
+          <div class="et-group mb-3">
+            <div class="et-row et-row-pressable" @click="aboutVisible = true; settingsSheetOpen = false">
+              <div class="d-flex align-center ga-3">
+                <div class="et-squircle" style="background: var(--et-surface-2);">
+                  <v-icon size="18" color="primary">mdi-information-outline</v-icon>
+                </div>
+                <span class="font-weight-medium">{{ t('about.title') }}</span>
+              </div>
+              <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
+            </div>
+          </div>
+
+          <v-btn
+            block
+            color="error"
+            variant="tonal"
+            size="large"
+            rounded="pill"
+            prepend-icon="mdi-power"
+            @click="exitApp"
+          >
+            {{ t('exit') }}
+          </v-btn>
+        </v-card-text>
+      </v-card>
+    </v-bottom-sheet>
+
+    <v-bottom-sheet v-model="logSheetOpen">
+      <v-card class="et-sheet-card pb-4">
+        <div class="sheet-grabber" />
+        <v-card-title class="text-subtitle-1 font-weight-bold pt-1">{{ t('logging') }}</v-card-title>
+        <v-card-text>
+          <div class="et-group mb-3">
+            <div
+              v-for="level in logLevels"
+              :key="level"
+              class="et-row et-row-pressable"
+              @click="applyLogLevel(level)"
+            >
+              <span class="font-weight-medium">{{ t(`logging_level_${level}`) }}</span>
+              <v-icon v-if="currentLogLevel === level" color="primary" size="20">mdi-check</v-icon>
+            </div>
+          </div>
+          <div class="et-group">
+            <div v-if="!isAndroid" class="et-row et-row-pressable" @click="openLogDir">
+              <span>{{ t('logging_open_dir') }}</span>
+              <v-icon size="18" color="medium-emphasis">mdi-folder-open-outline</v-icon>
+            </div>
+            <div class="et-row et-row-pressable" @click="copyLogDir">
+              <span>{{ t('logging_copy_dir') }}</span>
+              <v-icon size="18" color="medium-emphasis">mdi-content-copy</v-icon>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-bottom-sheet>
+
     <v-dialog v-model="aboutVisible" max-width="480px" :fullscreen="mobileUI">
-      <v-card rounded="xl" class="ios-dialog-card">
-        <v-card-text class="pt-4"><About /></v-card-text>
+      <v-card rounded="xl" class="et-dialog-card">
+        <v-card-text class="pt-6"><About /></v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" rounded="pill" @click="aboutVisible = false">{{ t('close') }}</v-btn>
@@ -554,7 +591,7 @@ function runSettingsAction(item: any) {
     </v-dialog>
 
     <v-dialog v-model="modeDialogVisible" max-width="540px" :fullscreen="mobileUI">
-      <v-card :title="t('mode.switch_mode')" rounded="xl" class="ios-dialog-card">
+      <v-card :title="t('mode.switch_mode')" rounded="xl" class="et-dialog-card">
         <v-card-text>
           <ModeSwitcher v-model="editingMode" @uninstall-service="onUninstallService" @stop-service="onStopService" />
         </v-card-text>
@@ -569,7 +606,7 @@ function runSettingsAction(item: any) {
     </v-dialog>
 
     <v-dialog v-model="configServerDialogVisible" max-width="540px" :fullscreen="mobileUI">
-      <v-card :title="t('config-server.title')" rounded="xl" class="ios-dialog-card">
+      <v-card :title="t('config-server.title')" rounded="xl" class="et-dialog-card">
         <v-card-text>
           <div class="d-flex flex-column ga-3">
             <label for="config-server-address" class="text-caption font-weight-medium">{{ t('config-server.address') }}</label>
@@ -577,7 +614,6 @@ function runSettingsAction(item: any) {
               id="config-server-address"
               v-model="(editingMode as WebClientConfig).config_server_url"
               variant="outlined"
-              density="compact"
               hide-details
               :placeholder="t('config-server.address_placeholder')"
             />
@@ -594,9 +630,8 @@ function runSettingsAction(item: any) {
       </v-card>
     </v-dialog>
 
-    <!-- Main App Body -->
-    <main class="ios-main-wrap">
-      <div class="ios-main-body">
+    <main class="et-main">
+      <div class="et-main-body">
         <RemoteManagement
           v-if="clientRunning"
           class="fill-height"
@@ -604,8 +639,8 @@ function runSettingsAction(item: any) {
           :pause-auto-refresh="isModeSaving"
           v-model:instance-id="instanceId"
         />
-        <div v-else class="empty-state fill-height d-flex flex-column align-center justify-center py-12">
-          <v-icon size="56" class="mb-4 empty-icon">mdi-server-network-off</v-icon>
+        <div v-else class="et-empty d-flex flex-column align-center justify-center">
+          <v-icon size="56" class="mb-4" color="medium-emphasis">mdi-server-network-off</v-icon>
           <div class="text-h6 text-center font-weight-bold mb-3">{{ t('client.not_running') }}</div>
           <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" :prepend-icon="'mdi-replay'" @click="reconnectClient">
             {{ t('client.retry') }}
@@ -614,9 +649,8 @@ function runSettingsAction(item: any) {
       </div>
     </main>
 
-    <!-- Confirm dialog -->
     <v-dialog v-model="confirmDialog" max-width="420px">
-      <v-card :title="confirmHeader" rounded="xl" class="ios-dialog-card">
+      <v-card :title="confirmHeader" rounded="xl" class="et-dialog-card">
         <v-card-text>{{ confirmMessage }}</v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -626,158 +660,20 @@ function runSettingsAction(item: any) {
       </v-card>
     </v-dialog>
 
-    <!-- Snackbar (toast) -->
     <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="2500" location="top" rounded="pill">
       {{ snackbarMessage }}
     </v-snackbar>
   </div>
 </template>
 
-<style scoped lang="postcss">
-.ios-app-root {
-  height: 100vh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background-color: var(--ios-bg);
-}
-
-.ios-nav-bar {
-  height: calc(48px + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--ios-border);
-  backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
-  background: color-mix(in srgb, var(--ios-bg) 85%, transparent);
-  flex-shrink: 0;
-  z-index: 100;
-}
-
-.ios-nav-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-.ios-status-pill {
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 999px;
-}
-
-.pill-online {
-  background: rgba(48, 209, 88, 0.15);
-  color: var(--ios-green);
-}
-
-.pill-offline {
-  background: var(--ios-surface-secondary);
-  color: var(--ios-text-secondary);
-}
-
-.status-pulse-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: var(--ios-green);
-  animation: pulse-dot 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-dot {
-  0% { transform: scale(0.85); opacity: 0.7; }
-  50% { transform: scale(1.25); opacity: 1; }
-  100% { transform: scale(0.85); opacity: 0.7; }
-}
-
-.ios-main-wrap {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.ios-main-body {
-  flex: 1;
-  overflow-y: auto;
-  max-width: 540px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.ios-dialog-card {
-  background-color: var(--ios-surface) !important;
-}
-
-.empty-icon {
-  color: var(--ios-text-secondary);
-  opacity: 0.5;
-}
-
+<style scoped>
 .config-server-desc {
   white-space: pre-wrap;
 }
-</style>
 
-<style scoped lang="postcss">
-#root {
-  height: 100vh;
-  width: 100vw;
+.truncate {
+  white-space: nowrap;
   overflow: hidden;
-  background: var(--v-theme-background);
-}
-.app-bar {
-  height: 56px !important;
-  padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid rgba(var(--v-theme-outlineVariant), 0.25) !important;
-  backdrop-filter: blur(20px);
-}
-.app-title-text {
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-}
-.status-chip {
-  max-width: 10rem;
-}
-.status-pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #10b981;
-  animation: pulse-dot 1.5s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0% { transform: scale(0.85); opacity: 0.7; }
-  50% { transform: scale(1.2); opacity: 1; }
-  100% { transform: scale(0.85); opacity: 0.7; }
-}
-.page-body-wrap {
-  height: 100vh;
-}
-.page-body {
-  height: calc(100vh - 56px);
-  overflow-y: auto;
-  max-width: 600px;
-  margin: 0 auto;
-  width: 100%;
-  padding-top: 0.5rem;
-}
-.empty-icon {
-  color: var(--v-theme-onSurfaceVariant);
-  opacity: 0.5;
-}
-.config-server-desc {
-  white-space: pre-wrap;
-}
-</style>
-
-<style>
-body {
-  height: 100vh;
-  width: 100vw;
-  padding: 0;
-  margin: 0;
-  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
