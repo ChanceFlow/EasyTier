@@ -1,6 +1,6 @@
 /**
  * Dev-only Tauri API mock so the redesigned GUI can be previewed in a plain
- * browser (http://127.0.0.1:1420 or http://127.0.0.1:1420) without the
+ * browser (http://127.0.0.1:1420) without the
  * Tauri webview runtime.
  *
  * It installs `window.__TAURI_INTERNALS__` (the single entry point used by
@@ -261,7 +261,7 @@ const VPN_PORTAL_INFO = {
       peer_id: 7,
       endpoint: '203.0.113.5:51820',
       tunnel_ip: '192.0.2.1',
-      client_config: '[Interface]\nPrivateKey = mock-private-key\nAddress = 10.1.2.10/24\n\n[Peer]\nPublicKey = mock-public-key\nAllowedIPs = 0.0.0.0/0\nEndpoint = 127.0.0.1:22022\n',
+      client_config: '[Interface]\nPrivateKey = mock-private-key\nAddress = 10.1.2.10/24\n\n[Peer]\nPublicKey = mock-public-key\nAllowedIPs = 0.0.0.0/0\nEndpoint = 192.0.2.1:22022\n',
     },
   ],
 }
