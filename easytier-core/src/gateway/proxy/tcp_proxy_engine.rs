@@ -14,7 +14,7 @@ use smoltcp::wire::{IpAddress, IpProtocol, Ipv4Packet, TcpPacket};
 
 use crate::packet::{PacketType, ZCPacket};
 
-use super::cidr_table::ProxyCidrTable;
+use super::{cidr_table::ProxyCidrTable, traits::ProxyRuntimeInfo};
 
 pub(crate) type TcpNatEntryId = uuid::Uuid;
 
@@ -174,6 +174,7 @@ impl TcpProxyEngine {
         mode: TcpProxyMode,
         packet: &mut ZCPacket,
         ctx: TcpProxyPeerContext,
+        runtime: &impl ProxyRuntimeInfo,
     ) -> TcpProxyPacketAction {
         if !self.check_packet_from_peer_fast(mode, &ctx) {
             return TcpProxyPacketAction::Pass;
@@ -212,10 +213,18 @@ impl TcpProxyEngine {
             return TcpProxyPacketAction::Pass;
         }
         let origin_ip = ip_packet.dst_addr();
+        let Ok(tcp_packet) = TcpPacket::new_checked(ip_packet.payload()) else {
+            return TcpProxyPacketAction::Pass;
+        };
 
-        let Some(real_dst_ip) =
-            self.real_dst_ip_for_mode(mode, origin_ip, hdr.is_exit_node(), &ctx)
-        else {
+        let Some(real_dst_ip) = self.real_dst_ip_for_mode(
+            mode,
+            origin_ip,
+            tcp_packet.dst_port(),
+            hdr.is_exit_node(),
+            &ctx,
+            runtime,
+        ) else {
             return TcpProxyPacketAction::Pass;
         };
 
@@ -428,8 +437,10 @@ impl TcpProxyEngine {
         &self,
         mode: TcpProxyMode,
         origin_ip: Ipv4Addr,
+        destination_port: u16,
         is_exit_node: bool,
         ctx: &TcpProxyPeerContext,
+        runtime: &impl ProxyRuntimeInfo,
     ) -> Option<Ipv4Addr> {
         match mode {
             TcpProxyMode::Tcp => {
@@ -437,7 +448,21 @@ impl TcpProxyEngine {
                     return Some(real_ip);
                 }
                 let no_tun_local_virtual_ip = ctx.no_tun && Some(origin_ip) == ctx.virtual_ipv4;
-                (is_exit_node || no_tun_local_virtual_ip).then_some(origin_ip)
+                let userspace_port_forward = ctx.smoltcp_enabled
+                    && Some(origin_ip) == ctx.virtual_ipv4
+                    && runtime.is_userspace_port_forward(
+                        SocketAddr::V4(SocketAddrV4::new(origin_ip, destination_port)),
+                        false,
+                    );
+                if ctx.smoltcp_enabled
+                    && !ctx.no_tun
+                    && Some(origin_ip) == ctx.virtual_ipv4
+                    && !userspace_port_forward
+                {
+                    return None;
+                }
+                (is_exit_node || no_tun_local_virtual_ip || userspace_port_forward)
+                    .then_some(origin_ip)
             }
             TcpProxyMode::KcpSrc | TcpProxyMode::QuicSrc => Some(origin_ip),
         }
@@ -448,7 +473,10 @@ impl TcpProxyEngine {
 mod tests {
     use super::*;
     use crate::{
-        gateway::proxy::cidr_table::{ProxyCidrRule, ProxyCidrSnapshot},
+        gateway::proxy::{
+            cidr_table::{ProxyCidrRule, ProxyCidrSnapshot},
+            traits::{ProxyRuntimeInfo, ProxyRuntimeSnapshot},
+        },
         packet::PeerManagerHeader,
     };
     use smoltcp::wire::{IpAddress, TcpPacket};
@@ -503,6 +531,35 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct TestRuntime {
+        tcp_forward_port: Option<u16>,
+    }
+
+    impl ProxyRuntimeInfo for TestRuntime {
+        fn proxy_runtime_snapshot(&self) -> ProxyRuntimeSnapshot {
+            ProxyRuntimeSnapshot::default()
+        }
+
+        fn is_ip_local_virtual_ip(&self, ip: &IpAddr) -> bool {
+            matches!(ip, IpAddr::V4(ip) if *ip == Ipv4Addr::new(10, 144, 144, 204))
+        }
+
+        fn is_userspace_port_forward(&self, dst: SocketAddr, is_udp: bool) -> bool {
+            !is_udp
+                && dst.ip() == IpAddr::V4(Ipv4Addr::new(10, 144, 144, 204))
+                && self.tcp_forward_port == Some(dst.port())
+        }
+    }
+
+    fn handle_tcp(
+        engine: &TcpProxyEngine,
+        packet: &mut ZCPacket,
+        ctx: TcpProxyPeerContext,
+    ) -> TcpProxyPacketAction {
+        engine.try_handle_peer_packet(TcpProxyMode::Tcp, packet, ctx, &TestRuntime::default())
+    }
+
     #[test]
     fn peer_syn_creates_entry_and_rewrites_to_local_stack() {
         let engine = tcp_engine();
@@ -511,7 +568,7 @@ mod tests {
         let mut packet = build_tcp_packet(src, mapped_dst, true, false);
 
         assert_eq!(
-            engine.try_handle_peer_packet(TcpProxyMode::Tcp, &mut packet, peer_ctx()),
+            handle_tcp(&engine, &mut packet, peer_ctx()),
             TcpProxyPacketAction::Handled { new_syn: true }
         );
 
@@ -536,13 +593,50 @@ mod tests {
     }
 
     #[test]
+    fn smoltcp_proxies_self_delivered_tcp_to_the_host_port() {
+        let engine = TcpProxyEngine::new(Arc::new(ProxyCidrTable::from_snapshot(
+            ProxyCidrSnapshot::default(),
+        )));
+        let src = SocketAddrV4::new("10.144.144.206".parse().unwrap(), 50000);
+        let virtual_dst = SocketAddrV4::new("10.144.144.204".parse().unwrap(), 15555);
+        let mut ctx = peer_ctx();
+        ctx.smoltcp_enabled = true;
+        ctx.enable_exit_node = true;
+        let mut unmatched = build_tcp_packet(src, virtual_dst, true, false);
+        assert_eq!(
+            engine.try_handle_peer_packet(
+                TcpProxyMode::Tcp,
+                &mut unmatched,
+                ctx,
+                &TestRuntime::default(),
+            ),
+            TcpProxyPacketAction::Pass
+        );
+
+        let mut packet = build_tcp_packet(src, virtual_dst, true, false);
+        let runtime = TestRuntime {
+            tcp_forward_port: Some(15555),
+        };
+
+        assert_eq!(
+            engine.try_handle_peer_packet(TcpProxyMode::Tcp, &mut packet, ctx, &runtime),
+            TcpProxyPacketAction::Handled { new_syn: true }
+        );
+
+        let entries = engine.list_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].dst, SocketAddr::V4(virtual_dst));
+        assert_eq!(entries[0].mapped_dst, SocketAddr::V4(virtual_dst));
+    }
+
+    #[test]
     fn nic_response_rewrites_back_to_mapped_destination() {
         let engine = tcp_engine();
         let src = SocketAddrV4::new("10.144.144.206".parse().unwrap(), 50000);
         let mapped_dst = SocketAddrV4::new("10.10.10.42".parse().unwrap(), 80);
         let mut request = build_tcp_packet(src, mapped_dst, true, false);
         assert!(matches!(
-            engine.try_handle_peer_packet(TcpProxyMode::Tcp, &mut request, peer_ctx()),
+            handle_tcp(&engine, &mut request, peer_ctx()),
             TcpProxyPacketAction::Handled { new_syn: true }
         ));
         let entry = engine
@@ -582,7 +676,7 @@ mod tests {
         let mapped_dst = SocketAddrV4::new("10.10.10.42".parse().unwrap(), 80);
         let mut request = build_tcp_packet(src, mapped_dst, true, false);
         assert!(matches!(
-            engine.try_handle_peer_packet(TcpProxyMode::Tcp, &mut request, peer_ctx()),
+            handle_tcp(&engine, &mut request, peer_ctx()),
             TcpProxyPacketAction::Handled { new_syn: true }
         ));
         let entry = engine.syn_map.get(&SocketAddr::V4(src)).unwrap().clone();

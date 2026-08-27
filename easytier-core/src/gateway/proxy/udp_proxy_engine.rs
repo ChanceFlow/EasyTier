@@ -120,6 +120,7 @@ pub struct UdpProxyPeerContext {
     pub virtual_ipv4: Option<Ipv4Addr>,
     pub enable_exit_node: bool,
     pub no_tun: bool,
+    pub smoltcp_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -218,17 +219,23 @@ impl UdpProxyEngine {
         }
 
         let origin_dst_ip = ipv4.dst_addr();
-        let mut real_dst_ip = origin_dst_ip;
+        let mapped_real_ip = self.cidr_table.lookup_v4(origin_dst_ip);
         let no_tun_local_virtual_ip =
             ctx.no_tun && Some(origin_dst_ip) == ctx.virtual_ipv4.as_ref().copied();
-        if let Some(mapped_real_ip) = self.cidr_table.lookup_v4(origin_dst_ip) {
-            real_dst_ip = mapped_real_ip;
-        } else if !is_exit_node && !no_tun_local_virtual_ip {
+        let userspace_local_destination = ctx.smoltcp_enabled
+            && !ctx.no_tun
+            && Some(origin_dst_ip) == ctx.virtual_ipv4.as_ref().copied();
+        let userspace_only = mapped_real_ip.is_none() && !is_exit_node && !no_tun_local_virtual_ip;
+        if userspace_only && !userspace_local_destination {
             return UdpProxyAction::Pass;
         }
 
         let reassembled_buf;
-        let udp_packet = if IpReassembler::is_packet_fragmented(&ipv4) {
+        let fragmented = IpReassembler::is_packet_fragmented(&ipv4);
+        if fragmented && userspace_local_destination {
+            return UdpProxyAction::Pass;
+        }
+        let udp_packet = if fragmented {
             let Some(buf) = self.ip_reassembler.add_fragment(&ipv4) else {
                 return UdpProxyAction::Drop;
             };
@@ -243,6 +250,16 @@ impl UdpProxyEngine {
             };
             udp_packet
         };
+
+        let userspace_port_forward = userspace_local_destination
+            && runtime.is_userspace_port_forward(
+                SocketAddr::new(origin_dst_ip.into(), udp_packet.dst_port()),
+                true,
+            );
+        if userspace_local_destination && !userspace_port_forward {
+            return UdpProxyAction::Pass;
+        }
+        let real_dst_ip = mapped_real_ip.unwrap_or(origin_dst_ip);
 
         let dst_socket = if runtime.is_ip_local_virtual_ip(&IpAddr::V4(real_dst_ip)) {
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), udp_packet.dst_port())
@@ -414,6 +431,10 @@ mod tests {
         fn is_ip_local_virtual_ip(&self, ip: &IpAddr) -> bool {
             matches!(ip, IpAddr::V4(ip) if *ip == Ipv4Addr::new(10, 144, 144, 204))
         }
+
+        fn is_userspace_port_forward(&self, dst: SocketAddr, is_udp: bool) -> bool {
+            is_udp && dst == SocketAddr::new(Ipv4Addr::new(10, 144, 144, 204).into(), 15556)
+        }
     }
 
     #[async_trait::async_trait]
@@ -485,6 +506,7 @@ mod tests {
                 virtual_ipv4: Some("10.144.144.204".parse().unwrap()),
                 enable_exit_node: false,
                 no_tun: false,
+                smoltcp_enabled: false,
             },
             &TestRuntime,
         );
@@ -503,5 +525,65 @@ mod tests {
         assert_eq!(udp.src_port(), 12345);
         assert_eq!(udp.dst_port(), 53864);
         assert_eq!(udp.payload(), b"reply");
+    }
+
+    fn udp_request(dst_ip: Ipv4Addr, dst_port: u16) -> ZCPacket {
+        let src_ip = "10.144.144.206".parse().unwrap();
+        let mut request =
+            vec![0; smoltcp::wire::IPV4_HEADER_LEN + smoltcp::wire::UDP_HEADER_LEN + 7];
+        let request_len = request.len() as u16;
+        {
+            let mut ipv4 = Ipv4Packet::new_unchecked(&mut request);
+            ipv4.set_version(4);
+            ipv4.set_header_len(smoltcp::wire::IPV4_HEADER_LEN as u8);
+            ipv4.set_total_len(request_len);
+            ipv4.set_hop_limit(64);
+            ipv4.set_next_header(IpProtocol::Udp);
+            ipv4.set_src_addr(src_ip);
+            ipv4.set_dst_addr(dst_ip);
+            ipv4.fill_checksum();
+        }
+        {
+            let mut udp = UdpPacket::new_unchecked(&mut request[smoltcp::wire::IPV4_HEADER_LEN..]);
+            udp.set_src_port(53864);
+            udp.set_dst_port(dst_port);
+            udp.set_len((smoltcp::wire::UDP_HEADER_LEN + 7) as u16);
+            udp.payload_mut().copy_from_slice(b"request");
+            udp.fill_checksum(&IpAddress::Ipv4(src_ip), &IpAddress::Ipv4(dst_ip));
+        }
+
+        let mut packet = ZCPacket::new_with_payload(&request);
+        packet.fill_peer_manager_hdr(1, 2, PacketType::Data as u8);
+        packet
+    }
+
+    fn smoltcp_peer_ctx() -> UdpProxyPeerContext {
+        UdpProxyPeerContext {
+            virtual_ipv4: Some(Ipv4Addr::new(10, 144, 144, 204)),
+            enable_exit_node: true,
+            no_tun: false,
+            smoltcp_enabled: true,
+        }
+    }
+
+    #[test]
+    fn smoltcp_proxies_self_delivered_udp_to_the_host_port() {
+        let engine = UdpProxyEngine::new(
+            Arc::new(ProxyCidrTable::from_snapshot(ProxyCidrSnapshot::default())),
+            Duration::from_secs(10),
+        );
+        let unmatched = udp_request("10.144.144.204".parse().unwrap(), 15557);
+        assert!(matches!(
+            engine.handle_peer_packet(&unmatched, smoltcp_peer_ctx(), &TestRuntime,),
+            UdpProxyAction::Pass
+        ));
+        let packet = udp_request("10.144.144.204".parse().unwrap(), 15556);
+        let action = engine.handle_peer_packet(&packet, smoltcp_peer_ctx(), &TestRuntime);
+
+        let UdpProxyAction::ForwardToSocket { dst, payload, .. } = action else {
+            panic!("expected forward action");
+        };
+        assert_eq!(dst, "127.0.0.1:15556".parse().unwrap());
+        assert_eq!(payload.as_ref(), b"request");
     }
 }

@@ -3,7 +3,10 @@ use std::sync::{Arc, Weak};
 
 use bytes::Bytes;
 use cidr::Ipv4Inet;
+use dashmap::DashSet;
 use tokio::io::{AsyncRead, AsyncWrite};
+
+use crate::config::gateway::PortForwardConfig;
 
 use super::tcp_proxy_engine::TcpProxyMode;
 use super::udp_proxy_engine::UdpNatEntryId;
@@ -23,6 +26,49 @@ pub(crate) struct ProxyRuntimeSnapshot {
 pub(crate) trait ProxyRuntimeInfo: Send + Sync {
     fn proxy_runtime_snapshot(&self) -> ProxyRuntimeSnapshot;
     fn is_ip_local_virtual_ip(&self, ip: &IpAddr) -> bool;
+
+    fn is_userspace_port_forward(&self, _dst: SocketAddr, _is_udp: bool) -> bool {
+        false
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ActivePortForwardRegistry {
+    rules: DashSet<PortForwardConfig>,
+}
+
+impl ActivePortForwardRegistry {
+    #[cfg(any(test, feature = "proxy-smoltcp-stack"))]
+    pub fn insert(&self, rule: PortForwardConfig) {
+        self.rules.insert(rule);
+    }
+
+    #[cfg(any(test, feature = "proxy-smoltcp-stack"))]
+    pub fn remove(&self, rule: &PortForwardConfig) {
+        self.rules.remove(rule);
+    }
+
+    #[cfg(any(test, feature = "proxy-smoltcp-stack"))]
+    pub fn clear(&self) {
+        self.rules.clear();
+    }
+
+    pub fn matches(&self, destination: SocketAddr, is_udp: bool) -> bool {
+        self.rules.iter().any(|forward| {
+            let SocketAddr::V4(bind_addr) = forward.bind_addr else {
+                return false;
+            };
+            protocol_matches(&forward.proto, is_udp)
+                && destination.is_ipv4()
+                && (bind_addr.ip().is_unspecified()
+                    || IpAddr::V4(*bind_addr.ip()) == destination.ip())
+                && bind_addr.port() == destination.port()
+        })
+    }
+}
+
+fn protocol_matches(protocol: &str, is_udp: bool) -> bool {
+    protocol.eq_ignore_ascii_case(if is_udp { "udp" } else { "tcp" })
 }
 
 pub(crate) trait WrappedTcpDestinationRuntime: Send + Sync {

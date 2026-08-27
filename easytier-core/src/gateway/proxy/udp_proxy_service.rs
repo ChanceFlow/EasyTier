@@ -132,6 +132,7 @@ impl<R: UdpProxyRuntime + 'static> UdpProxyService<R> {
                 virtual_ipv4: snapshot.virtual_ipv4,
                 enable_exit_node: snapshot.enable_exit_node,
                 no_tun: snapshot.no_tun,
+                smoltcp_enabled: snapshot.smoltcp_enabled,
             },
             self.runtime.as_ref(),
         );

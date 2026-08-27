@@ -359,6 +359,10 @@ where
     fn is_ip_local_virtual_ip(&self, ip: &IpAddr) -> bool {
         self.policy.is_ip_local_virtual_ip(ip)
     }
+
+    fn is_userspace_port_forward(&self, dst: SocketAddr, is_udp: bool) -> bool {
+        self.policy.is_userspace_port_forward(dst, is_udp)
+    }
 }
 
 #[async_trait::async_trait]
@@ -488,6 +492,10 @@ mod tests {
         fn is_ip_local_virtual_ip(&self, _ip: &IpAddr) -> bool {
             false
         }
+
+        fn is_userspace_port_forward(&self, dst: SocketAddr, is_udp: bool) -> bool {
+            is_udp && dst.port() == 15556
+        }
     }
 
     impl UdpProxyPolicy for TestPolicy {
@@ -511,6 +519,18 @@ mod tests {
             _payload: Bytes,
         ) {
         }
+    }
+
+    #[test]
+    fn delegates_userspace_port_forward_policy() {
+        let runtime = UdpSocketProxyRuntime::new(
+            Arc::new(RecordingFactory::default()),
+            Arc::new(TestPolicy),
+            UdpBindOptions::proxy_nat(),
+            Duration::from_secs(120),
+        );
+        assert!(runtime.is_userspace_port_forward("127.0.0.1:15556".parse().unwrap(), true));
+        assert!(!runtime.is_userspace_port_forward("127.0.0.1:15555".parse().unwrap(), true));
     }
 
     #[tokio::test]

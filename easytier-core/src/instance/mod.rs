@@ -102,6 +102,8 @@ use crate::gateway::dhcp::DhcpIpv4Runtime;
 use crate::gateway::proxy::cidr_monitor::ProxyCidrMonitorRuntime;
 #[cfg(feature = "proxy-packet")]
 use crate::gateway::proxy::service::CoreProxyModule;
+#[cfg(feature = "proxy-packet")]
+use crate::gateway::proxy::traits::ActivePortForwardRegistry;
 #[cfg(feature = "wrapped-transport")]
 use crate::gateway::proxy::wrapped_transport::WrappedTransportProxyModule;
 #[cfg(feature = "vpn-portal")]
@@ -650,6 +652,8 @@ where
         let proxy_cidr_table = Arc::new(ProxyCidrTable::from_snapshot(proxy_cidr_snapshot(
             runtime_config.snapshot().as_ref(),
         )));
+        #[cfg(feature = "proxy-packet")]
+        let active_port_forwards = Arc::new(ActivePortForwardRegistry::default());
         #[cfg(feature = "wrapped-transport")]
         let tcp_proxy_socket_context = direct_options.tcp_bind.context.clone();
         #[cfg(feature = "proxy-packet")]
@@ -658,6 +662,7 @@ where
             host.clone(),
             protected_tcp_ports.clone(),
             running_listeners.clone(),
+            active_port_forwards.clone(),
             runtime_config.clone(),
             proxy_cidr_table.clone(),
             tcp_proxy_socket_context.clone(),
@@ -706,6 +711,7 @@ where
             host.clone(),
             direct_options.tcp_bind.context.clone(),
             events.clone(),
+            active_port_forwards,
         );
         #[cfg(feature = "tcp-hole-punch")]
         let tcp_hole_punch = TcpHolePunchConnector::new(

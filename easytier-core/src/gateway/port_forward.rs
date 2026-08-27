@@ -30,6 +30,7 @@ use crate::{
         DataPlaneConsumerLease, DataPlaneRuntime, DataPlaneTcpConnectOptions, DataPlaneTcpStream,
         DataPlaneUdpSocket,
     },
+    gateway::proxy::traits::ActivePortForwardRegistry,
     socket::{
         SocketContext,
         tcp::{
@@ -105,6 +106,7 @@ where
     host: Arc<H>,
     socket_context: SocketContext,
     events: Arc<dyn CoreEventSink>,
+    active_port_forwards: Arc<ActivePortForwardRegistry>,
     tasks: Arc<std::sync::Mutex<JoinSet<()>>>,
     cancel_tokens: Arc<DashMap<PortForwardConfig, DropGuard>>,
     udp_clients: Arc<DashMap<UdpClientKey, Arc<UdpClientInfo<H>>>>,
@@ -124,6 +126,7 @@ where
         host: Arc<H>,
         socket_context: SocketContext,
         events: Arc<dyn CoreEventSink>,
+        active_port_forwards: Arc<ActivePortForwardRegistry>,
     ) -> Arc<Self> {
         Arc::new(Self {
             operation: Mutex::new(()),
@@ -133,6 +136,7 @@ where
             host,
             socket_context,
             events,
+            active_port_forwards,
             tasks: Arc::new(std::sync::Mutex::new(JoinSet::new())),
             cancel_tokens: Arc::new(DashMap::new()),
             udp_clients: Arc::new(DashMap::new()),
@@ -202,6 +206,7 @@ where
                 }
             });
             if !keep {
+                self.active_port_forwards.remove(current);
                 tracing::info!(?current, "port-forward removed by runtime config reload");
             }
             keep
@@ -236,9 +241,21 @@ where
         Ok(())
     }
 
+    fn host_bind_addr(&self, bind_addr: SocketAddr) -> SocketAddr {
+        let force_smoltcp = self.runtime_config.snapshot().services.proxy.force_smoltcp;
+        if force_smoltcp
+            && bind_addr.is_ipv4()
+            && self.data_plane.is_local_virtual_ip(bind_addr.ip())
+        {
+            SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), bind_addr.port())
+        } else {
+            bind_addr
+        }
+    }
+
     async fn add_tcp_port_forward(&self, cfg: &PortForwardConfig) -> anyhow::Result<()> {
         let (bind_addr, dst_addr) = (cfg.bind_addr, cfg.dst_addr);
-        let options = TcpListenOptions::port_forward(bind_addr);
+        let options = TcpListenOptions::port_forward(self.host_bind_addr(bind_addr));
         let bind = options
             .bind
             .clone()
@@ -249,6 +266,7 @@ where
         let cancel = CancellationToken::new();
         self.cancel_tokens
             .insert(cfg.clone(), cancel.clone().drop_guard());
+        self.active_port_forwards.insert(cfg.clone());
 
         let data_plane = self.data_plane.clone();
         let connections = Arc::new(std::sync::Mutex::new(JoinSet::new()));
@@ -309,12 +327,14 @@ where
         let socket = self
             .host
             .bind_udp(
-                UdpBindOptions::port_forward(bind_addr).with_context(self.socket_context.clone()),
+                UdpBindOptions::port_forward(self.host_bind_addr(bind_addr))
+                    .with_context(self.socket_context.clone()),
             )
             .await?;
         let cancel = CancellationToken::new();
         self.cancel_tokens
             .insert(cfg.clone(), cancel.clone().drop_guard());
+        self.active_port_forwards.insert(cfg.clone());
 
         let data_plane = self.data_plane.clone();
         let host = self.host.clone();
@@ -454,6 +474,7 @@ where
             forward_count = self.cancel_tokens.len(),
             "port-forward adapter stopping"
         );
+        self.active_port_forwards.clear();
         self.cancel_tokens.clear();
         self.udp_response_tasks.clear();
         self.udp_clients.clear();
@@ -587,7 +608,9 @@ where
     H: VirtualTcpSocketFactory + VirtualTcpListenerFactory + VirtualUdpSocketFactory,
 {
     async fn open(&self, dst_addr: SocketAddr) -> anyhow::Result<Arc<PortForwardUdpFlow<H>>> {
-        if self.data_plane.is_local_virtual_ip(dst_addr.ip()) {
+        if dst_addr.is_ipv4()
+            && (dst_addr.ip().is_loopback() || self.data_plane.is_local_virtual_ip(dst_addr.ip()))
+        {
             let socket = self
                 .host
                 .bind_udp(

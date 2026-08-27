@@ -30,9 +30,9 @@ use super::{
     tcp_proxy_service::TcpProxyService,
     tcp_socket_connector::TcpSocketProxyConnector,
     traits::{
-        IcmpProxyHost, IcmpProxyRuntime, IcmpProxySocket, ProxyRuntimeError, ProxyRuntimeInfo,
-        ProxyRuntimeSnapshot, TcpProxyConnectContext, TcpProxyRuntime, UdpProxyPolicy,
-        WrappedTcpDestinationRuntime,
+        ActivePortForwardRegistry, IcmpProxyHost, IcmpProxyRuntime, IcmpProxySocket,
+        ProxyRuntimeError, ProxyRuntimeInfo, ProxyRuntimeSnapshot, TcpProxyConnectContext,
+        TcpProxyRuntime, UdpProxyPolicy, WrappedTcpDestinationRuntime,
     },
     udp_proxy_service::UdpProxyService,
     udp_socket_runtime::UdpSocketProxyRuntime,
@@ -87,6 +87,7 @@ where
     host: Arc<H>,
     protected_tcp_ports: Arc<ProtectedTcpPortRegistry>,
     running_listeners: Arc<RunningListenerRegistry>,
+    active_port_forwards: Arc<ActivePortForwardRegistry>,
     config: CoreRuntimeConfigStore,
     stats: Arc<StatsManager>,
     protocol_label: &'static str,
@@ -106,12 +107,34 @@ where
         config: CoreRuntimeConfigStore,
         protocol_label: &'static str,
     ) -> Arc<Self> {
+        Self::new_with_active_port_forwards(
+            peer_manager,
+            host,
+            protected_tcp_ports,
+            running_listeners,
+            Arc::new(ActivePortForwardRegistry::default()),
+            config,
+            protocol_label,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_active_port_forwards(
+        peer_manager: Arc<PeerManagerCore>,
+        host: Arc<H>,
+        protected_tcp_ports: Arc<ProtectedTcpPortRegistry>,
+        running_listeners: Arc<RunningListenerRegistry>,
+        active_port_forwards: Arc<ActivePortForwardRegistry>,
+        config: CoreRuntimeConfigStore,
+        protocol_label: &'static str,
+    ) -> Arc<Self> {
         Arc::new(Self {
             stats: peer_manager.stats_manager(),
             peer_manager,
             host,
             protected_tcp_ports,
             running_listeners,
+            active_port_forwards,
             config,
             protocol_label,
             smoltcp_enabled: AtomicBool::new(false),
@@ -156,6 +179,10 @@ where
 
     fn is_ip_local_virtual_ip(&self, ip: &IpAddr) -> bool {
         self.peer_manager.is_local_virtual_ip(ip)
+    }
+
+    fn is_userspace_port_forward(&self, destination: SocketAddr, is_udp: bool) -> bool {
+        self.active_port_forwards.matches(destination, is_udp)
     }
 }
 
@@ -288,6 +315,7 @@ where
         host: Arc<H>,
         protected_tcp_ports: Arc<ProtectedTcpPortRegistry>,
         running_listeners: Arc<RunningListenerRegistry>,
+        active_port_forwards: Arc<ActivePortForwardRegistry>,
         config: CoreRuntimeConfigStore,
         cidr_table: Arc<ProxyCidrTable>,
         tcp_socket_context: SocketContext,
@@ -295,11 +323,12 @@ where
         icmp_socket_context: SocketContext,
         icmp_host: Option<Arc<dyn IcmpProxyHost>>,
     ) -> Arc<Self> {
-        let runtime = CoreProxyRuntime::new(
+        let runtime = CoreProxyRuntime::new_with_active_port_forwards(
             peer_manager.clone(),
             host.clone(),
             protected_tcp_ports,
             running_listeners,
+            active_port_forwards,
             config.clone(),
             "TCP",
         );
@@ -421,7 +450,7 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     use crate::{
-        config::gateway::ProxyRuntimeConfig,
+        config::gateway::{PortForwardConfig, ProxyRuntimeConfig},
         config::peers::{PeerRuntimeConfig, PeerRuntimeSnapshot},
         config::runtime::{CoreInstanceRuntimeConfig, CoreRuntimeConfig},
         config::{CoreConfig, IpPrefix, PeerPolicyConfig, ProxyNetworkConfig, RouteConfig},
@@ -492,6 +521,28 @@ mod tests {
         let smoltcp = runtime_snapshot(&config, true);
         assert_eq!(smoltcp.local_inet, Some(smoltcp_proxy_inet()));
         assert_eq!(smoltcp.virtual_ipv4, kernel.virtual_ipv4);
+    }
+
+    #[test]
+    fn userspace_port_forward_match_preserves_protocol_and_bind_scope() {
+        let forward = |bind: &str, dst: &str, proto: &str| PortForwardConfig {
+            bind_addr: bind.parse().unwrap(),
+            dst_addr: dst.parse().unwrap(),
+            proto: proto.to_owned(),
+        };
+        let registry = ActivePortForwardRegistry::default();
+        for rule in [
+            forward("0.0.0.0:15555", "127.0.0.1:5555", "tcp"),
+            forward("10.1.2.3:15556", "127.0.0.1:5556", "UDP"),
+            forward("127.0.0.1:16666", "127.0.0.1:6666", "tcp"),
+        ] {
+            registry.insert(rule);
+        }
+
+        assert!(registry.matches("10.1.2.3:15555".parse().unwrap(), false));
+        assert!(registry.matches("10.1.2.3:15556".parse().unwrap(), true));
+        assert!(!registry.matches("10.1.2.3:15555".parse().unwrap(), true));
+        assert!(!registry.matches("10.1.2.3:16666".parse().unwrap(), false));
     }
 
     #[test]

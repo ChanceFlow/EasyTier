@@ -460,6 +460,7 @@ impl<R: TcpProxyRuntime + 'static, F: VirtualTcpListenerFactory, C: TcpProxyDest
                 no_tun: snapshot.no_tun,
                 smoltcp_enabled: snapshot.smoltcp_enabled,
             },
+            self.runtime.as_ref(),
         );
         let TcpProxyPacketAction::Handled { new_syn: _new_syn } = action else {
             return Some(packet);
