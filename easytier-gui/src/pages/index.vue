@@ -8,16 +8,20 @@ import { open } from '@tauri-apps/plugin-shell'
 import { exit } from '@tauri-apps/plugin-process'
 import { I18nUtils, RemoteManagement, Utils } from "easytier-frontend-lib"
 import { useTray } from '~/composables/tray'
-import { initMobileVpnService, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { initMobileVpnService, mobileStats, setMobileStatsInstanceId, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { usePhoneText } from '~/composables/hero_text'
 import { GUIRemoteClient } from '~/modules/api'
 
 import { loadMode, saveMode, WebClientConfig, type Mode } from '~/composables/mode'
 import { saveLastNetworkInstanceId, loadLastNetworkInstanceId } from '~/composables/config'
 import ModeSwitcher from '~/components/ModeSwitcher.vue'
+import MeshHero from '~/components/MeshHero.vue'
+import OnboardingDialog from '~/components/OnboardingDialog.vue'
 import { getEasytierVersion, getServiceStatus } from '~/composables/backend'
 import { useDisplay, useTheme } from 'vuetify'
 
 const { t, locale } = useI18n()
+const { pt } = usePhoneText()
 const { smAndDown: mobileUI } = useDisplay()
 const theme = useTheme()
 const aboutVisible = ref(false)
@@ -29,6 +33,12 @@ const currentMode = ref<Mode>({ mode: 'normal' })
 const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
 const manualDisconnect = ref(false)
+
+// ---- phone hero / onboarding ----
+const onboardingVisible = ref(false)
+const heroBusy = ref(false)
+// true once the very first isClientRunning() probe resolved
+const heroBooted = ref(false)
 
 const configServerDialogVisible = ref(false)
 const configServerConnected = ref(false)
@@ -228,14 +238,21 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
+  // First-run intro: phone only, gated by a versioned localStorage flag.
+  if (mobileUI.value && !localStorage.getItem('et_onboarded_v1')) {
+    onboardingVisible.value = true
+  }
+
   if (type() === 'android') {
     try {
       await initMobileVpnService()
-      startMobileIoNotification()
     } catch (e: any) {
       console.error("easytier init vpn service failed", e)
     }
   }
+  // the shared 2s stats ticker feeds both the Android ongoing notification and
+  // the phone hero (mobileStats); harmless on desktop where the hero is hidden
+  startMobileIoNotification()
 
   cleanupFns.push(await listenGlobalEvents())
   currentMode.value = loadMode()
@@ -260,6 +277,8 @@ watch(instanceId, (newVal) => {
   if (newVal) {
     saveLastNetworkInstanceId(newVal);
   }
+  // let the shared stats ticker prefer the instance the UI is showing
+  setMobileStatsInstanceId(newVal);
 });
 
 watch(clientRunning, async (newVal, oldVal) => {
@@ -292,10 +311,82 @@ onMounted(async () => {
   })
 
   clientRunning.value = await isClientRunning().catch(() => false)
+  heroBooted.value = true
 })
 async function reconnectClient() {
   editingMode.value = JSON.parse(JSON.stringify(loadMode()));
   await onModeSave()
+}
+
+// ---- phone hero actions (same chain as the existing desktop flows) ----
+// the hero may show an instance discovered by the stats ticker even before
+// the collapsed RemoteManagement panel has synced the v-model id
+function heroInstanceId(): string | undefined {
+  return instanceId.value || mobileStats.instanceId || undefined
+}
+
+async function heroConnect() {
+  if (heroBusy.value) {
+    return
+  }
+  const targetId = heroInstanceId()
+  if (!clientRunning.value || !targetId) {
+    // backend unreachable or nothing selected: reuse the retry path
+    heroBusy.value = true
+    try {
+      await reconnectClient()
+    } finally {
+      heroBusy.value = false
+    }
+    return
+  }
+  heroBusy.value = true
+  try {
+    await remoteClient.value.update_network_instance_state(targetId, false)
+    clientRunning.value = await isClientRunning()
+    toast(t('web.common.success'))
+  } catch (e: any) {
+    toast(t('error') + ': ' + e, 'error', 10000)
+    console.error('hero connect failed', e)
+  } finally {
+    heroBusy.value = false
+  }
+}
+
+async function heroDisconnect() {
+  if (heroBusy.value) {
+    return
+  }
+  const targetId = heroInstanceId()
+  if (!targetId) {
+    return
+  }
+  heroBusy.value = true
+  try {
+    await remoteClient.value.update_network_instance_state(targetId, true)
+    toast(t('web.common.success'))
+  } catch (e: any) {
+    toast(t('error') + ': ' + e, 'error', 10000)
+    console.error('hero disconnect failed', e)
+  } finally {
+    heroBusy.value = false
+  }
+}
+
+async function heroGrantVpn() {
+  if (heroBusy.value) {
+    return
+  }
+  heroBusy.value = true
+  try {
+    // re-runs the VPN reconcile, which re-asks for the system permission
+    await syncMobileVpnService()
+  } catch (e: any) {
+    toast(t('error') + ': ' + e, 'error', 10000)
+    console.error('hero vpn re-sync failed', e)
+  } finally {
+    heroBusy.value = false
+  }
 }
 
 onMounted(async () => {
@@ -394,6 +485,17 @@ const settingsSheetItems = computed<SettingsSheetItem[]>(() => [
     icon: 'mdi-file-document',
     value: t(`logging_level_${currentLogLevel.value}`),
     command: () => { logSheetOpen.value = true },
+  },
+  {
+    key: 'onboarding',
+    label: pt('hero.replay_onboarding', '重看引导', 'Replay intro'),
+    icon: 'mdi-school-outline',
+    value: '',
+    command: () => {
+      settingsSheetOpen.value = false
+      onboardingVisible.value = true
+    },
+    visible: mobileUI.value,
   },
 ])
 
@@ -633,22 +735,75 @@ async function exitApp(): Promise<void> {
 
     <main class="et-main">
       <div class="et-main-body">
-        <RemoteManagement
-          v-if="clientRunning"
-          class="fill-height"
-          :api="remoteClient"
-          :pause-auto-refresh="isModeSaving"
-          v-model:instance-id="instanceId"
-        />
-        <div v-else class="et-empty d-flex flex-column align-center justify-center">
-          <v-icon size="56" class="mb-4" color="medium-emphasis">mdi-server-network-off</v-icon>
-          <div class="text-h6 text-center font-weight-bold mb-3">{{ t('client.not_running') }}</div>
-          <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" :prepend-icon="'mdi-replay'" @click="reconnectClient">
-            {{ t('client.retry') }}
-          </v-btn>
-        </div>
+        <!-- ================= phone: hero + collapsed advanced console ================= -->
+        <template v-if="mobileUI">
+          <MeshHero
+            :client-running="clientRunning"
+            :instance-id="instanceId"
+            :busy="heroBusy || isModeSaving"
+            :booted="heroBooted"
+            :is-android="isAndroid"
+            @connect="heroConnect"
+            @disconnect="heroDisconnect"
+            @grant="heroGrantVpn"
+            @retry="reconnectClient"
+          />
+
+          <div class="et-adv-wrap pb-6">
+            <v-expansion-panels flat>
+              <v-expansion-panel value="advanced" class="et-adv-panel">
+                <v-expansion-panel-title>
+                  <div class="d-flex align-center ga-3 min-w-0">
+                    <div class="et-squircle" style="background: var(--et-surface-2);">
+                      <v-icon size="16" color="primary">mdi-console-network-outline</v-icon>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="et-adv-title">{{ pt('hero.advanced_console', '高级控制台', 'Advanced console') }}</div>
+                      <div class="et-adv-sub truncate">{{ pt('hero.advanced_hint', '网络配置、节点详情与历史事件都在这里', 'Network config, node details and events live here') }}</div>
+                    </div>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <RemoteManagement
+                    v-if="clientRunning"
+                    :api="remoteClient"
+                    :pause-auto-refresh="isModeSaving"
+                    v-model:instance-id="instanceId"
+                  />
+                  <div v-else class="et-empty d-flex flex-column align-center justify-center">
+                    <v-icon size="56" class="mb-4" color="medium-emphasis">mdi-server-network-off</v-icon>
+                    <div class="text-h6 text-center font-weight-bold mb-3">{{ t('client.not_running') }}</div>
+                    <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" prepend-icon="mdi-replay" @click="reconnectClient">
+                      {{ t('client.retry') }}
+                    </v-btn>
+                  </div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </div>
+        </template>
+
+        <!-- ============ desktop: full web console, unchanged path ============ -->
+        <template v-else>
+          <RemoteManagement
+            v-if="clientRunning"
+            class="fill-height"
+            :api="remoteClient"
+            :pause-auto-refresh="isModeSaving"
+            v-model:instance-id="instanceId"
+          />
+          <div v-else class="et-empty d-flex flex-column align-center justify-center">
+            <v-icon size="56" class="mb-4" color="medium-emphasis">mdi-server-network-off</v-icon>
+            <div class="text-h6 text-center font-weight-bold mb-3">{{ t('client.not_running') }}</div>
+            <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" :prepend-icon="'mdi-replay'" @click="reconnectClient">
+              {{ t('client.retry') }}
+            </v-btn>
+          </div>
+        </template>
       </div>
     </main>
+
+    <OnboardingDialog v-model="onboardingVisible" />
 
     <v-dialog v-model="confirmDialog" max-width="420px">
       <v-card :title="confirmHeader" rounded="xl" class="et-dialog-card">
