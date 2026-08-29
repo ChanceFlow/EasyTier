@@ -8,7 +8,7 @@ import { open } from '@tauri-apps/plugin-shell'
 import { exit } from '@tauri-apps/plugin-process'
 import { I18nUtils, RemoteManagement, Utils } from "easytier-frontend-lib"
 import { useTray } from '~/composables/tray'
-import { initMobileVpnService, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { initMobileVpnService, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
 import { GUIRemoteClient } from '~/modules/api'
 
 import { loadMode, saveMode, WebClientConfig, type Mode } from '~/composables/mode'
@@ -231,6 +231,7 @@ onMounted(async () => {
   if (type() === 'android') {
     try {
       await initMobileVpnService()
+      startMobileIoNotification()
     } catch (e: any) {
       console.error("easytier init vpn service failed", e)
     }

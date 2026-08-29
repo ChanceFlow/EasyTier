@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
       await listeners.get('vpn_service_stop')?.({})
       return {}
     }),
+    updateNotification: vi.fn(async () => ({})),
   }
 })
 
@@ -47,6 +48,7 @@ vi.mock('tauri-plugin-vpnservice-api', () => ({
   prepare_vpn: mocks.prepareVpn,
   start_vpn: mocks.startVpn,
   stop_vpn: mocks.stopVpn,
+  update_notification: mocks.updateNotification,
 }))
 
 vi.mock('./backend', () => ({
