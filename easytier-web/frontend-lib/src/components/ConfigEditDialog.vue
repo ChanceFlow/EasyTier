@@ -8,6 +8,15 @@ const { t } = useI18n()
 // 移动端(小屏)弹窗全屏展示
 const { smAndDown: mobileUI } = useDisplay()
 
+// 触觉反馈:组件内局部实现,不动共享 utils(避免与其他 agent 冲突)
+function vibrate(ms = 8) {
+    try {
+        navigator.vibrate?.(ms);
+    } catch {
+        /* ignore */
+    }
+}
+
 const props = defineProps({
     readonly: {
         type: Boolean,
@@ -89,12 +98,14 @@ watch(tomlConfig, (newValue) => {
 
 </script>
 <template>
-    <v-dialog v-model="visible" max-width="70vw" :fullscreen="mobileUI">
+    <v-dialog v-model="visible" max-width="70vw" :fullscreen="mobileUI" transition="dialog-bottom-transition">
         <v-card :title="t('config_file')" rounded="xl" class="et-dialog-sheet">
             <v-card-text>
-                <pre v-if="errorMessage" class="mb-2 config-error">
-                    {{ errorMessage }}
-                </pre>
+                <Transition name="et-error-fade">
+                    <pre v-if="errorMessage" class="mb-2 config-error" role="alert">
+                        {{ errorMessage }}
+                    </pre>
+                </Transition>
                 <v-textarea
                     v-model="tomlConfig"
                     :rows="tomlConfigRows"
@@ -107,7 +118,7 @@ watch(tomlConfig, (newValue) => {
             </v-card-text>
             <v-divider />
             <v-card-actions class="justify-end">
-                <v-btn v-if="!props.readonly" variant="flat" color="primary" rounded="pill" @click="handleConfigSave">{{ t('save') }}</v-btn>
+                <v-btn v-if="!props.readonly" variant="flat" color="primary" rounded="pill" @click="handleConfigSave(); vibrate(10)">{{ t('save') }}</v-btn>
                 <v-btn variant="text" rounded="pill" @click="visible = false">{{ t('close') }}</v-btn>
             </v-card-actions>
         </v-card>
@@ -131,5 +142,19 @@ watch(tomlConfig, (newValue) => {
 .config-textarea :deep(textarea) {
     overflow-y: auto !important;
     font-family: var(--font-mono) !important;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .et-error-fade-enter-active,
+    .et-error-fade-leave-active {
+        transition: opacity 180ms ease-out, transform 180ms ease-out;
+    }
+
+    .et-error-fade-enter-from,
+    .et-error-fade-leave-to {
+        opacity: 0;
+        transform: translateY(12px);
+    }
 }
 </style>

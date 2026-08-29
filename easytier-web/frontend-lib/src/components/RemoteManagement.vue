@@ -25,6 +25,15 @@ const instanceId = defineModel('instanceId', {
 
 const emits = defineEmits(['update']);
 
+// 触觉反馈:navigator.vibrate 存在则轻震一下,失败静默(组件内局部实现,避免动共享 utils)
+function vibrate(ms = 8) {
+    try {
+        navigator.vibrate?.(ms);
+    } catch {
+        /* ignore */
+    }
+}
+
 const toast = ref(false)
 const toastMessage = ref('')
 const toastColor = ref('success')
@@ -44,6 +53,12 @@ const isEditingNetwork = ref(false);
 const currentNetworkConfig = ref<NetworkTypes.NetworkConfig | undefined>(undefined);
 
 const listInstanceIdResponse = ref<Api.ListNetworkInstanceIdResponse | undefined>(undefined);
+
+// ---- 加载状态:initialLoadDone=实例列表首刷已回;isRefreshing=后续静默轮询中 ----
+const initialLoadDone = ref(false);
+const isRefreshing = ref(false);
+// Config 面板专属:当前网络配置在途
+const configLoading = ref(false);
 
 const isRunning = (instanceId: string) => {
     return (listInstanceIdResponse.value?.running_inst_ids ?? []).map(Utils.UuidToStr).includes(instanceId);
@@ -207,8 +222,13 @@ const loadCurrentNetworkConfig = async () => {
         return;
     }
 
-    let ret = await props.api.get_network_config(selectedInstanceId.value!.uuid);
-    currentNetworkConfig.value = ret;
+    configLoading.value = true;
+    try {
+        let ret = await props.api.get_network_config(selectedInstanceId.value!.uuid);
+        currentNetworkConfig.value = ret;
+    } finally {
+        configLoading.value = false;
+    }
 }
 
 function setCurrentNetworkRunning(running: boolean): void {
@@ -244,6 +264,7 @@ const startNetwork = async (): Promise<void> => {
 }
 
 const toggleCurrentNetwork = async () => {
+    vibrate(10);
     if (heroIsRunning.value) {
         await stopNetwork();
     } else {
@@ -358,6 +379,7 @@ const cancelEditNetwork = () => {
 
 const loadNetworkInstanceIds = async () => {
     listInstanceIdResponse.value = await props.api.list_network_instance_ids();
+    initialLoadDone.value = true;
     if (!instanceId.value && listInstanceIdResponse.value?.running_inst_ids?.length) {
         instanceId.value = Utils.UuidToStr(listInstanceIdResponse.value.running_inst_ids[0]);
     }
@@ -509,10 +531,14 @@ let periodFunc = new Utils.PeriodicTask(async () => {
     if (props.pauseAutoRefresh) {
         return;
     }
+    // 只有首刷完成后的静默刷新才降透明度,避免每 2s 闪骨架
+    isRefreshing.value = true;
     try {
         await Promise.all([loadNetworkInstanceIds(), loadCurrentNetworkInfo()]);
     } catch (e) {
         console.debug(e);
+    } finally {
+        isRefreshing.value = false;
     }
 }, 1000);
 
@@ -541,7 +567,7 @@ const activityEvents = computed(() => {
         <input type="file" @change="handleFileUpload" class="d-none" accept="application/toml" ref="configFile" />
 
         <!-- ================= 1. Top Network Switcher Profile Card ================= -->
-        <div class="et-network-chip d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
+        <div class="et-network-chip et-press-row d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
             <div class="d-flex align-center ga-3 min-w-0">
                 <div
                     class="et-squircle"
@@ -552,14 +578,21 @@ const activityEvents = computed(() => {
                     </v-icon>
                 </div>
                 <div class="min-w-0">
-                    <div class="d-flex align-center ga-2">
-                        <span class="hero-net-name truncate">{{ heroNetworkName }}</span>
-                        <v-chip :color="heroIsRunning ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill font-weight-bold">
-                            {{ heroIsRunning ? t('web.device_management.active') : t('web.device_management.stopped') }}
-                        </v-chip>
-                    </div>
-                    <div class="text-caption text-medium-emphasis truncate">
-                        {{ isEditingNetwork ? t('web.device_management.edit_network') : t('web.device_management.select_network') }}
+                    <template v-if="initialLoadDone">
+                        <div class="d-flex align-center ga-2">
+                            <span class="hero-net-name truncate">{{ heroNetworkName }}</span>
+                            <v-chip :color="heroIsRunning ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill font-weight-bold">
+                                {{ heroIsRunning ? t('web.device_management.active') : t('web.device_management.stopped') }}
+                            </v-chip>
+                        </div>
+                        <div class="text-caption text-medium-emphasis truncate">
+                            {{ isEditingNetwork ? t('web.device_management.edit_network') : t('web.device_management.select_network') }}
+                        </div>
+                    </template>
+                    <!-- 首刷未回:贴合两行文字布局的骨架占位 -->
+                    <div v-else role="progressbar" aria-hidden="true" class="et-skeleton et-skeleton--inline">
+                        <v-skeleton-loader type="list-item" boilerplate style="max-width: 10rem" class="mb-1" />
+                        <v-skeleton-loader type="list-item" boilerplate style="max-width: 14rem" />
                     </div>
                 </div>
             </div>
@@ -586,11 +619,20 @@ const activityEvents = computed(() => {
                     </v-btn>
                 </v-card-title>
                 <v-card-text class="pa-2">
-                    <div class="ios-group mb-2">
+                    <!-- 实例列表首刷未回:骨架 -->
+                    <div v-if="!initialLoadDone" class="py-2" role="progressbar" aria-hidden="true">
+                        <v-skeleton-loader class="et-skeleton" type="list-item-avatar-two-line@3" boilerplate />
+                    </div>
+                    <div v-else-if="instanceList.length === 0" class="et-empty">
+                        <div class="et-empty__icon"><v-icon size="26" color="primary">mdi-shield-plus-outline</v-icon></div>
+                        <div class="et-empty__title">{{ t('web.device_management.no_network_selected') }}</div>
+                        <div class="et-empty__hint">{{ t('web.device_management.rm_sheet_empty_hint', 'Create a network to join your mesh') }}</div>
+                    </div>
+                    <TransitionGroup v-else tag="div" name="et-list-fade" class="ios-group mb-2 et-list-wrap">
                         <div
                             v-for="item in instanceList"
                             :key="item.uuid"
-                            class="et-row et-row-pressable"
+                            class="et-row et-row-pressable et-press-row"
                             @click="sheetSelectNetwork(item)"
                         >
                             <div class="d-flex align-center ga-3 min-w-0">
@@ -611,7 +653,7 @@ const activityEvents = computed(() => {
                                 <v-icon v-if="item.uuid === selectedInstanceId?.uuid" color="primary" size="20">mdi-check-circle</v-icon>
                             </div>
                         </div>
-                    </div>
+                    </TransitionGroup>
                 </v-card-text>
             </v-card>
         </v-bottom-sheet>
@@ -665,12 +707,17 @@ const activityEvents = computed(() => {
                 <Config
                     :cur-network="currentNetworkConfig"
                     :config-invalid="!currentNetworkConfig"
+                    :loading="configLoading"
                     @run-network="saveAndRunNewNetwork"
                 />
             </div>
 
             <!-- Mode B: Active Network Dashboard & Tabs -->
-            <div v-else-if="needShowNetworkStatus" class="network-status-container">
+            <div
+                v-else-if="needShowNetworkStatus"
+                class="network-status-container"
+                :class="{ 'is-refreshing': isRefreshing && mobileTab !== 'config' }"
+            >
                 <!-- Status component (handles Home with prominent start/stop, Devices, etc.) -->
                 <Status
                     v-if="curNetworkInfo && curNetworkInfo.error_msg === ''"
@@ -685,9 +732,11 @@ const activityEvents = computed(() => {
                 <v-alert v-else-if="curNetworkInfo?.error_msg" type="error" variant="tonal" rounded="xl" class="mb-4">
                     {{ curNetworkInfo.error_msg }}
                 </v-alert>
-                <v-alert v-else type="info" variant="tonal" rounded="xl" class="mb-4">
-                    {{ t('web.device_management.loading_network_status') }}
-                </v-alert>
+                <!-- 运行态详情首刷未回:贴合 Status 布局的骨架(hero + 两个分组) -->
+                <div v-else role="progressbar" aria-hidden="true" class="et-skeleton-stack pt-4">
+                    <v-skeleton-loader class="et-skeleton" type="article" boilerplate />
+                    <v-skeleton-loader class="et-skeleton" type="list-item-two-line@3" boilerplate />
+                </div>
 
                 <!-- Activity Tab View (when mobileTab === 'activity') -->
                 <div v-if="mobileTab === 'activity'" class="activity-tab-content">
@@ -706,9 +755,10 @@ const activityEvents = computed(() => {
                                 </v-timeline-item>
                             </v-timeline>
                         </div>
-                        <div v-else class="et-group text-center py-10 text-medium-emphasis">
-                            <v-icon size="40" class="mb-2">mdi-history</v-icon>
-                            <div>{{ t('no_events') }}</div>
+                        <div v-else class="et-group et-empty">
+                            <div class="et-empty__icon"><v-icon size="26" color="primary">mdi-history</v-icon></div>
+                            <div class="et-empty__title">{{ t('no_events') }}</div>
+                            <div class="et-empty__hint">{{ t('web.device_management.rm_activity_empty_hint', 'Network events appear here as peers join and routes change') }}</div>
                         </div>
                     </div>
                 </div>
@@ -733,14 +783,21 @@ const activityEvents = computed(() => {
                     <Config
                         :cur-network="currentNetworkConfig"
                         :config-invalid="!currentNetworkConfig"
+                        :loading="configLoading"
                         @run-network="saveAndRunNewNetwork"
                     />
                 </div>
             </div>
 
+            <!-- 实例列表首刷未回:整块内容骨架,避免空白闪现 -->
+            <div v-else-if="!initialLoadDone" role="progressbar" aria-hidden="true" class="et-skeleton-stack pt-2">
+                <v-skeleton-loader class="et-skeleton" type="article" boilerplate />
+                <v-skeleton-loader class="et-skeleton" type="list-item-two-line@3" boilerplate />
+            </div>
+
             <!-- Mode C: Empty State (No network configured) -->
-            <div v-else class="empty-state d-flex flex-column align-center justify-center py-12">
-                <div class="et-squircle mb-4" style="width: 72px; height: 72px; border-radius: 20px; background: var(--et-accent-dim);">
+            <div v-else class="empty-state et-empty d-flex flex-column align-center justify-center py-12">
+                <div class="et-empty__icon mb-4">
                     <v-icon size="36" color="primary">mdi-shield-plus-outline</v-icon>
                 </div>
                 <div class="text-h6 text-center font-weight-bold mb-2">
@@ -827,7 +884,7 @@ const activityEvents = computed(() => {
         />
 
         <!-- Confirm dialog -->
-        <v-dialog v-model="confirmDialog" max-width="420px">
+        <v-dialog v-model="confirmDialog" max-width="420px" transition="dialog-bottom-transition">
             <v-card :title="confirmHeader" rounded="xl" class="ios-dialog-sheet">
                 <v-card-text>{{ confirmMessage }}</v-card-text>
                 <v-card-actions>
@@ -865,6 +922,120 @@ const activityEvents = computed(() => {
 
 .et-network-chip:active {
     background-color: var(--et-surface-2);
+}
+
+/* ---------- 共享动效 kit:骨架 / 列表进出场 / 按压反馈 / 空态 ---------- */
+
+/* 骨架容器:透出 et-bg 背景,由内层 bone 提供占位条 */
+.et-skeleton {
+    background: transparent !important;
+    width: 100%;
+}
+
+.et-skeleton-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.25rem 0.25rem 1rem;
+}
+
+.et-skeleton--inline {
+    padding: 0.15rem 0;
+}
+
+/* 静默刷新中:内容层轻降透明度并屏蔽误触,骨架不重新出现 */
+.is-refreshing {
+    opacity: 0.66;
+    pointer-events: none;
+}
+
+/* 空态 */
+.et-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem 1.25rem;
+    color: var(--et-text-secondary);
+}
+
+.et-empty__icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--et-accent-dim);
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+}
+
+.et-empty__title {
+    font-size: 1rem;
+    font-weight: var(--fw-semibold, 600);
+    color: var(--et-text);
+}
+
+.et-empty__hint {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    max-width: 18rem;
+    margin-top: 0.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .et-network-chip,
+    .et-press-row {
+        transition: transform 140ms ease-out, background-color 140ms ease-out, opacity 140ms ease-out;
+    }
+
+    .et-network-chip:active,
+    .et-press-row:active {
+        transform: scale(0.985);
+    }
+
+    .is-refreshing {
+        transition: opacity 150ms ease-out;
+    }
+
+    /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */
+    .et-list-fade-enter-active,
+    .et-list-fade-leave-active {
+        transition: opacity 180ms ease-out, transform 180ms ease-out;
+    }
+
+    .et-list-fade-enter-from,
+    .et-list-fade-leave-to {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    .et-list-fade-leave-active {
+        position: absolute;
+        width: 100%;
+    }
+
+    .et-list-fade-move {
+        transition: transform 160ms ease-out;
+    }
+
+    .et-list-wrap {
+        position: relative;
+        display: block;
+    }
+
+
+    /* bone 微光,贴合主题色而不是纯灰 */
+    .et-skeleton :deep(.v-skeleton-loader__bone::after) {
+        background: linear-gradient(
+            90deg,
+            transparent,
+            color-mix(in srgb, var(--et-accent) 10%, transparent),
+            transparent
+        );
+    }
 }
 
 .hero-net-name {
