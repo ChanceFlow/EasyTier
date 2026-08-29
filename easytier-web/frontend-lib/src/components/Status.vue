@@ -14,14 +14,45 @@ const props = withDefaults(defineProps<{
   curNetworkInst: NetworkInstance | null,
   api: RemoteClient,
   activeTab?: string,
+  /** 外层轮询在途时为 true:内容层加 .is-refreshing(降透明度),不重画骨架。 */
+  refreshing?: boolean,
+  /** 宿主未传入 curNetworkInst(首刷未回)时显示骨架。 */
+  loading?: boolean,
 }>(), {
   activeTab: 'all',
+  refreshing: false,
+  loading: false,
 })
 
 defineEmits(['switch-tab', 'start-network', 'stop-network', 'toggle-network'])
 
 const { t } = useI18n()
 const { smAndDown } = useDisplay()
+
+// 触觉反馈:组件内局部实现,不动共享 utils(避免与其他 agent 冲突)
+function vibrate(ms = 8) {
+  try {
+    navigator.vibrate?.(ms)
+  } catch {
+    /* ignore */
+  }
+}
+
+// 骨架屏:宿主首刷未回(既无实例也无错误)时给出占位而不是空白闪现
+const showSkeleton = computed(() => props.loading || !props.curNetworkInst)
+
+// 列表进出场的稳定 key:优先 peer_id,退化到 IP/主机名
+function peerKey(info: any, i: number): string {
+  const id = info?.route?.peer_id ?? info?.peer?.peer_id
+  if (id !== undefined && id !== null && id !== '') {
+    return `pid-${id}`
+  }
+  const ip = ipFormat(info)
+  if (ip) {
+    return `ip-${ip}`
+  }
+  return `idx-${info?.route?.hostname ?? 'na'}-${i}`
+}
 
 const peerRouteInfos = computed<any[]>(() => {
   if (props.curNetworkInst) {
@@ -41,6 +72,12 @@ const peerRouteInfos = computed<any[]>(() => {
 
 const peerFilter = ref<'all' | 'direct' | 'relay' | 'server'>('all')
 const peerSearch = ref('')
+const peersFilteredActive = computed(() => peerFilter.value !== 'all' || peerSearch.value.trim() !== '')
+
+function resetPeerFilters() {
+  peerFilter.value = 'all'
+  peerSearch.value = ''
+}
 
 const filteredPeers = computed(() => {
   let list = peerRouteInfos.value
@@ -373,6 +410,7 @@ async function copyText(text: string) {
     }
     ipCopied.value = true
     copyToast.value = true
+    vibrate(8)
     setTimeout(() => { ipCopied.value = false }, 2000)
   } catch (e) {
     console.error('Failed to copy', e)
@@ -471,6 +509,7 @@ async function copyVpnPortalClientConfig(client: VpnPortalClientInfo) {
       textarea.remove()
     }
     copiedVpnPortalClient.value = client.name
+    vibrate(8)
   } catch (error) {
     console.error('Failed to copy VPN Portal client config', error)
   }
@@ -520,21 +559,22 @@ const myHostname = computed(() => {
 
 <template>
   <div class="frontend-lib status-root">
-    <v-dialog v-model="dialogVisible" max-width="500px" :fullscreen="smAndDown">
+    <v-dialog v-model="dialogVisible" max-width="500px" :fullscreen="smAndDown" transition="dialog-bottom-transition">
       <v-card :title="t(dialogHeader)" rounded="xl" class="et-dialog-sheet">
         <v-card-text class="pa-4">
           <div v-if="dialogHeader === 'vpn_portal_config'" class="vpn-dialog-body">
-            <div v-if="vpnPortalLoading" class="pa-8 text-center text-medium-emphasis">
-              <v-progress-circular indeterminate color="primary" class="mb-2" />
-              <div>{{ t('web.device_management.loading_network_status') }}</div>
+            <div v-if="vpnPortalLoading" role="progressbar" aria-hidden="true" class="et-skeleton-stack py-2">
+              <v-skeleton-loader class="et-skeleton" type="list-item-two-line" boilerplate />
+              <v-skeleton-loader class="et-skeleton" type="list-item-two-line@2" boilerplate />
             </div>
             <div v-else-if="vpnPortalError" class="pa-4 text-error">
               {{ vpnPortalError }}
             </div>
             <div v-else-if="!vpnPortalInfo || ((!vpnPortalInfo.vpn_type || vpnPortalInfo.vpn_type === 'null') && vpnPortalClients.length === 0)"
-              class="pa-6 text-center text-medium-emphasis">
-              <v-icon size="40" class="mb-2 text-medium-emphasis">mdi-vpn</v-icon>
-              <div>{{ t('vpn_portal_not_configured') }}</div>
+              class="et-empty">
+              <div class="et-empty__icon"><v-icon size="26" color="primary">mdi-vpn</v-icon></div>
+              <div class="et-empty__title">{{ t('vpn_portal_not_configured') }}</div>
+              <div class="et-empty__hint">{{ t('status.vpn_portal_empty_hint', 'Enable VPN Portal in the config tab to share WireGuard access') }}</div>
             </div>
             <div v-else class="d-flex flex-column ga-3">
               <div class="et-group pa-3 mb-2">
@@ -549,7 +589,8 @@ const myHostname = computed(() => {
                 </div>
               </div>
 
-              <div v-for="client in vpnPortalClients" :key="client.name" class="et-group pa-3 mb-2">
+              <TransitionGroup tag="div" name="et-list-fade" class="d-flex flex-column ga-3 et-list-wrap">
+                <div v-for="client in vpnPortalClients" :key="client.name" class="et-group pa-3">
                 <div class="d-flex align-center justify-space-between mb-2">
                   <div class="font-weight-bold text-body-1">{{ client.name }} · {{ client.virtual_ip }}</div>
                   <v-chip :color="vpnPortalStateColor(client.state)" size="x-small" variant="tonal" class="font-weight-medium">
@@ -567,8 +608,9 @@ const myHostname = computed(() => {
                     {{ copiedVpnPortalClient === client.name ? t('config_copied') : t('vpn_portal_copy_client_config') }}
                   </v-btn>
                 </div>
-                <pre class="vpn-client-config mt-2 et-selectable">{{ client.client_config }}</pre>
-              </div>
+                  <pre class="vpn-client-config mt-2 et-selectable">{{ client.client_config }}</pre>
+                </div>
+              </TransitionGroup>
             </div>
           </div>
 
@@ -584,7 +626,11 @@ const myHostname = computed(() => {
                 <HumanEvent :event="item.event" />
               </v-timeline-item>
             </v-timeline>
-            <div v-else class="pa-8 text-center text-medium-emphasis">{{ t('no_events') }}</div>
+            <div v-else class="et-empty">
+              <div class="et-empty__icon"><v-icon size="26" color="primary">mdi-history</v-icon></div>
+              <div class="et-empty__title">{{ t('no_events') }}</div>
+              <div class="et-empty__hint">{{ t('status.event_log_empty_hint', 'Events will appear once the instance starts reporting') }}</div>
+            </div>
           </div>
         </v-card-text>
         <v-card-actions>
@@ -599,8 +645,14 @@ const myHostname = computed(() => {
       <v-card-text class="text-error">{{ curNetworkInst.error_msg }}</v-card-text>
     </v-card>
 
+    <!-- 首刷未回:hero+分组形状的骨架,避免空白闪现 -->
+    <div v-else-if="showSkeleton" role="progressbar" aria-hidden="true" class="et-skeleton-stack pt-4">
+      <v-skeleton-loader class="et-skeleton" type="article" boilerplate />
+      <v-skeleton-loader class="et-skeleton" type="list-item-avatar-two-line@3" boilerplate />
+    </div>
+
     <template v-else>
-      <div v-if="showHome" class="home-tab-content">
+      <div v-if="showHome" class="home-tab-content" :class="{ 'is-refreshing': refreshing }">
         <div class="et-hero">
           <div class="et-hero-mesh" aria-hidden="true" />
           <button
@@ -609,7 +661,7 @@ const myHostname = computed(() => {
             :class="{ 'is-on': isRunning }"
             :aria-pressed="isRunning"
             :aria-label="isRunning ? t('status.disconnect') : t('status.connect')"
-            @click="$emit('toggle-network')"
+            @click="vibrate(12); $emit('toggle-network')"
           >
             <span class="et-orb-ring" />
             <v-icon size="40">{{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
@@ -619,7 +671,7 @@ const myHostname = computed(() => {
             {{ isRunning ? t('status.connected') : t('status.disconnected') }}
           </div>
           <div class="et-hero-meta">
-            {{ myHostname }} · {{ otherPeerCount }} {{ t('status.devices_unit') }}
+            {{ myHostname }} · <span :key="otherPeerCount" class="et-num et-tick">{{ otherPeerCount }}</span> {{ t('status.devices_unit') }}
           </div>
           <div class="et-hero-hint">
             {{ isRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}
@@ -629,7 +681,7 @@ const myHostname = computed(() => {
         <div class="et-section">
           <div class="et-section-label">{{ t('status.network_identity') }}</div>
           <div class="et-group">
-            <div v-if="myVirtualIp" class="et-row et-row-pressable" @click="copyText(myVirtualIp)">
+            <div v-if="myVirtualIp" class="et-row et-row-pressable et-press-row" @click="copyText(myVirtualIp); vibrate(8)">
               <div class="d-flex align-center ga-3 min-w-0">
                 <div class="et-squircle" style="background: var(--et-accent);">
                   <v-icon size="18" color="onPrimary">mdi-ip-network-outline</v-icon>
@@ -678,16 +730,16 @@ const myHostname = computed(() => {
                 <v-icon size="14" color="primary">mdi-arrow-up</v-icon>
                 <span>{{ t('upload') }}</span>
               </div>
-              <div class="speed-val text-mono">{{ txRate }}/s</div>
-              <div class="text-caption text-medium-emphasis text-mono">{{ totalTxFormatted }} {{ t('status.total') }}</div>
+              <div class="speed-val text-mono et-num"><span :key="txRate" class="et-tick">{{ txRate }}</span>/s</div>
+              <div class="text-caption text-medium-emphasis text-mono et-num"><span :key="totalTxFormatted" class="et-tick">{{ totalTxFormatted }}</span> {{ t('status.total') }}</div>
             </div>
             <div class="speed-box">
               <div class="d-flex align-center ga-1 text-caption font-weight-bold" style="color: var(--et-info);">
                 <v-icon size="14" color="info">mdi-arrow-down</v-icon>
                 <span>{{ t('download') }}</span>
               </div>
-              <div class="speed-val text-mono">{{ rxRate }}/s</div>
-              <div class="text-caption text-medium-emphasis text-mono">{{ totalRxFormatted }} {{ t('status.total') }}</div>
+              <div class="speed-val text-mono et-num"><span :key="rxRate" class="et-tick">{{ rxRate }}</span>/s</div>
+              <div class="text-caption text-medium-emphasis text-mono et-num"><span :key="totalRxFormatted" class="et-tick">{{ totalRxFormatted }}</span> {{ t('status.total') }}</div>
             </div>
           </div>
           <div class="et-group pa-2">
@@ -698,7 +750,7 @@ const myHostname = computed(() => {
         <div class="et-section">
           <div class="et-section-label">{{ t('status.features') }}</div>
           <div class="et-group">
-            <div class="et-row et-row-pressable" @click="showVpnPortalConfig">
+            <div class="et-row et-row-pressable et-press-row" @click="showVpnPortalConfig">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: #7c5cbf;">
                   <v-icon size="18" color="white">mdi-vpn</v-icon>
@@ -710,7 +762,7 @@ const myHostname = computed(() => {
               </v-btn>
             </div>
 
-            <div class="et-row et-row-pressable" @click="showEventLogs">
+            <div class="et-row et-row-pressable et-press-row" @click="showEventLogs">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: var(--et-warning);">
                   <v-icon size="18" color="white">mdi-pulse</v-icon>
@@ -722,7 +774,7 @@ const myHostname = computed(() => {
               </v-btn>
             </div>
 
-            <div class="et-row et-row-pressable" @click="showNodeDetails = !showNodeDetails">
+            <div class="et-row et-row-pressable et-press-row" @click="showNodeDetails = !showNodeDetails">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: var(--et-info);">
                   <v-icon size="18" color="white">mdi-information-outline</v-icon>
@@ -735,18 +787,18 @@ const myHostname = computed(() => {
 
           <v-expand-transition>
             <div v-show="showNodeDetails" class="mt-2 px-1">
-              <div class="d-flex flex-wrap ga-1">
-                <v-chip v-for="(chip, i) in myNodeInfoChips" :key="i" size="x-small" variant="tonal" class="rounded-pill">
+              <TransitionGroup tag="div" name="et-list-fade" class="d-flex flex-wrap ga-1 et-list-wrap">
+                <v-chip v-for="chip in myNodeInfoChips" :key="chip.label" size="x-small" variant="tonal" class="rounded-pill">
                   <v-icon v-if="chip.icon" start size="12">{{ chip.icon }}</v-icon>
                   {{ chip.label }}
                 </v-chip>
-              </div>
+              </TransitionGroup>
             </div>
           </v-expand-transition>
         </div>
       </div>
 
-      <div v-if="showDevices" class="devices-tab-content">
+      <div v-if="showDevices" class="devices-tab-content" :class="{ 'is-refreshing': refreshing }">
         <div class="et-search mb-3">
           <v-text-field
             v-model="peerSearch"
@@ -778,44 +830,70 @@ const myHostname = computed(() => {
         </div>
 
         <div class="et-section">
-          <div class="et-section-label">{{ t('status.mesh_devices') }} ({{ filteredPeers.length }})</div>
+          <div class="et-section-label">
+            {{ t('status.mesh_devices') }} (<span class="et-num">{{ filteredPeers.length }}</span>)
+          </div>
           <div class="et-group">
-            <div
-              v-for="(info, i) in filteredPeers"
-              :key="i"
-              class="et-device-cell et-row-pressable"
-              @click="inspectPeer(info)"
-            >
-              <div class="d-flex align-center ga-3 min-w-0">
-                <div class="device-icon-wrap">
-                  <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'">
-                    <v-icon size="18" color="white">{{ peerDeviceIcon(info) }}</v-icon>
+            <TransitionGroup tag="div" name="et-list-fade" class="et-list-wrap">
+              <div
+                v-for="(info, i) in filteredPeers"
+                :key="peerKey(info, i)"
+                class="et-device-cell et-row-pressable et-press-row"
+                @click="inspectPeer(info)"
+              >
+                <div class="d-flex align-center ga-3 min-w-0">
+                  <div class="device-icon-wrap">
+                    <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'">
+                      <v-icon size="18" color="white">{{ peerDeviceIcon(info) }}</v-icon>
+                    </div>
+                    <div class="ping-dot" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'" />
                   </div>
-                  <div class="ping-dot" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'" />
+                  <div class="min-w-0">
+                    <div class="d-flex align-center ga-1">
+                      <span class="device-name truncate font-weight-bold">{{ info.route.hostname }}</span>
+                      <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">{{ t('status.server') }}</v-chip>
+                      <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">{{ t('status.relay') }}</v-chip>
+                    </div>
+                    <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(info) }}</div>
+                  </div>
                 </div>
-                <div class="min-w-0">
-                  <div class="d-flex align-center ga-1">
-                    <span class="device-name truncate font-weight-bold">{{ info.route.hostname }}</span>
-                    <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">{{ t('status.server') }}</v-chip>
-                    <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">{{ t('status.relay') }}</v-chip>
+                <div class="d-flex align-center ga-2 flex-shrink-0">
+                  <div class="text-end">
+                    <div class="text-mono text-caption font-weight-bold et-num" style="color: var(--et-accent);">
+                      <span :key="dash(latencyMs(info))" class="et-tick">{{ dash(latencyMs(info)) }}</span>
+                    </div>
+                    <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill">
+                      {{ routeCost(info) }}
+                    </v-chip>
                   </div>
-                  <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(info) }}</div>
+                  <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
                 </div>
               </div>
-              <div class="d-flex align-center ga-2 flex-shrink-0">
-                <div class="text-end">
-                  <div class="text-mono text-caption font-weight-bold" style="color: var(--et-accent);">{{ dash(latencyMs(info)) }}</div>
-                  <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill">
-                    {{ routeCost(info) }}
-                  </v-chip>
-                </div>
-                <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
-              </div>
-            </div>
+            </TransitionGroup>
 
-            <div v-if="filteredPeers.length === 0" class="text-center py-10 text-medium-emphasis">
-              <v-icon size="36" class="mb-2">mdi-devices</v-icon>
-              <div>{{ t('status.no_devices') }}</div>
+            <!-- 统一空态:图标 + 引导 + 条件性主操作(清除筛选) -->
+            <div v-if="filteredPeers.length === 0" class="et-empty">
+              <div class="et-empty__icon">
+                <v-icon size="26" color="primary">{{ peersFilteredActive ? 'mdi-magnify-close' : 'mdi-devices-plus' }}</v-icon>
+              </div>
+              <div class="et-empty__title">{{ t('status.no_devices') }}</div>
+              <div class="et-empty__hint">
+                {{ peersFilteredActive
+                  ? t('status.no_devices_filtered_hint', 'No match for current search or filter')
+                  : t('status.no_devices_hint', 'Waiting for peers to join this network') }}
+              </div>
+              <v-btn
+                v-if="peersFilteredActive"
+                class="mt-3"
+                size="small"
+                variant="tonal"
+                color="primary"
+                rounded="pill"
+                :prepend-icon="'mdi-filter-remove-outline'"
+                @click="resetPeerFilters"
+              >
+                {{ t('status.clear_filters', 'Clear filters') }}
+              </v-btn>
             </div>
           </div>
         </div>
@@ -1047,6 +1125,12 @@ const myHostname = computed(() => {
 
 .et-device-cell:last-child { border-bottom: none; }
 
+/* TransitionGroup 容器:为 leave-active 的绝对定位提供包含块 */
+.et-list-wrap {
+  position: relative;
+  display: block;
+}
+
 .device-icon-wrap {
   position: relative;
   flex-shrink: 0;
@@ -1112,6 +1196,126 @@ const myHostname = computed(() => {
 
 .text-mono {
   font-family: var(--font-mono);
+}
+
+/* ---------- 数字质感 ---------- */
+.et-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 骨架 ---------- */
+.et-skeleton {
+  background: transparent !important;
+  width: 100%;
+}
+
+.et-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 1rem;
+}
+
+/* ---------- 静默刷新 ---------- */
+.is-refreshing {
+  opacity: 0.66;
+  pointer-events: none;
+}
+
+/* ---------- 空态 ---------- */
+.et-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.25rem;
+  color: var(--et-text-secondary);
+}
+
+.et-empty__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--et-accent-dim);
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.et-empty__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--et-text);
+}
+
+.et-empty__hint {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  max-width: 18rem;
+  margin-top: 0.25rem;
+}
+
+/* ---------- 动效(仅在允许动效的设备上启用) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* 数值刷新柔和过渡:key 触发重挂载 → 60ms fade */
+  .et-tick {
+    animation: et-tick-in 60ms ease-out;
+  }
+
+  .et-press-row,
+  .speed-box {
+    transition: transform 140ms ease-out, background-color 140ms ease-out, opacity 140ms ease-out;
+  }
+
+  .et-press-row:active {
+    transform: scale(0.985);
+  }
+
+  .et-power-orb {
+    transition: transform 140ms ease-out;
+  }
+
+  .is-refreshing {
+    transition: opacity 150ms ease-out;
+  }
+
+  /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */
+  .et-list-fade-enter-active,
+  .et-list-fade-leave-active {
+    transition: opacity 180ms ease-out, transform 180ms ease-out;
+  }
+
+  .et-list-fade-enter-from,
+  .et-list-fade-leave-to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  .et-list-fade-leave-active {
+    position: absolute;
+    width: 100%;
+  }
+
+  .et-list-fade-move {
+    transition: transform 160ms ease-out;
+  }
+
+  .et-skeleton :deep(.v-skeleton-loader__bone::after) {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--et-accent) 10%, transparent),
+      transparent
+    );
+  }
+}
+
+@keyframes et-tick-in {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

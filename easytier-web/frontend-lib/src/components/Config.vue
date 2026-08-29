@@ -19,9 +19,20 @@ const props = defineProps<{
   actionLabel?: string
   configInvalid?: boolean
   hostname?: string
+  /** 首刷配置在途:true 时表单区以骨架占位,避免默认值表单闪现 */
+  loading?: boolean
 }>()
 
 defineEmits(['runNetwork'])
+
+// 触觉反馈:组件内局部实现,不动共享 utils(避免与其他 agent 冲突)
+function vibrate(ms = 8) {
+  try {
+    navigator.vibrate?.(ms)
+  } catch {
+    /* ignore */
+  }
+}
 
 const curNetwork = defineModel('curNetwork', {
   type: Object as () => NetworkConfig,
@@ -249,6 +260,14 @@ watch(
 
 <template>
   <div class="config-root">
+    <!-- 首刷配置未回:4 个分组卡片形状的骨架(不渲染表单,避免测试/宿主语义混淆) -->
+    <div v-if="loading" role="progressbar" aria-hidden="true" class="et-skeleton-stack">
+      <v-skeleton-loader class="et-skeleton" type="article, list-item-two-line@2" boilerplate />
+      <v-skeleton-loader class="et-skeleton" type="article" boilerplate />
+      <v-skeleton-loader class="et-skeleton" type="article" boilerplate />
+    </div>
+
+    <template v-else>
     <!-- ============ SECTION 1: BASIC SETTINGS ============ -->
     <v-expansion-panels v-model="basicPanel" variant="accordion" class="et-config-panel-group mb-3">
       <v-expansion-panel :title="t('basic_settings')" class="et-config-panel">
@@ -296,6 +315,7 @@ watch(
                     inset
                     density="compact"
                     class="ma-0 pa-0"
+                    @update:model-value="vibrate(8)"
                   />
                 </div>
               </div>
@@ -381,6 +401,7 @@ watch(
                       inset
                       density="compact"
                       class="ma-0 pa-0 flex-shrink-0"
+                      @update:model-value="vibrate(8)"
                     />
                   </div>
                 </div>
@@ -426,7 +447,7 @@ watch(
                   <v-icon color="primary" size="18">mdi-vpn</v-icon>
                   <label class="config-label font-weight-bold">{{ t('vpn_portal_label') }}</label>
                 </div>
-                <v-switch id="vpn_portal_enabled" v-model="vpnPortalEnabled" color="primary" hide-details inset density="compact" />
+                <v-switch id="vpn_portal_enabled" @update:model-value="vibrate(8)" v-model="vpnPortalEnabled" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="vpnPortalEnabled" class="d-flex flex-column ga-3 vpn-portal-section pa-3 rounded-lg">
                 <div class="d-flex flex-column flex-sm-row ga-3">
@@ -607,7 +628,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch id="enable_relay_network_whitelist" v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_relay_network_whitelist" @update:model-value="vibrate(8)" v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_relay_network_whitelist" class="mt-2">
                 <v-combobox
@@ -636,7 +657,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch id="enable_manual_routes" v-model="curNetwork.enable_manual_routes" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_manual_routes" @update:model-value="vibrate(8)" v-model="curNetwork.enable_manual_routes" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_manual_routes" class="mt-2">
                 <v-combobox
@@ -665,7 +686,7 @@ watch(
                     </template>
                   </v-tooltip>
                 </div>
-                <v-switch id="enable_socks5" v-model="curNetwork.enable_socks5" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_socks5" @update:model-value="vibrate(8)" v-model="curNetwork.enable_socks5" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_socks5" class="mt-2">
                 <v-text-field
@@ -797,11 +818,16 @@ watch(
           <div v-if="curNetwork.acl" class="d-flex flex-column ga-2">
             <AclManager v-model="curNetwork.acl" />
           </div>
-          <div v-else class="d-flex justify-center pa-4">
+          <div v-else class="et-empty">
+            <div class="et-empty__icon"><v-icon size="26" color="primary">mdi-shield-lock-outline</v-icon></div>
+            <div class="et-empty__title">{{ t('acl.empty_title', 'Access control is off') }}</div>
+            <div class="et-empty__hint">{{ t('acl.empty_hint', 'Enable ACL to define which traffic may cross the mesh') }}</div>
             <v-btn
+              class="mt-3"
               color="primary"
               variant="tonal"
               rounded="pill"
+              :prepend-icon="'mdi-shield-check-outline'"
               @click="curNetwork.acl = { acl_v1: { chains: [], group: { declares: [], members: [] } } }"
             >
               {{ t('acl.enabled') }}
@@ -810,9 +836,10 @@ watch(
         </template>
       </v-expansion-panel>
     </v-expansion-panels>
+    </template>
 
     <!-- Edit port forward dialog (mobile) -->
-    <v-dialog v-model="editingPortForward" max-width="480px" :fullscreen="smAndDown">
+    <v-dialog v-model="editingPortForward" max-width="480px" :fullscreen="smAndDown" transition="dialog-bottom-transition">
       <v-card :title="t('port_forwards')" rounded="xl" class="ios-dialog-sheet">
         <v-card-text v-if="editingPortForwardData">
           <div class="d-flex flex-column ga-3">
@@ -857,8 +884,8 @@ watch(
         rounded="pill"
         :prepend-icon="'mdi-play-circle-outline'"
         class="et-run-btn"
-        :disabled="configInvalid"
-        @click="$emit('runNetwork', curNetwork)"
+        :disabled="configInvalid || loading"
+        @click="vibrate(12); $emit('runNetwork', curNetwork)"
       >
         {{ actionLabel || t('run_network') }}
       </v-btn>
@@ -951,6 +978,75 @@ watch(
   font-weight: 700;
   font-size: 0.9375rem;
   box-shadow: 0 8px 24px var(--et-glow);
+}
+
+/* ---------- 骨架 ---------- */
+.et-skeleton {
+  background: transparent !important;
+  width: 100%;
+}
+
+.et-skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 1rem;
+}
+
+/* ---------- 空态 ---------- */
+.et-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.25rem;
+  color: var(--et-text-secondary);
+}
+
+.et-empty__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--et-accent-dim);
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.et-empty__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--et-text);
+}
+
+.et-empty__hint {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  max-width: 18rem;
+  margin-top: 0.25rem;
+}
+
+/* ---------- 按压反馈:分组开关行 + 折叠面板标题 ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .et-config-panel :deep(.v-expansion-panel-title) {
+    transition: background-color 140ms ease-out, opacity 140ms ease-out;
+  }
+
+  .et-config-panel :deep(.v-expansion-panel-title):active {
+    background-color: var(--et-surface-2);
+  }
+
+  .et-skeleton :deep(.v-skeleton-loader__bone::after) {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--et-accent) 10%, transparent),
+      transparent
+    );
+  }
 }
 
 .truncate {
