@@ -469,16 +469,14 @@ const statusTone = computed(() => {
 
 .et-rate-roll {
   display: inline-block;
-  animation: et-rate-in 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
+  animation: et-rate-in 0.06s ease-out;
 }
 
 @keyframes et-rate-in {
   from {
-    transform: translateY(7px);
     opacity: 0;
   }
   to {
-    transform: none;
     opacity: 1;
   }
 }
@@ -603,6 +601,34 @@ const statusTone = computed(() => {
   text-overflow: ellipsis;
 }
 
+/* ---- shimmer skeletons: shown before the first network-info reply.
+   deliberately scoped here — styles.css stays untouched (shared surface) ---- */
+.et-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--et-surface-2);
+}
+
+.et-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--et-surface-3) 72%, transparent) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: et-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes et-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* staggered entrance — cascading reveal, restrained steps */
 .et-reveal {
   opacity: 0;
@@ -643,6 +669,9 @@ const statusTone = computed(() => {
     opacity: 1;
   }
   .et-rate-roll {
+    animation: none;
+  }
+  .et-skeleton::after {
     animation: none;
   }
   .et-hero-shield.is-on {

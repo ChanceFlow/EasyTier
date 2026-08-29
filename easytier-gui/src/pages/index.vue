@@ -834,4 +834,27 @@ async function exitApp(): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* the collapsed "advanced console" disclosure under the phone hero */
+.et-adv-wrap {
+  padding: 0 16px;
+}
+
+.et-adv-panel {
+  background: var(--et-surface) !important;
+  border: 1px solid var(--et-border) !important;
+  border-radius: var(--et-radius) !important;
+}
+
+.et-adv-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.et-adv-sub {
+  font-size: 0.72rem;
+  color: var(--et-text-secondary);
+  margin-top: 1px;
+}
 </style>
