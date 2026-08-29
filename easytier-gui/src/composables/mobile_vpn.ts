@@ -534,9 +534,9 @@ async function tickIoNotification() {
     // typings (snake vs camel localNames), so read them dynamically
     for (const peer of info?.peers ?? []) {
       for (const raw of peer?.conns ?? []) {
-        const conn = raw as Record<string, unknown>
+        const conn = raw as unknown as Record<string, unknown>
         if (conn.is_closed ?? conn.isClosed) continue
-        const st = (conn.stats ?? {}) as Record<string, unknown>
+        const st = (conn.stats ?? {}) as unknown as Record<string, unknown>
         rx += Number(st.rx_bytes ?? st.rxBytes ?? 0)
         tx += Number(st.tx_bytes ?? st.txBytes ?? 0)
       }
