@@ -1,0 +1,70 @@
+# Merge-to-main orchestrator (Gitea -> GitHub)
+#
+# GitHub forks do not fire workflow runs on push events (verified), so this
+# job is the bridge: it fast-forwards the public GitHub fork with the Gitea
+# main branch and explicitly dispatches the full-product build matrix there
+# (GitHub-hosted runners: Linux/Windows/macOS/FreeBSD + GUI installers +
+# Android APKs). Gitea itself only mirrors the finished artifacts back
+# (see mirror-github-release.yml + its daily schedule).
+#
+# No server addresses or tokens in this file:
+#   secrets.ET_SERVER_URL   Gitea base url
+#   secrets.ET_TOKEN        Gitea token (repo clone)
+#   secrets.GH_PUSH_TOKEN   GitHub PAT: repo + workflow scopes
+#
+# NOTE: the push trigger is intentionally OFF until the current release
+# pipeline has drained - enabling it while builds are in flight would let
+# GitHub's concurrency cancel the running builds. Flip it on manually later.
+
+name: GitHub Release Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_only:
+        description: 'just fast-forward the fork, skip build dispatch'
+        type: boolean
+        default: false
+
+env:
+  GH_REPO: ChanceFlow/EasyTier
+
+jobs:
+  bridge:
+    runs-on: easytier-builder
+    env:
+      ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+      ET_TOKEN: ${{ secrets.ET_TOKEN }}
+      GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
+      SYNC_ONLY: ${{ inputs.sync_only }}
+    steps:
+      - name: Sync main to GitHub fork and dispatch builds
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_PUSH_TOKEN:-}" ]]; then
+            echo "error: secrets.GH_PUSH_TOKEN not set" >&2; exit 1
+          fi
+          REPO="${{ github.repository }}"
+          GIT_URL=$(printf '%s' "$ET_SERVER_URL" | sed "s#://#://x-access-token:${ET_TOKEN}@#")
+          WORK=$(mktemp -d)
+          git clone -q --single-branch -b main "$GIT_URL/$REPO.git" "$WORK/r"
+          SHA=$(git -C "$WORK/r" rev-parse --short HEAD)
+          echo "==> gitea main @ $SHA -> github $GH_REPO"
+
+          AUTHB=$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 | tr -d '\n')
+          git -C "$WORK/r" -c "http.extraHeader=Authorization: Basic $AUTHB" \
+            push https://github.com/$GH_REPO.git main:main
+          echo "==> fork fast-forwarded (no force)"
+
+          if [[ "${SYNC_ONLY:-false}" == "true" ]]; then
+            echo "sync_only set, skipping build dispatch"; exit 0
+          fi
+
+          API="https://api.github.com/repos/$GH_REPO/actions/workflows"
+          for wf in core.yml gui.yml mobile.yml; do
+            curl -fsS -X POST -H "Authorization: Bearer $GH_PUSH_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"ref":"main"}' "$API/$wf/dispatches" \
+              && echo "dispatched $wf" || echo "FAILED to dispatch $wf" >&2
+          done
+          echo "==> builds queued on GitHub; release auto-assembles via assemble.yml when they finish"

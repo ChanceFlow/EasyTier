@@ -1,0 +1,77 @@
+# Auto-assemble the mobile/desktop/core products into a GitHub Release once
+# the full build trio (Core + GUI + Mobile) has finished green on main.
+#
+# Purely event-driven (workflow_run), so this works even though fork push
+# events never fire normal runs. When all three latest-completed main runs
+# share one commit and no release exists for the current tag, it dispatches
+# upstream's release.yml with the three run ids; when that assembly run
+# finishes, the publish job un-drafts it (upstream creates drafts).
+#
+# Manual override stays available: dispatch release.yml yourself with run ids.
+
+name: Assemble Release
+
+on:
+  workflow_run:
+    workflows: ["EasyTier Core", "EasyTier GUI", "EasyTier Mobile", "EasyTier Release"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  trigger-assembly:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.name != 'EasyTier Release' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency: assemble-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      - name: Dispatch release.yml when the trio is green on one sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V=$(git describe --tags --abbrev=0 HEAD)
+          latest() {
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$1/runs?branch=main&status=completed&per_page=5" \
+              --jq '.workflow_runs[] | select(.conclusion=="success") | "\(.id) \(.head_sha)"' | head -1
+          }
+          C=$(latest core.yml); G=$(latest gui.yml); M=$(latest mobile.yml)
+          if [ -z "$C$G$M" ]; then echo "trio incomplete yet"; exit 0; fi
+          SC=${C#* }; SG=${G#* }; SM=${M#* }
+          if [ "$SC" != "$SG" ] || [ "$SG" != "$SM" ]; then
+            echo "trio shas differ ($SC $SG $SM) - a build is stale or pending, waiting"; exit 0
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$V" --jq .id 2>/dev/null; then
+            echo "release $V already exists; re-assembly: dispatch release.yml manually"; exit 0
+          fi
+          gh workflow run release.yml \
+            -f core_run_id="${C%% *}" -f gui_run_id="${G%% *}" -f mobile_run_id="${M%% *}" \
+            -f version="$V" -f make_latest=true
+          echo "==> dispatched release.yml for $V (run ids ${C%% *}/${G%% *}/${M%% *})"
+
+  publish-assembly:
+    if: >-
+      github.event.workflow_run.name == 'EasyTier Release' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Un-draft the freshly assembled release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=5" \
+            --jq '.[] | select(.draft) | .id' | while read -r id; do
+              [ -n "$id" ] || continue
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f draft=false >/dev/null
+              echo "==> published release $id"
+            done
