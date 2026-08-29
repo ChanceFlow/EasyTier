@@ -51,3 +51,10 @@ export async function get_vpn_status(): Promise<VpnStatusResponse | null> {
 export async function update_notification(rxRate: number, txRate: number): Promise<InvokeResponse | null> {
   return await invoke<InvokeResponse>('plugin:vpnservice|update_notification', { rxRate, txRate })
 }
+
+// Sync the native system bars (status bar / navigation bar) with the app theme.
+// dark=true keeps light (white) bar icons for the dark theme; dark=false makes
+// Android render dark bar icons so they stay readable on the light theme.
+export async function set_ui_chrome(dark: boolean): Promise<InvokeResponse | null> {
+  return await invoke<InvokeResponse>('plugin:vpnservice|set_ui_chrome', { dark })
+}
