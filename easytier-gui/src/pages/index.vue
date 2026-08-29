@@ -9,6 +9,7 @@ import { exit } from '@tauri-apps/plugin-process'
 import { I18nUtils, RemoteManagement, Utils } from "easytier-frontend-lib"
 import { useTray } from '~/composables/tray'
 import { initMobileVpnService, mobileStats, setMobileStatsInstanceId, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { initSysBarSync } from '~/composables/sysbar'
 import { usePhoneText } from '~/composables/hero_text'
 import { GUIRemoteClient } from '~/modules/api'
 
@@ -244,6 +245,7 @@ onMounted(async () => {
   }
 
   if (type() === 'android') {
+    initSysBarSync(theme.global.name)
     try {
       await initMobileVpnService()
     } catch (e: any) {
