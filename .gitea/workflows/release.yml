@@ -1,0 +1,646 @@
+# EasyTier Gitea Release
+#
+# Gitea-native release pipeline: build the FULL platform matrix on a Gitea
+# Actions runner and publish it to a Gitea/Forgejo release over the REST
+# API, mirroring the upstream GitHub release set:
+#
+#   linux:  x86_64 aarch64 riscv64 loongarch64 armv7hf armv7 armhf arm
+#           mips mipsel        (musl static, cargo-zigbuild; mips uses
+#                               musl-cross gcc + -Z build-std)
+#   freebsd: x86_64
+#   windows: x86_64 i686       (mingw-w64 gcc cross toolchain; windivert-
+#                               sys takes its gnu.rs path with a real
+#                               gcc-family cc — the zigcc wrapper is not
+#                               is_like_gnu and would hit the MSVC path)
+#   macos:  x86_64 aarch64     (cargo-zigbuild + bundled macOS SDK tbd
+#                               stubs in /opt/macos-sdk; no Mac needed)
+#   android: aarch64 armv7 i686 x86_64
+#                               (NDK clang from /opt/ndk; core+cli only,
+#                               APKs stay with the upstream mobile flow)
+#   extras: Easytier-Magisk module, easytier-web-dashboard
+#
+# NOT built here: GUI apps (Tauri GUI needs native per-platform runners)
+# and Android APKs (upstream GitHub mobile workflow). Those remain
+# upstream GitHub releases — or get their own native runners later.
+#
+# The job runs on the prebaked `easytier-builder` runner image
+# (docker/easytier-runner.Dockerfile, built by docker/build-image.sh):
+# system build deps, rust 1.95 + all cross targets, zig + cargo-zigbuild,
+# mingw-w64 gcc, Android NDK, macOS SDK tbds, node/pnpm/wasm-pack, a warm
+# cargo registry AND pnpm store are baked in, so jobs download nothing at
+# run time.
+#
+# This file contains NO server addresses, tokens or secrets. Everything is
+# supplied at runtime:
+#
+#   Repository secrets (Settings -> Actions -> Secrets):
+#     ET_SERVER_URL   e.g. http://gitea.example:3000   (no trailing slash)
+#     ET_TOKEN        access token with "repository" write scope
+#
+#   Owner/repo come from ${{ github.repository }} at runtime.
+#
+# One release is created (or reused) and every zip is attached to it.
+# The tag must exist AND point at the built commit, otherwise this Gitea
+# stores an empty-sha1 release that never becomes visible; the release job
+# therefore force-pushes the version tag from the checkout first.
+#
+# Note: Gitea reads workflows from `.gitea/workflows/`; when that directory
+# exists it takes precedence over `.github/workflows/`.
+#
+# To run it: Gitea -> Actions -> "EasyTier Gitea Release" -> Run workflow
+# -> fill in the version (e.g. v2.6.4).
+
+name: EasyTier Gitea Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version/tag for this release, e.g. v2.6.4'
+        type: string
+        required: true
+      publish:
+        description: 'Publish the release now (unchecked keeps it draft)'
+        type: boolean
+        default: true
+
+jobs:
+  frontend:
+    # Build the web dashboard once; the dist is embedded into every
+    # target's easytier-web-embed binary and zipped for the release.
+    runs-on: easytier-builder
+    env:
+      # act_runner does not set CI=true like GitHub does; pnpm aborts
+      # without a TTY when it wants to purge stale node_modules (the repo
+      # commits them), so declare CI explicitly.
+      CI: "true"
+      CARGO_NET_RETRY: "10"
+      CARGO_HTTP_TIMEOUT: "120"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install web dependencies
+        run: |
+          set -euo pipefail
+          # Pin the store baked into the image (job env can otherwise make
+          # pnpm miss it and re-download everything through a slow egress),
+          # and surface the image's egress proxy to npm/pnpm explicitly
+          # (node's undici ignores HTTP_PROXY without NODE_USE_ENV_PROXY).
+          export npm_config_store_dir=/root/.local/share/pnpm/store
+          export npm_config_proxy="$HTTP_PROXY"
+          export npm_config_https_proxy="$HTTPS_PROXY"
+          export npm_config_noproxy="$NO_PROXY"
+          export NODE_USE_ENV_PROXY=1
+          for attempt in 1 2 3; do
+            if pnpm -r --filter './easytier-web/*' install --frozen-lockfile; then
+              break
+            fi
+            echo "pnpm install attempt $attempt failed, retrying in 10s"
+            sleep 10
+          done
+
+      - name: Build web workspace
+        run: |
+          set -euo pipefail
+          pnpm -r --workspace-concurrency=1 --filter './easytier-web/*' build
+
+      - name: Bundle config-generator with web frontend
+        run: |
+          set -euo pipefail
+          if [ -f easytier-web/frontend/dist/index.html ] && [ -f easytier-web/config-generator/dist/index.html ]; then
+            mkdir -p easytier-web/frontend/dist/config-generator
+            cp -R easytier-web/config-generator/dist/. easytier-web/frontend/dist/config-generator/
+          fi
+
+      - name: Upload web dashboard dist
+        uses: actions/upload-artifact@v3
+        with:
+          name: easytier-web-dashboard
+          path: easytier-web/frontend/dist/
+
+  build:
+    runs-on: easytier-builder
+    needs: frontend
+    env:
+      CARGO_NET_RETRY: "10"
+      CARGO_HTTP_TIMEOUT: "120"
+      PROTOC_INCLUDE: /usr/include
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - TARGET: x86_64-unknown-linux-musl
+            NAME: linux-x86_64
+          - TARGET: aarch64-unknown-linux-musl
+            NAME: linux-aarch64
+          - TARGET: riscv64gc-unknown-linux-musl
+            NAME: linux-riscv64
+          - TARGET: loongarch64-unknown-linux-musl
+            NAME: linux-loongarch64
+          - TARGET: armv7-unknown-linux-musleabihf
+            NAME: linux-armv7hf
+          - TARGET: armv7-unknown-linux-musleabi
+            NAME: linux-armv7
+          - TARGET: arm-unknown-linux-musleabihf
+            NAME: linux-armhf
+          - TARGET: arm-unknown-linux-musleabi
+            NAME: linux-arm
+          - TARGET: mips-unknown-linux-musl
+            NAME: linux-mips
+            MIPS: true
+          - TARGET: mipsel-unknown-linux-musl
+            NAME: linux-mipsel
+            MIPS: true
+          - TARGET: x86_64-unknown-freebsd
+            NAME: freebsd-13.2-x86_64
+          # Windows x86_64/i686: mingw-w64 gcc cross toolchain. windivert-
+          # sys picks gnu.rs only for a real gcc-family cc; cargo-zigbuild's
+          # zigcc wrapper is not detected as gnu and falls into the MSVC
+          # flags path, so these use plain `cargo build` + mingw gcc.
+          - TARGET: x86_64-pc-windows-gnu
+            NAME: windows-x86_64
+            CROSS: mingw
+            # easytier-web declares "Only Windows(MSVC) is supported!", so
+            # the mingw cross builds ship core+cli only (same as android).
+            CORE_ONLY: true
+          - TARGET: i686-pc-windows-gnu
+            NAME: windows-i686
+            CROSS: mingw
+            CORE_ONLY: true
+          # macOS x86_64/aarch64: cargo-zigbuild (zig linker) + the tiny
+          # macOS SDK tbd stubs baked in /opt/macos-sdk (CoreFoundation,
+          # SystemConfiguration, IOKit, libobjc). No Mac required.
+          - TARGET: x86_64-apple-darwin
+            NAME: macos-x86_64
+            CROSS: zig
+          - TARGET: aarch64-apple-darwin
+            NAME: macos-aarch64
+            CROSS: zig
+          # Android core+cli only (NDK clang from /opt/ndk). APKs are
+          # produced by the upstream GitHub mobile workflow, not here.
+          - TARGET: aarch64-linux-android
+            NAME: android-aarch64
+            CROSS: ndk
+            CORE_ONLY: true
+          - TARGET: armv7-linux-androideabi
+            NAME: android-armv7
+            CROSS: ndk
+            CORE_ONLY: true
+          - TARGET: i686-linux-android
+            NAME: android-i686
+            CROSS: ndk
+            CORE_ONLY: true
+          - TARGET: x86_64-linux-android
+            NAME: android-x86_64
+            CROSS: ndk
+            CORE_ONLY: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Restore web dashboard dist
+        uses: actions/download-artifact@v3
+        with:
+          name: easytier-web-dashboard
+          path: easytier-web/frontend/dist/
+
+      - name: Build release binaries
+        env:
+          TARGET: ${{ matrix.TARGET }}
+          NAME: ${{ matrix.NAME }}
+          VERSION: ${{ inputs.version }}
+          MIPS: ${{ matrix.MIPS }}
+          BUILD_STD: ${{ matrix.BUILD_STD }}
+          CROSS: ${{ matrix.CROSS }}
+          CORE_ONLY: ${{ matrix.CORE_ONLY }}
+        run: |
+          set -euo pipefail
+          SUFFIX=""
+          if [[ "$TARGET" == *windows* ]]; then SUFFIX=".exe"; fi
+
+          if [[ "$TARGET" =~ ^(riscv64|loongarch64|aarch64).*$ || "$TARGET" =~ (freebsd|windows) ]]; then
+            FEATURES="mimalloc"
+          else
+            FEATURES="jemalloc"
+          fi
+
+          mkdir -p "artifacts/$NAME"
+
+          if [[ "${MIPS:-}" == "true" ]]; then
+            # mips/mipsel: musl-cross gcc + -Z build-std (upstream path).
+            # ./musl_gcc points at the baked /opt/musl_gcc; the
+            # .cargo/config.toml mips sections reference it.
+            ln -sfn /opt/musl_gcc ./musl_gcc
+            export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(readlink -f musl_gcc/sysroot)"
+            RUSTC_BOOTSTRAP=1 cargo build -r --target "$TARGET" \
+              -Z build-std=std,panic_abort --package=easytier --features=jemalloc
+            cp "target/$TARGET/release/easytier-core$SUFFIX" "artifacts/$NAME/"
+            cp "target/$TARGET/release/easytier-cli$SUFFIX" "artifacts/$NAME/"
+            (cd artifacts && zip -qr "../easytier-$NAME-$VERSION.zip" "$NAME")
+            echo "### packaged easytier-$NAME-$VERSION.zip (mips: core+cli only)"
+            exit 0
+          fi
+
+          # ---- cross toolchain selection (per matrix.CROSS) ----
+          CARGO="cargo zigbuild"
+          case "${CROSS:-}" in
+            mingw)
+              # Windows GNU: a real mingw gcc makes windivert-sys take its
+              # gnu.rs path (cc-rs is_like_gnu() is false for zig's cc
+              # wrapper, which would fall into the broken MSVC flags path).
+              export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
+              export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
+              export CC_i686_pc_windows_gnu=i686-w64-mingw32-gcc
+              export CARGO_TARGET_I686_PC_WINDOWS_GNU_LINKER=i686-w64-mingw32-gcc
+              CARGO="cargo build"
+              ;;
+            ndk)
+              # Android: NDK clang (zig ships no bionic libc). kcp-sys'
+              # bindgen needs the bionic sysroot via BINDGEN_EXTRA_CLANG_ARGS.
+              NDK=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
+              case "$TARGET" in
+                aarch64*) ABI=aarch64-linux-android24 ;;
+                armv7*)   ABI=armv7a-linux-androideabi24 ;;
+                i686*)    ABI=i686-linux-android24 ;;
+                x86_64*)  ABI=x86_64-linux-android24 ;;
+              esac
+              export "CC_${TARGET//-/_}=$NDK/bin/$ABI-clang"
+              export "CARGO_TARGET_$(echo "${TARGET//-/_}" | tr '[:lower:]' '[:upper:]')_LINKER=$NDK/bin/$ABI-clang"
+              export "AR_${TARGET//-/_}=$NDK/bin/llvm-ar"
+              export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$NDK/sysroot --target=$ABI"
+              FEATURES="mimalloc" # jemalloc does not cross-build for android
+              CARGO="cargo build"
+              # 32-bit x86 android lacks native 64-bit atomics; rustc emits
+              # __atomic_load/... calls that need -latomic (NDK ships the
+              # archive, clang driver finds it). armv7 has ARM atomics so
+              # only i686 needs this. mimalloc also fails to link on i686
+              # (undefined _mi_stats_print from its 32-bit static build),
+              # so i686 falls back to the default system allocator.
+              if [[ "$TARGET" == "i686-linux-android" ]]; then
+                export CARGO_TARGET_I686_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-latomic"
+                FEATURES=""
+              fi
+              ;;
+            zig)
+              # macOS: zig linker + the bundled macOS SDK tbd stubs
+              # (CoreFoundation, SystemConfiguration, IOKit, libobjc).
+              export CARGO_TARGET_X86_64_APPLE_DARWIN_RUSTFLAGS="-C link-arg=-F/opt/macos-sdk/System/Library/Frameworks -C link-arg=-L/opt/macos-sdk/usr/lib"
+              export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-C link-arg=-F/opt/macos-sdk/System/Library/Frameworks -C link-arg=-L/opt/macos-sdk/usr/lib"
+              FEATURES="mimalloc" # jemalloc does not cross-build for darwin
+              ;;
+          esac
+
+          # android/windows-mingw: core+cli only (no web binaries, no DLLs)
+          if [[ "${CORE_ONLY:-}" == "true" ]]; then
+            # i686-linux-android builds with the default system allocator
+            # (FEATURES=""), so only pass --features when non-empty.
+            FEATURES_ARGS=()
+            if [[ -n "${FEATURES:-}" ]]; then
+              FEATURES_ARGS=(--features="$FEATURES")
+            fi
+            $CARGO --release --target "$TARGET" --package=easytier "${FEATURES_ARGS[@]}"
+            cp "target/$TARGET/release/easytier-core$SUFFIX" "artifacts/$NAME/"
+            cp "target/$TARGET/release/easytier-cli$SUFFIX" "artifacts/$NAME/"
+            (cd artifacts && zip -qr "../easytier-$NAME-$VERSION.zip" "$NAME")
+            echo "### packaged easytier-$NAME-$VERSION.zip (core+cli only)"
+            exit 0
+          fi
+
+          # easytier-web with embed first, then rename to web-embed
+          if [[ "${BUILD_STD:-}" == "true" ]]; then
+            # aarch64-pc-windows-gnu: no prebuilt std on 1.95, build it
+            # from source via zig (-Z build-std).
+            RUSTC_BOOTSTRAP=1 $CARGO --release --target "$TARGET" \
+              -Z build-std=std,panic_abort --package=easytier-web --features=embed
+          else
+            $CARGO --release --target "$TARGET" --package=easytier-web --features=embed
+          fi
+          mv "target/$TARGET/release/easytier-web$SUFFIX" \
+             "target/$TARGET/release/easytier-web-embed$SUFFIX"
+
+          # default members (easytier, easytier-web) with allocator feature
+          if [[ "${BUILD_STD:-}" == "true" ]]; then
+            RUSTC_BOOTSTRAP=1 $CARGO --release --target "$TARGET" \
+              -Z build-std=std,panic_abort --features="$FEATURES"
+          else
+            $CARGO --release --target "$TARGET" --features="$FEATURES"
+          fi
+
+          # windows: ship the bundled driver DLLs
+          if [[ "$TARGET" == *windows* ]]; then
+            case "$TARGET" in
+              x86_64*)  ARCH_DIR=x86_64 ;;
+              i686*)    ARCH_DIR=i686 ;;
+              aarch64*) ARCH_DIR=arm64 ;;
+            esac
+            find "easytier/third_party/$ARCH_DIR" -maxdepth 1 -type f \
+              \( -name "*.dll" -o -name "*.sys" \) \
+              -exec cp {} "artifacts/$NAME/" \;
+          fi
+
+          cp "target/$TARGET/release/easytier-core$SUFFIX" "artifacts/$NAME/"
+          cp "target/$TARGET/release/easytier-cli$SUFFIX" "artifacts/$NAME/"
+          cp "target/$TARGET/release/easytier-web$SUFFIX" "artifacts/$NAME/"
+          cp "target/$TARGET/release/easytier-web-embed$SUFFIX" "artifacts/$NAME/"
+          (cd artifacts && zip -qr "../easytier-$NAME-$VERSION.zip" "$NAME")
+          echo "### packaged easytier-$NAME-$VERSION.zip"
+
+      - name: Upload build zip
+        uses: actions/upload-artifact@v3
+        with:
+          name: easytier-${{ matrix.NAME }}-${{ inputs.version }}.zip
+          path: easytier-${{ matrix.NAME }}-${{ inputs.version }}.zip
+
+  apk:
+    # Tauri 2 Android APK, one job per ABI (mirrors upstream mobile.yml).
+    # JDK + Android SDK are provisioned at job time via setup-java /
+    # setup-android (the same actions upstream uses); the builder image's
+    # easytier-gui pnpm deps stay warm so only gradle/AGP first-run
+    # downloads hit the network.
+    runs-on: easytier-builder
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - ARCH: aarch64
+          - ARCH: armv7
+          - ARCH: x86_64
+    env:
+      CI: "true"
+      NODE_USE_ENV_PROXY: "1"
+      npm_config_store_dir: /root/.local/share/pnpm/store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'oracle'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        # android-actions/setup-android maps cmdline-tools-version "12.0"
+        # to a stale dl.google.com URL (404). Download components directly with
+        # curl + zip: sdkmanager's java client wedges on the egress proxy
+        # (sat 17+ min at 8s CPU with no progress), while curl with -C -
+        # and --retry completes reliably. The NDK comes from the baked
+        # /opt/ndk toolchain. Java tools (gradle) ignore HTTP_PROXY, so
+        # route them through JAVA_TOOL_OPTIONS derived from the image proxy.
+        env:
+          ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+        run: |
+          # derive the forge host from the secret at runtime (never commit internal addresses)
+          GITEA_HOST=$(echo "${ET_SERVER_URL:-}" | sed -E 's#https?://([^:/]+).*#\1#')
+          set -euo pipefail
+          PROXY_HOST=$(echo "$HTTP_PROXY" | sed -E 's#https?://([^:/]+).*#\1#')
+          PROXY_PORT=$(echo "$HTTP_PROXY" | sed -E 's#https?://[^:/]+:([0-9]+).*#\1#')
+          export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=$PROXY_HOST -Dhttp.proxyPort=$PROXY_PORT -Dhttps.proxyHost=$PROXY_HOST -Dhttps.proxyPort=$PROXY_PORT -Dhttp.nonProxyHosts=localhost|127.0.0.1|gitea|act_runner${GITEA_HOST:+|$GITEA_HOST} -Dhttp.connectionTimeout=15000 -Dhttp.socketTimeout=30000 -Dhttps.connectionTimeout=15000 -Dhttps.socketTimeout=30000"
+          echo "JAVA_TOOL_OPTIONS=$JAVA_TOOL_OPTIONS" >> "$GITHUB_ENV"
+          export ANDROID_HOME=/opt/android-sdk
+          export ANDROID_SDK_ROOT=/opt/android-sdk
+          export ANDROID_NDK_HOME=/opt/ndk
+          export ANDROID_NDK_ROOT=/opt/ndk
+          export ANDROID_NDK=/opt/ndk
+          # tauri-cli (cargo-ndk) checks NDK_HOME specifically
+          export NDK_HOME=/opt/ndk
+          # the image bakes only the NDK toolchains dir, not the NDK root
+          # metadata that tauri reads to resolve the NDK version
+          printf 'Pkg.Desc = Android NDK\nPkg.Revision = 28.2.13676358\nPkg.BaseRevision = 28.2.13676358\nPkg.ReleaseName = r28c\n' > /opt/ndk/source.properties
+          mkdir -p "$ANDROID_HOME/licenses"
+          # license hash accepted for android-sdk-license (AGP checks it)
+          printf '24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          dl() { # resume + retry curl helper
+            for attempt in 1 2 3 4 5; do
+              if curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -C - \
+                  -o "$2" "$1"; then
+                return 0
+              fi
+              echo "dl $2 attempt $attempt failed, retrying in 15s"
+              sleep 15
+            done
+            return 1
+          }
+          # platform-tools
+          dl https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip /tmp/pt.zip
+          unzip -qo /tmp/pt.zip -d "$ANDROID_HOME" && rm -f /tmp/pt.zip
+          # platforms;android-34 (zip root is android-34/)
+          dl https://dl.google.com/android/repository/platform-34-ext7_r03.zip /tmp/pl34.zip
+          mkdir -p "$ANDROID_HOME/platforms"
+          unzip -qo /tmp/pl34.zip -d "$ANDROID_HOME/platforms" && rm -f /tmp/pl34.zip
+          # build-tools;34.0.0 (zip root is android-14/; normalize to 34.0.0)
+          dl https://dl.google.com/android/repository/build-tools_r34-linux.zip /tmp/bt.zip
+          mkdir -p "$ANDROID_HOME/build-tools"
+          unzip -qo /tmp/bt.zip -d "$ANDROID_HOME/build-tools" && rm -f /tmp/bt.zip
+          if [ -d "$ANDROID_HOME/build-tools/android-14" ]; then
+            mv "$ANDROID_HOME/build-tools/android-14" "$ANDROID_HOME/build-tools/34.0.0"
+          fi
+          # expose for later steps / gradle
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_NDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_HOME" >> "$GITHUB_ENV"
+
+      - name: Install workspace dependencies
+        run: |
+          set -euo pipefail
+          export npm_config_proxy="$HTTP_PROXY"
+          export npm_config_https_proxy="$HTTPS_PROXY"
+          export npm_config_noproxy="$NO_PROXY"
+          for attempt in 1 2 3 4 5; do
+            # timeout: a wedged pnpm download never returns non-zero, so
+            # without timeout the retry loop never fires (observed: pnpm
+            # sat at 442M store for 35+ min with zero CPU and no sockets).
+            if timeout 600 pnpm install --frozen-lockfile; then
+              break
+            fi
+            echo "pnpm install attempt $attempt failed/timed out, retrying in 15s"
+            sleep 15
+          done
+
+      - name: Build APK
+        run: |
+          set -euo pipefail
+          # tauri invokes `cargo build --target <triple>-linux-android`
+          # itself; give that cargo the same NDK toolchain env the core
+          # android builds use: CC/linker per triple, and
+          # BINDGEN_EXTRA_CLANG_ARGS so kcp-sys' bindgen finds the
+          # bionic sysroot (it otherwise grabs /usr/include/stdlib.h on
+          # the linux host and dies on bits/libc-header-start.h).
+          NDK=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
+          case "${{ matrix.ARCH }}" in
+            aarch64) TRIPLE=aarch64-linux-android;         ABI=aarch64-linux-android24 ;;
+            armv7)   TRIPLE=armv7-linux-androideabi;       ABI=armv7a-linux-androideabi24 ;;
+            x86_64)  TRIPLE=x86_64-linux-android;          ABI=x86_64-linux-android24 ;;
+          esac
+          export "CC_${TRIPLE//-/_}=$NDK/bin/$ABI-clang"
+          export "CARGO_TARGET_$(echo "${TRIPLE//-/_}" | tr '[:lower:]' '[:upper:]')_LINKER=$NDK/bin/$ABI-clang"
+          export "AR_${TRIPLE//-/_}=$NDK/bin/llvm-ar"
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$NDK/sysroot --target=$ABI"
+          cd easytier-gui
+          # generate dist-js for the workspace tauri-plugin-vpnservice-api
+          # package (pnpm install links the workspace package but does not
+          # build it; mobile_vpn.ts imports it at type-check time)
+          pnpm --filter tauri-plugin-vpnservice-api build
+          pnpm tauri android build --apk --target "${{ matrix.ARCH }}" --split-per-abi
+
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          mkdir -p apks
+          find easytier-gui/src-tauri/gen/android/app/build/outputs/apk \
+            -name "*.apk" -exec cp {} apks/ \;
+          (cd apks && zip -qr "../easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip" .)
+
+      - name: Upload APK zip
+        uses: actions/upload-artifact@v3
+        with:
+          name: easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip
+          path: easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip
+
+  magisk:
+    runs-on: easytier-builder
+    needs: build
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download aarch64 binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: easytier-linux-aarch64-${{ inputs.version }}.zip
+          path: aarch64
+
+      - name: Assemble Magisk module
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          unzip -o aarch64/*.zip -d aarch64
+          cp aarch64/linux-aarch64/easytier-core  easytier-contrib/easytier-magisk/
+          cp aarch64/linux-aarch64/easytier-cli   easytier-contrib/easytier-magisk/
+          cp aarch64/linux-aarch64/easytier-web   easytier-contrib/easytier-magisk/
+          (cd easytier-contrib/easytier-magisk \
+            && zip -qr "../../Easytier-Magisk-$VERSION.zip" . \
+                 -x build.sh magisk_update.json)
+
+      - name: Upload Magisk module
+        uses: actions/upload-artifact@v3
+        with:
+          name: Easytier-Magisk-${{ inputs.version }}.zip
+          path: Easytier-Magisk-${{ inputs.version }}.zip
+
+  release:
+    runs-on: easytier-builder
+    needs: [build, magisk, apk, frontend]
+    # publish whatever matrix entries succeeded even if one failed
+    if: ${{ !cancelled() }}
+    env:
+      ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+      ET_TOKEN: ${{ secrets.ET_TOKEN }}
+      VERSION: ${{ inputs.version }}
+      PROTOC_INCLUDE: /usr/include
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download all release zips
+        # v3 has no `pattern`: no name -> downloads every artifact of this
+        # run (each into zips/<artifact-name>/...).
+        uses: actions/download-artifact@v3
+        with:
+          path: zips
+
+      - name: Download web dashboard
+        uses: actions/download-artifact@v3
+        with:
+          name: easytier-web-dashboard
+          path: dashboard
+
+      - name: Zip web dashboard
+        run: |
+          set -euo pipefail
+          (cd dashboard && zip -qr "../zips/easytier-web-dashboard-$VERSION.zip" .)
+
+      - name: Create Gitea release
+        id: create
+        run: |
+          set -euo pipefail
+          if [[ -z "$ET_SERVER_URL" || -z "$ET_TOKEN" ]]; then
+            echo "error: secrets ET_SERVER_URL / ET_TOKEN are not set" >&2
+            exit 1
+          fi
+          REPO="${{ github.repository }}"
+          API="$ET_SERVER_URL/api/v1/repos/$REPO"
+          AUTH="Authorization: token $ET_TOKEN"
+          DRAFT=${{ !inputs.publish && 'true' || 'false' }}
+
+          # tag must exist AND point at the built commit (empty-sha1 bug
+          # workaround), so force-push the tag from the checkout first.
+          git tag -f "$VERSION"
+          git -c http.extraheader="Authorization: token $ET_TOKEN" push -f \
+            "${ET_SERVER_URL%/}/$REPO.git" "$VERSION"
+
+          body=$(curl -fsS -X POST "$API/releases" \
+            -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"$VERSION\",\"name\":\"EasyTier $VERSION\",\"body\":\"EasyTier $VERSION release build.\",\"draft\":$DRAFT,\"target_commitish\":\"$GITHUB_SHA\"}" \
+            || true)
+
+          if [[ -z "$body" ]]; then
+            echo "release exists or creation failed, reusing existing release"
+            body=$(curl -fsS "$API/releases/tags/$VERSION" -H "$AUTH")
+          fi
+
+          echo "id=$(printf '%s' "$body" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release assets
+        env:
+          RELEASE_ID: ${{ steps.create.outputs.id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_ID" ]]; then
+            echo "error: could not determine release id" >&2
+            exit 1
+          fi
+          API="$ET_SERVER_URL/api/v1/repos/${{ github.repository }}"
+          AUTH="Authorization: token $ET_TOKEN"
+          count=0
+          for asset in zips/*/*.zip zips/*.zip; do
+            [[ -f "$asset" ]] || continue
+            echo "uploading $(basename "$asset")"
+            # right after release creation Gitea can transiently 404 the
+            # attachment lookup; retry a few times.
+            ok=false
+            for attempt in 1 2 3 4 5; do
+              if curl -fsS -X POST "$API/releases/$RELEASE_ID/assets?name=$(basename "$asset")" \
+                  -H "$AUTH" -F "attachment=@$asset"; then
+                ok=true
+                break
+              fi
+              echo "attempt $attempt failed, retrying in 5s"
+              sleep 5
+            done
+            if [[ "$ok" != true ]]; then
+              echo "error: could not upload $(basename "$asset") after 5 attempts" >&2
+              exit 1
+            fi
+            count=$((count + 1))
+          done
+          echo "uploaded $count assets"
+
+      - name: Finalize release (un-draft)
+        if: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          API="$ET_SERVER_URL/api/v1/repos/${{ github.repository }}"
+          AUTH="Authorization: token $ET_TOKEN"
+          curl -fsS -X PATCH "$API/releases/${{ steps.create.outputs.id }}" \
+            -H "$AUTH" -H "Content-Type: application/json" \
+            -d '{"draft":false}'

@@ -1,0 +1,132 @@
+# Mirror GitHub Release → Gitea Release
+#
+# GitHub (public fork, free runners) builds the FULL product matrix
+# including Windows/macOS/GUI/APK. This job copies the finished release
+# assets into the Gitea instance so intranet users can download them
+# locally — it downloads and uploads, it compiles nothing.
+#
+# This file contains NO server addresses, tokens or secrets:
+#   secrets.ET_SERVER_URL  Gitea base url  (Settings -> Actions -> Secrets)
+#   secrets.ET_TOKEN       Gitea token with repository write scope
+#   secrets.GITHUB_TOKEN   optional GitHub PAT (public releases work without)
+#
+# It runs daily (cron) resolving the LATEST GitHub release automatically,
+# and can also be triggered manually (Gitea -> Actions -> "Mirror GitHub
+# Release" -> Run workflow), optionally pinned to a version. Re-runs are
+# idempotent: assets already attached under the same name are skipped.
+
+name: Mirror GitHub Release
+
+on:
+  schedule:
+    - cron: '30 1 * * *'   # daily: mirror whatever the latest GitHub release carries
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'GitHub release tag to mirror (empty = latest)'
+        type: string
+        default: ''
+        required: false
+      source_repo:
+        description: 'GitHub owner/repo that carries the release'
+        type: string
+        default: 'ChanceFlow/EasyTier'
+        required: false
+
+jobs:
+  mirror:
+    runs-on: easytier-builder
+    env:
+      ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+      ET_TOKEN: ${{ secrets.ET_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ inputs.version }}
+      SOURCE_REPO: ${{ inputs.source_repo }}
+    steps:
+      - name: Mirror release and assets
+        run: |
+          set -euo pipefail
+          if [[ -z "$ET_SERVER_URL" || -z "$ET_TOKEN" ]]; then
+            echo "error: secrets ET_SERVER_URL / ET_TOKEN are not set" >&2
+            exit 1
+          fi
+          GH_API="https://api.github.com"
+          API="$ET_SERVER_URL/api/v1/repos/${{ github.repository }}"
+          AUTH="Authorization: token $ET_TOKEN"
+          GH=(-s)
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then GH+=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
+
+          if [[ -z "${SOURCE_REPO// /}" ]]; then SOURCE_REPO="ChanceFlow/EasyTier"; fi
+          VERSION="${VERSION// /}"
+          if [[ -z "$VERSION" ]]; then
+            echo "==> resolving latest GitHub release of $SOURCE_REPO"
+            VERSION=$(curl -fsSL "${GH[@]}" "$GH_API/repos/$SOURCE_REPO/releases/latest" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+          fi
+          echo "==> mirroring $SOURCE_REPO/$VERSION"
+
+          ghrel=$(curl -fsSL "${GH[@]}" "$GH_API/repos/$SOURCE_REPO/releases/tags/$VERSION")
+
+          # tag must exist AND the release target must match its commit
+          # (this Gitea stores empty-sha1 ghosts otherwise); derive from
+          # the gitea tag when present, else let the API create it on main.
+          TS=$(curl -fsS "$API/git/refs/tags/$VERSION" -H "$AUTH" 2>/dev/null \
+            | sed -n 's/.*"sha":"\([0-9a-f]*\)".*/\1/p' | head -1 || true)
+          [[ -z "$TS" ]] && TS="main"
+
+          relg=$(curl -fsS "$API/releases/tags/$VERSION" -H "$AUTH" 2>/dev/null || true)
+          if [[ -z "$relg" ]]; then
+            echo "==> creating gitea release"
+            reljson=$(ghrel="$ghrel" VERSION="$VERSION" TS="$TS" python3 -c '
+          import json, os
+          rel = json.loads(os.environ["ghrel"])
+          print(json.dumps({
+              "tag_name": os.environ["VERSION"],
+              "name": rel.get("name") or os.environ["VERSION"],
+              "body": (rel.get("body") or "")[:20000],
+              "draft": False,
+              "prerelease": bool(rel.get("prerelease")),
+              "target_commitish": os.environ["TS"],
+          }))')
+            relg=$(curl -fsS -X POST "$API/releases" -H "$AUTH" \
+              -H "Content-Type: application/json" -d "$reljson")
+          fi
+          RID=$(printf '%s' "$relg" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          echo "gitea release id: $RID"
+
+          # idempotency: names already attached on gitea
+          existing=$(printf '%s' "$relg" | python3 -c '
+          import json, sys
+          for a in json.load(sys.stdin).get("assets", []):
+              print(a["name"])' 2>/dev/null || true)
+
+          printf '%s' "$ghrel" | python3 -c '
+          import json, sys
+          for a in json.load(sys.stdin).get("assets", []):
+              print(a["name"] + "\t" + a["browser_download_url"])' > /tmp/assets.tsv
+
+          total=$(wc -l < /tmp/assets.tsv)
+          count=0
+          while IFS=$(printf '\t') read -r fname furl; do
+            [[ -n "$fname" ]] || continue
+            if printf '%s\n' "$existing" | grep -qxF "$fname"; then
+              echo "skip $fname (already attached)"
+              continue
+            fi
+            echo "==> $fname"
+            curl -fsSL --retry 3 -o "/tmp/$fname" "$furl"
+            ok=false
+            for attempt in 1 2 3 4 5; do
+              if curl -fsS -X POST "$API/releases/$RID/assets?name=$fname" \
+                  -H "$AUTH" -F "attachment=@/tmp/$fname"; then
+                ok=true; break
+              fi
+              echo "attempt $attempt failed, retrying in 5s"; sleep 5
+            done
+            if [[ "$ok" != true ]]; then
+              echo "error: upload failed for $fname" >&2; exit 1
+            fi
+            count=$((count + 1))
+            rm -f "/tmp/$fname"
+          done < /tmp/assets.tsv
+          echo "==> mirrored $count new assets (of $total total) into gitea release $RID"

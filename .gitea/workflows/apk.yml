@@ -1,0 +1,165 @@
+# EasyTier Android APK (standalone verification)
+#
+# Quick APK-only pipeline used to validate the Tauri Android build on the
+# local Gitea runner without re-running the full core matrix. The official
+# release flow builds the same APK job inside release.yml; this file is a
+# lightweight trigger for iterating on APK problems.
+#
+# Triggers manually (Gitea -> Actions -> "EasyTier Android APK" ->
+# Run workflow -> version). Output is one zip per ABI with the APKs,
+# uploaded as run artifacts.
+
+name: EasyTier Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for artifact naming, e.g. v2.6.4'
+        type: string
+        required: true
+
+jobs:
+  apk:
+    runs-on: easytier-builder
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - ARCH: aarch64
+          - ARCH: armv7
+          - ARCH: x86_64
+    env:
+      CI: "true"
+      NODE_USE_ENV_PROXY: "1"
+      npm_config_store_dir: /root/.local/share/pnpm/store
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'oracle'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        # android-actions/setup-android maps cmdline-tools-version "12.0"
+        # to a stale dl.google.com URL (404). Download components directly with
+        # curl + zip: sdkmanager's java client wedges on the egress proxy
+        # (sat 17+ min at 8s CPU with no progress), while curl with -C -
+        # and --retry completes reliably. The NDK comes from the baked
+        # /opt/ndk toolchain. Java tools (gradle) ignore HTTP_PROXY, so
+        # route them through JAVA_TOOL_OPTIONS derived from the image proxy.
+        env:
+          ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+        run: |
+          # derive the forge host from the secret at runtime (never commit internal addresses)
+          GITEA_HOST=$(echo "${ET_SERVER_URL:-}" | sed -E 's#https?://([^:/]+).*#\1#')
+          set -euo pipefail
+          PROXY_HOST=$(echo "$HTTP_PROXY" | sed -E 's#https?://([^:/]+).*#\1#')
+          PROXY_PORT=$(echo "$HTTP_PROXY" | sed -E 's#https?://[^:/]+:([0-9]+).*#\1#')
+          export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=$PROXY_HOST -Dhttp.proxyPort=$PROXY_PORT -Dhttps.proxyHost=$PROXY_HOST -Dhttps.proxyPort=$PROXY_PORT -Dhttp.nonProxyHosts=localhost|127.0.0.1|gitea|act_runner${GITEA_HOST:+|$GITEA_HOST} -Dhttp.connectionTimeout=15000 -Dhttp.socketTimeout=30000 -Dhttps.connectionTimeout=15000 -Dhttps.socketTimeout=30000"
+          echo "JAVA_TOOL_OPTIONS=$JAVA_TOOL_OPTIONS" >> "$GITHUB_ENV"
+          export ANDROID_HOME=/opt/android-sdk
+          export ANDROID_SDK_ROOT=/opt/android-sdk
+          export ANDROID_NDK_HOME=/opt/ndk
+          export ANDROID_NDK_ROOT=/opt/ndk
+          export ANDROID_NDK=/opt/ndk
+          # tauri-cli (cargo-ndk) checks NDK_HOME specifically
+          export NDK_HOME=/opt/ndk
+          # the image bakes only the NDK toolchains dir, not the NDK root
+          # metadata that tauri reads to resolve the NDK version
+          printf 'Pkg.Desc = Android NDK\nPkg.Revision = 28.2.13676358\nPkg.BaseRevision = 28.2.13676358\nPkg.ReleaseName = r28c\n' > /opt/ndk/source.properties
+          mkdir -p "$ANDROID_HOME/licenses"
+          # license hash accepted for android-sdk-license (AGP checks it)
+          printf '24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          dl() { # resume + retry curl helper
+            for attempt in 1 2 3 4 5; do
+              if curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -C - \
+                  -o "$2" "$1"; then
+                return 0
+              fi
+              echo "dl $2 attempt $attempt failed, retrying in 15s"
+              sleep 15
+            done
+            return 1
+          }
+          # platform-tools
+          dl https://dl.google.com/android/repository/platform-tools_r35.0.2-linux.zip /tmp/pt.zip
+          unzip -qo /tmp/pt.zip -d "$ANDROID_HOME" && rm -f /tmp/pt.zip
+          # platforms;android-34 (zip root is android-34/)
+          dl https://dl.google.com/android/repository/platform-34-ext7_r03.zip /tmp/pl34.zip
+          mkdir -p "$ANDROID_HOME/platforms"
+          unzip -qo /tmp/pl34.zip -d "$ANDROID_HOME/platforms" && rm -f /tmp/pl34.zip
+          # build-tools;34.0.0 (zip root is android-14/; normalize to 34.0.0)
+          dl https://dl.google.com/android/repository/build-tools_r34-linux.zip /tmp/bt.zip
+          mkdir -p "$ANDROID_HOME/build-tools"
+          unzip -qo /tmp/bt.zip -d "$ANDROID_HOME/build-tools" && rm -f /tmp/bt.zip
+          if [ -d "$ANDROID_HOME/build-tools/android-14" ]; then
+            mv "$ANDROID_HOME/build-tools/android-14" "$ANDROID_HOME/build-tools/34.0.0"
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_NDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$NDK_HOME" >> "$GITHUB_ENV"
+
+      - name: Install workspace dependencies
+        run: |
+          set -euo pipefail
+          export npm_config_proxy="$HTTP_PROXY"
+          export npm_config_https_proxy="$HTTPS_PROXY"
+          export npm_config_noproxy="$NO_PROXY"
+          for attempt in 1 2 3 4 5; do
+            # timeout: a wedged pnpm download never returns non-zero, so
+            # without timeout the retry loop never fires (observed: pnpm
+            # sat at 442M store for 35+ min with zero CPU and no sockets).
+            if timeout 600 pnpm install --frozen-lockfile; then
+              break
+            fi
+            echo "pnpm install attempt $attempt failed/timed out, retrying in 15s"
+            sleep 15
+          done
+
+      - name: Build APK
+        run: |
+          set -euo pipefail
+          # tauri invokes `cargo build --target <triple>-linux-android`
+          # itself; give that cargo the same NDK toolchain env the core
+          # android builds use: CC/linker per triple, and
+          # BINDGEN_EXTRA_CLANG_ARGS so kcp-sys' bindgen finds the
+          # bionic sysroot (it otherwise grabs /usr/include/stdlib.h on
+          # the linux host and dies on bits/libc-header-start.h).
+          NDK=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
+          case "${{ matrix.ARCH }}" in
+            aarch64) TRIPLE=aarch64-linux-android;         ABI=aarch64-linux-android24 ;;
+            armv7)   TRIPLE=armv7-linux-androideabi;       ABI=armv7a-linux-androideabi24 ;;
+            x86_64)  TRIPLE=x86_64-linux-android;          ABI=x86_64-linux-android24 ;;
+          esac
+          export "CC_${TRIPLE//-/_}=$NDK/bin/$ABI-clang"
+          export "CARGO_TARGET_$(echo "${TRIPLE//-/_}" | tr '[:lower:]' '[:upper:]')_LINKER=$NDK/bin/$ABI-clang"
+          export "AR_${TRIPLE//-/_}=$NDK/bin/llvm-ar"
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$NDK/sysroot --target=$ABI"
+          cd easytier-gui
+          # generate dist-js for the workspace tauri-plugin-vpnservice-api
+          # package (pnpm install links the workspace package but does not
+          # build it; mobile_vpn.ts imports it at type-check time)
+          pnpm --filter tauri-plugin-vpnservice-api build
+          pnpm tauri android build --apk --target "${{ matrix.ARCH }}" --split-per-abi
+
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          mkdir -p apks
+          find easytier-gui/src-tauri/gen/android/app/build/outputs/apk \
+            -name "*.apk" -exec cp {} apks/ \;
+          (cd apks && zip -qr "../easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip" .)
+
+      - name: Upload APK zip
+        uses: actions/upload-artifact@v3
+        with:
+          name: easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip
+          path: easytier-android-${{ matrix.ARCH }}-${{ inputs.version }}.zip

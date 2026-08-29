@@ -89,7 +89,12 @@ pin-project-lite = "0.2.13"
 atomic_refcell = "0.1.13"
 atomic-write-file = { version = "0.2.3", optional = true }
 
-quinn = { version = "0.11.8", optional = true, features = ["ring"] }
+# default-features = false: quinn's default "platform-verifier" pulls in
+# rustls-platform-verifier, whose macOS target needs Security/
+# CoreFoundation frameworks — unavailable to zig/NDK cross-compilers.
+# easytier verifies QUIC peers with its own rcgen self-signed certs, so
+# the system certificate store adds nothing here.
+quinn = { version = "0.11.8", optional = true, default-features = false, features = ["ring", "rustls-ring", "runtime-tokio", "bloom", "log"] }
 quinn-proto = { version = "0.11.12", optional = true }
 seahash = { version = "4.1.0", optional = true }
 

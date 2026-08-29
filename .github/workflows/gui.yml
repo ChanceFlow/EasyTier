@@ -3,6 +3,7 @@ name: EasyTier GUI
 on:
   push:
     branches: ["develop", "main", "releases/**"]
+  workflow_dispatch: {}  # fork addition: explicit build trigger (fork push events do not fire runs)
   pull_request:
     branches: ["develop", "main"]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -118,7 +119,8 @@ jobs:
           fi
 
       - name: Validate macOS signing secrets
-        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        id: signing
+        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)  && steps.signing.outputs.enabled == 'true' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -134,19 +136,21 @@ jobs:
             fi
           done
           if (( ${#missing[@]} )); then
-            printf 'Missing macOS signing secret(s): %s\n' "${missing[*]}" >&2
-            exit 1
+            printf 'Missing macOS signing secret(s): %s - building UNSIGNED macOS bundles\n' "${missing[*]}"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build GUI
-        if: ${{ matrix.GUI_TARGET != '' && (!contains(matrix.GUI_TARGET, 'darwin') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+        if: ${{ matrix.GUI_TARGET != '' && (!contains(matrix.GUI_TARGET, 'darwin') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || (contains(matrix.GUI_TARGET, 'darwin') && steps.signing.outputs.enabled != 'true')) }}
         uses: tauri-apps/tauri-action@v0
         with:
           projectPath: ./easytier-gui
           args: --verbose --target ${{ matrix.GUI_TARGET }}
 
       - name: Build GUI (signed and notarized)
-        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)  && steps.signing.outputs.enabled == 'true' }}
         timeout-minutes: 60
         uses: tauri-apps/tauri-action@v0
         env:
@@ -161,7 +165,7 @@ jobs:
           args: --verbose --target ${{ matrix.GUI_TARGET }}
 
       - name: Notarize and staple macOS DMG
-        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ contains(matrix.GUI_TARGET, 'darwin') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)  && steps.signing.outputs.enabled == 'true' }}
         timeout-minutes: 45
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}

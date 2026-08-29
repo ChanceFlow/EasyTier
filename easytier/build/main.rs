@@ -1,21 +1,24 @@
 use cfg_aliases::cfg_aliases;
 use std::env;
 
-#[cfg(target_os = "windows")]
 struct WindowsBuild {}
 
-#[cfg(target_os = "windows")]
 impl WindowsBuild {
-    pub fn check_for_win() {
-        // add third_party dir to link search path
-        let target = std::env::var("TARGET").unwrap_or_default();
-
+    // Add the bundled third_party dir (npcap Packet lib, WinDivert driver,
+    // wintun) to the link search path. NOTE: must be gated on the TARGET
+    // os, not the build-script host os: `#[cfg(target_os = "windows")]`
+    // here evaluates against the Linux host when cross-compiling, which
+    // silently dropped the link path and broke `-lPacket` resolution.
+    // The path is anchored to CARGO_MANIFEST_DIR so it also works when
+    // the build is invoked from a different working directory.
+    pub fn check_for_win(target: &str) {
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
         if target.contains("x86_64") {
-            println!("cargo:rustc-link-search=native=easytier/third_party/x86_64/");
+            println!("cargo:rustc-link-search=native={manifest_dir}/third_party/x86_64/");
         } else if target.contains("i686") {
-            println!("cargo:rustc-link-search=native=easytier/third_party/i686/");
+            println!("cargo:rustc-link-search=native={manifest_dir}/third_party/i686/");
         } else if target.contains("aarch64") {
-            println!("cargo:rustc-link-search=native=easytier/third_party/arm64/");
+            println!("cargo:rustc-link-search=native={manifest_dir}/third_party/arm64/");
         }
     }
 }
@@ -78,8 +81,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thunk::thunk();
     }
 
-    #[cfg(target_os = "windows")]
-    WindowsBuild::check_for_win();
+    let target = env::var("TARGET").unwrap_or_default();
+    if target_os == "windows" {
+        WindowsBuild::check_for_win(&target);
+    }
 
     check_locale();
     Ok(())

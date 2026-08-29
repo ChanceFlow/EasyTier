@@ -1,0 +1,15 @@
+# gitleaks policy for this repo: default rules + internal-network detectors.
+# Scan: gitleaks detect --source .   (pre-commit / CI 通用)
+[extend]
+useDefault = true
+
+[[rules]]
+id = "internal-network-address"
+description = "Internal LAN / docker addresses must never be committed"
+regex = '''\b(10\.100\.0\.\d{1,3}|10\.10\.0\.\d{1,3}|172\.24\.\d{1,3}\.\d{1,3})\b'''
+
+[[rules]]
+id = "gitea-personal-access-token"
+description = "Gitea tokens are 40 lowercase hex chars"
+regex = '''\b[0-9a-f]{40}\b'''
+keywords = ["token", "gitea"]
