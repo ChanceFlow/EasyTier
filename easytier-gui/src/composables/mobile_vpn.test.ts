@@ -102,6 +102,7 @@ beforeEach(() => {
   mocks.setTunFd.mockClear()
   mocks.startVpn.mockClear()
   mocks.stopVpn.mockClear()
+  mocks.updateNotification.mockClear()
 })
 
 describe('mobile VPN reconciliation ownership', () => {
@@ -230,5 +231,114 @@ describe('mobile VPN reconciliation ownership', () => {
 
     expect(mocks.stopVpn).toHaveBeenCalledTimes(1)
     expect(mocks.startVpn).not.toHaveBeenCalled()
+  })
+})
+
+// ---- phone hero: shared mobileStats written by the IO ticker ----
+
+function setTraffic(instanceId: string, rx: number, tx: number, ipv4 = '10.9.9.9') {
+  mocks.networkInfo.set(instanceId, {
+    my_node_info: {
+      virtual_ipv4: { address: { addr: ipv4 }, network_length: 24 },
+    },
+    routes: ['10.1.0.0/24', '10.2.0.0/24'],
+    peer_route_pairs: [
+      { peer: { conns: [{ stats: { rx_bytes: String(rx), tx_bytes: String(tx) } }] } },
+    ],
+  })
+}
+
+describe('mobileStats hero data layer', () => {
+  it('publishes rates, counts and a rolling history without touching the notification', async () => {
+    mocks.configs.set('S', { network_name: 'demo-net', routes: [] })
+    setTraffic('S', 1000, 2000)
+    const vpn = await loadVpnModule()
+
+    vpn.setMobileStatsInstanceId('S')
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    // first sample only establishes the counter baseline
+    expect(vpn.mobileStats.ready).toBe(true)
+    expect(vpn.mobileStats.connected).toBe(true)
+    expect(vpn.mobileStats.virtualIp).toBe('10.9.9.9')
+    expect(vpn.mobileStats.peerCount).toBe(1)
+    expect(vpn.mobileStats.routeCount).toBe(2)
+    expect(vpn.mobileStats.rxRate).toBe(0)
+    expect(vpn.mobileStats.history.length).toBe(1)
+
+    setTraffic('S', 3000, 3000)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(vpn.mobileStats.rxRate).toBe(1000)
+    expect(vpn.mobileStats.txRate).toBe(500)
+    expect(vpn.mobileStats.history.length).toBe(2)
+    expect(vpn.mobileStats.networkName).toBe('demo-net')
+    // no VPN ownership on this path → the notification must stay untouched
+    expect(mocks.updateNotification).not.toHaveBeenCalled()
+  })
+
+  it('keeps the history window around 60s of samples', async () => {
+    setTraffic('S', 500, 500)
+    const vpn = await loadVpnModule()
+
+    vpn.setMobileStatsInstanceId('S')
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(122_000)
+
+    // 61 samples taken, only those inside the last 60s survive
+    expect(vpn.mobileStats.history.length).toBeGreaterThan(20)
+    expect(vpn.mobileStats.history.length).toBeLessThanOrEqual(31)
+  })
+
+  it('resets to idle when the observed instance disappears', async () => {
+    setTraffic('S', 1000, 1000)
+    const vpn = await loadVpnModule()
+
+    vpn.setMobileStatsInstanceId('S')
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(vpn.mobileStats.connected).toBe(true)
+
+    vpn.setMobileStatsInstanceId('')
+    mocks.listNetworkInstanceIds.mockResolvedValue({ running_inst_ids: [] })
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(vpn.mobileStats.connected).toBe(false)
+    expect(vpn.mobileStats.rxRate).toBe(0)
+    expect(vpn.mobileStats.history.length).toBe(0)
+  })
+
+  it('still drives the Android ongoing notification when the VPN owns the tunnel', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+    expect(mocks.startVpn).toHaveBeenCalledTimes(1)
+
+    setTraffic('A', 1000, 2000)
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    setTraffic('A', 3000, 3000)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(mocks.updateNotification).toHaveBeenLastCalledWith(1000, 500)
+    expect(vpn.mobileStats.rxRate).toBe(1000)
+  })
+
+  it('flags a denied VPN permission for the hero empty state', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    mocks.startVpn.mockImplementation(async () => ({ errorMsg: 'need_prepare' }))
+    mocks.prepareVpn.mockResolvedValue({ granted: false })
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+
+    expect(vpn.mobileStats.permissionDenied).toBe(true)
+    // the tunnel never came up, so VPN ownership stays unset
+    expect(mocks.updateNotification).not.toHaveBeenCalled()
   })
 })

@@ -54,6 +54,7 @@ declare global {
   const mapStores: typeof import('pinia')['mapStores']
   const mapWritableState: typeof import('pinia')['mapWritableState']
   const markRaw: typeof import('vue')['markRaw']
+  const mobileStats: typeof import('./composables/mobile_vpn')['mobileStats']
   const nextTick: typeof import('vue')['nextTick']
   const normalizeConfigSource: typeof import('./composables/config_source')['normalizeConfigSource']
   const onActivated: typeof import('vue')['onActivated']
@@ -90,6 +91,7 @@ declare global {
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setLoggingLevel: typeof import('./composables/backend')['setLoggingLevel']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
+  const setMobileStatsInstanceId: typeof import('./composables/mobile_vpn')['setMobileStatsInstanceId']
   const setServiceStatus: typeof import('./composables/backend')['setServiceStatus']
   const setTrayMenu: typeof import('./composables/tray')['setTrayMenu']
   const setTrayRunState: typeof import('./composables/tray')['setTrayRunState']
@@ -98,6 +100,7 @@ declare global {
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
   const shallowRef: typeof import('vue')['shallowRef']
+  const startMobileIoNotification: typeof import('./composables/mobile_vpn')['startMobileIoNotification']
   const storeToRefs: typeof import('pinia')['storeToRefs']
   const syncMobileVpnService: typeof import('./composables/mobile_vpn')['syncMobileVpnService']
   const toRaw: typeof import('vue')['toRaw']
@@ -114,6 +117,7 @@ declare global {
   const useId: typeof import('vue')['useId']
   const useLink: typeof import('vue-router/auto')['useLink']
   const useModel: typeof import('vue')['useModel']
+  const usePhoneText: typeof import('./composables/hero_text')['usePhoneText']
   const useRoute: typeof import('vue-router')['useRoute']
   const useRouter: typeof import('vue-router')['useRouter']
   const useSlots: typeof import('vue')['useSlots']
@@ -185,6 +189,7 @@ declare module 'vue' {
     readonly mapStores: UnwrapRef<typeof import('pinia')['mapStores']>
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
+    readonly mobileStats: UnwrapRef<typeof import('./composables/mobile_vpn')['mobileStats']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly normalizeConfigSource: UnwrapRef<typeof import('./composables/config_source')['normalizeConfigSource']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
@@ -221,6 +226,7 @@ declare module 'vue' {
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setLoggingLevel: UnwrapRef<typeof import('./composables/backend')['setLoggingLevel']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
+    readonly setMobileStatsInstanceId: UnwrapRef<typeof import('./composables/mobile_vpn')['setMobileStatsInstanceId']>
     readonly setServiceStatus: UnwrapRef<typeof import('./composables/backend')['setServiceStatus']>
     readonly setTrayMenu: UnwrapRef<typeof import('./composables/tray')['setTrayMenu']>
     readonly setTrayRunState: UnwrapRef<typeof import('./composables/tray')['setTrayRunState']>
@@ -229,6 +235,7 @@ declare module 'vue' {
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly startMobileIoNotification: UnwrapRef<typeof import('./composables/mobile_vpn')['startMobileIoNotification']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncMobileVpnService: UnwrapRef<typeof import('./composables/mobile_vpn')['syncMobileVpnService']>
     readonly toRaw: UnwrapRef<typeof import('vue')['toRaw']>
@@ -245,6 +252,7 @@ declare module 'vue' {
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useLink: UnwrapRef<typeof import('vue-router/auto')['useLink']>
     readonly useModel: UnwrapRef<typeof import('vue')['useModel']>
+    readonly usePhoneText: UnwrapRef<typeof import('./composables/hero_text')['usePhoneText']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>
     readonly useSlots: UnwrapRef<typeof import('vue')['useSlots']>

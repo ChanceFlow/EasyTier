@@ -2,6 +2,7 @@ import type { NetworkTypes } from 'easytier-frontend-lib'
 import { addPluginListener } from '@tauri-apps/api/core'
 import { Utils } from 'easytier-frontend-lib'
 import { get_vpn_status, prepare_vpn, start_vpn, stop_vpn, update_notification } from 'tauri-plugin-vpnservice-api'
+import { reactive } from 'vue'
 import { collectNetworkInfo, getConfig, listNetworkInstanceIds, setTunFd } from './backend'
 
 type Route = NetworkTypes.Route
@@ -13,6 +14,37 @@ interface vpnStatus {
   routes: string[]
   dns: string | null | undefined
 }
+
+// ---- shared realtime stats for the phone hero (and the ongoing
+// notification): both are fed by the same 2s IO ticker further below ----
+//
+// Contract consumed by MeshHero.vue. Rates are bytes/s averaged over the
+// last sampling interval; `history` is a ~60s rolling window of {t, rx, tx}
+// samples used to draw the mini sparkline.
+export interface MobileStatsSample {
+  t: number
+  rx: number
+  tx: number
+}
+
+export const mobileStats = reactive({
+  rxRate: 0,
+  txRate: 0,
+  connected: false,
+  peerCount: 0,
+  routeCount: 0,
+  /** id of the instance the ticker is currently observing (explicit or discovered) */
+  instanceId: '',
+  networkName: '',
+  virtualIp: '',
+  /** instance reported a fatal error_msg (network join failed, wrong secret...) */
+  lastError: '',
+  /** Android VPN permission was denied/dismissed on the last start attempt */
+  permissionDenied: false,
+  /** at least one collectNetworkInfo round-trip has completed since boot */
+  ready: false,
+  history: [] as MobileStatsSample[],
+})
 
 let vpnReconcileTimer: ReturnType<typeof setTimeout> | null = null
 const VPN_RECONCILE_INTERVAL_MS = 2000
@@ -44,6 +76,10 @@ async function requestVpnPermissionOnce() {
   const granted = prepare_ret?.granted ?? true
   if (!granted) {
     console.info('vpn permission request was denied or dismissed')
+    mobileStats.permissionDenied = true
+  }
+  else {
+    mobileStats.permissionDenied = false
   }
 
   return granted
@@ -123,6 +159,8 @@ function resetVpnConfigStatus() {
   curVpnStatus.ipv4Cidr = undefined
   curVpnStatus.routes = []
   curVpnStatus.dns = undefined
+  // a fresh start gets a clean permission slate; a re-denial re-flags it
+  mobileStats.permissionDenied = false
 }
 
 function syncVpnStatusFromNative(status: Awaited<ReturnType<typeof get_vpn_status>>) {
@@ -212,6 +250,7 @@ async function doStartVpn(instanceId: string, ipv4Addr: string, cidr: number, ro
   curVpnStatus.routes = routes
   curVpnStatus.dns = dns
   activeVpnInstanceId = instanceId
+  mobileStats.permissionDenied = false
 }
 
 async function onVpnServiceStart(payload: any) {
@@ -506,33 +545,121 @@ export async function syncMobileVpnService() {
 
 // ---- ongoing notification: live tunnel throughput (WireGuard-style) ----
 const IO_NOTIFY_INTERVAL_MS = 2000
+const IO_STATS_DISCOVERY_TTL_MS = 10_000
+const MOBILE_STATS_HISTORY_MS = 60_000
 let ioNotifyTimer: ReturnType<typeof setInterval> | null = null
 let ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
 let ioNotifyWasActive = false
+// the instance the hero UI is showing; falls back to auto-discovery while
+// empty, so stats keep flowing even before the page wires its own selection
+let statsInstanceId: string | undefined
+let statsDiscovery = { at: 0, id: '' }
+let statsNameForInstance: string | undefined
+
+/** Tell the ticker which network instance the hero is displaying ('' clears). */
+export function setMobileStatsInstanceId(instanceId: string | undefined) {
+  const next = instanceId || undefined
+  if (next !== statsInstanceId) {
+    statsInstanceId = next
+    // drop the discovery cache so the next tick re-resolves if needed
+    statsDiscovery = { at: 0, id: '' }
+  }
+}
+
+function pushMobileStatsSample(t: number, rx: number, tx: number) {
+  const history = mobileStats.history
+  history.push({ t, rx, tx })
+  const cutoff = t - MOBILE_STATS_HISTORY_MS
+  while (history.length > 0 && history[0].t < cutoff) {
+    history.shift()
+  }
+}
+
+function resetMobileStatsTraffic() {
+  mobileStats.rxRate = 0
+  mobileStats.txRate = 0
+  mobileStats.peerCount = 0
+  mobileStats.routeCount = 0
+  mobileStats.virtualIp = ''
+  mobileStats.lastError = ''
+  mobileStats.history = []
+}
+
+async function resolveStatsInstanceId(): Promise<string> {
+  const explicit = activeVpnInstanceId ?? statsInstanceId
+  if (explicit) {
+    return explicit
+  }
+  const now = Date.now()
+  if (now - statsDiscovery.at > IO_STATS_DISCOVERY_TTL_MS) {
+    statsDiscovery = { at: now, id: '' }
+    try {
+      const running = (await listNetworkInstanceIds()).running_inst_ids ?? []
+      statsDiscovery.id = running.length ? Utils.UuidToStr(running[0]) : ''
+    }
+    catch (e) {
+      console.debug('hero stats instance discovery failed', e)
+    }
+  }
+  return statsDiscovery.id
+}
 
 async function tickIoNotification() {
-  const instanceId = activeVpnInstanceId
+  const vpnInstanceId = activeVpnInstanceId
+  let statsInstanceIdResolved = ''
   try {
-    if (!instanceId) {
-      // tunnel just dropped: put the notification back to idle text
+    statsInstanceIdResolved = await resolveStatsInstanceId()
+
+    // tunnel just dropped: put the notification back to idle text.
+    // NOTE: the notification itself stays tied to the *VPN* instance only,
+    // exactly as before — the hero stats below may track a non-VPN instance.
+    if (!vpnInstanceId) {
       if (ioNotifyWasActive) {
         await update_notification(0, 0)
         ioNotifyWasActive = false
-        ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
       }
-      return
-    }
-    ioNotifyWasActive = true
-    if (ioNotifyLast.inst !== instanceId) {
-      ioNotifyLast = { inst: instanceId, rx: 0, tx: 0, at: 0 }
     }
 
-    const info = (await collectNetworkInfo(instanceId))?.info?.map?.[instanceId]
+    if (!statsInstanceIdResolved) {
+      ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
+      mobileStats.connected = false
+      mobileStats.ready = true
+      mobileStats.instanceId = ''
+      mobileStats.networkName = ''
+      resetMobileStatsTraffic()
+      return
+    }
+    mobileStats.instanceId = statsInstanceIdResolved
+
+    if (ioNotifyLast.inst !== statsInstanceIdResolved) {
+      ioNotifyLast = { inst: statsInstanceIdResolved, rx: 0, tx: 0, at: 0 }
+      mobileStats.history = []
+    }
+    if (vpnInstanceId) {
+      ioNotifyWasActive = true
+    }
+
+    const info = (await collectNetworkInfo(statsInstanceIdResolved))?.info?.map?.[statsInstanceIdResolved]
+    mobileStats.ready = true
+    if (!info) {
+      mobileStats.connected = false
+      mobileStats.rxRate = 0
+      mobileStats.txRate = 0
+      mobileStats.peerCount = 0
+      return
+    }
+
     let rx = 0
     let tx = 0
+    // direct peers carry the connection stats; some builds (and the dev mock)
+    // only populate peer_route_pairs, so fall back to the peers embedded there
+    const peers: any[] = (info?.peers?.length
+      ? info.peers
+      : (info?.peer_route_pairs ?? []).map((pair: any) => pair?.peer))
+      .filter((p: any) => !!p)
     // field naming varies between the vendored proto TS and CI-regenerated
     // typings (snake vs camel localNames), so read them dynamically
-    for (const peer of info?.peers ?? []) {
+    for (const peer of peers) {
       for (const raw of peer?.conns ?? []) {
         const conn = raw as unknown as Record<string, unknown>
         if (conn.is_closed ?? conn.isClosed) continue
@@ -546,10 +673,37 @@ async function tickIoNotification() {
     const dt = ioNotifyLast.at > 0 ? (now - ioNotifyLast.at) / 1000 : 0
     const rxRate = dt > 0.2 ? Math.max(0, (rx - ioNotifyLast.rx) / dt) : 0
     const txRate = dt > 0.2 ? Math.max(0, (tx - ioNotifyLast.tx) / dt) : 0
-    ioNotifyLast = { inst: instanceId, rx, tx, at: now }
-    await update_notification(rxRate, txRate)
+    ioNotifyLast = { inst: statsInstanceIdResolved, rx, tx, at: now }
+
+    const failed = !!info.error_msg?.length
+    mobileStats.connected = !failed
+    mobileStats.rxRate = failed ? 0 : rxRate
+    mobileStats.txRate = failed ? 0 : txRate
+    mobileStats.peerCount = failed ? 0 : peers.length
+    mobileStats.routeCount = failed ? 0 : ((info.routes?.length ?? 0) || (info.peer_route_pairs?.length ?? 0))
+    mobileStats.lastError = info.error_msg ?? ''
+    mobileStats.virtualIp = failed
+      ? ''
+      : (Utils.ipv4ToString(info.my_node_info?.virtual_ipv4?.address ?? { addr: 0 }) || '')
+    pushMobileStatsSample(now, failed ? 0 : rxRate, failed ? 0 : txRate)
+
+    if (!statsNameForInstance || statsNameForInstance !== statsInstanceIdResolved) {
+      statsNameForInstance = statsInstanceIdResolved
+      getConfig(statsInstanceIdResolved)
+        .then((cfg) => {
+          if (statsNameForInstance === statsInstanceIdResolved) {
+            mobileStats.networkName = (cfg as { network_name?: string })?.network_name ?? ''
+          }
+        })
+        .catch(() => { /* hero falls back to the generic title */ })
+    }
+
+    if (vpnInstanceId) {
+      await update_notification(rxRate, txRate)
+    }
   }
   catch (e) {
+    mobileStats.ready = true
     console.debug('io notification tick skipped', e)
   }
 }
