@@ -1,9 +1,114 @@
+/* ===========================================================================
+ * Embedded typefaces (bundled woff2 subsets — see ./assets/fonts/)
+ *
+ * NOTICE: the "ET Sans" faces below use MiSans, © 2020–2025 Beijing Xiaomi
+ * Mobile Software Co., Ltd., used under its free-commercial-use license
+ * which permits app embedding with attribution — full terms and subsetting
+ * record in ./assets/fonts/LICENSE-MiSans.txt.
+ * "ET Mono" is JetBrains Mono, © JetBrains s.r.o., SIL Open Font License
+ * 1.1 (./assets/fonts/LICENSE-JetBrainsMono.txt).
+ *
+ * Slicing: each weight ships as a latin slice (ASCII, Latin-1, Latin
+ * Extended-A, general punctuation, currency, arrows, geometric shapes) and
+ * — sans only — a CJK slice (3,756 Han glyphs: GB2312 Level-1 ∪ every Han
+ * character used in app/locale sources, plus CJK punctuation & fullwidth
+ * forms). Characters outside the slices fall through to the platform stack
+ * kept behind the embedded families in --font-sans / --font-mono.
+ * Weights: only 400 / 500 / 600 are embedded; with `font-synthesis: none`
+ * 700-level text intentionally resolves to the 600 (Semibold) cut.
+ * ========================================================================= */
+
+/* ---- ET Sans (MiSans subsets) — UI face ---------------------------------- */
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0100-017F, U+2000-209F, U+20A0-20BF, U+2122,
+    U+2190-21BB, U+21D2, U+2212, U+2248, U+2264-2265, U+25A0-25FF;
+}
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-400-cjk.woff2") format("woff2");
+  unicode-range: U+2103, U+3000-303F, U+4E00-9FFF, U+FF01-FF60, U+FFE0-FFE6;
+}
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0100-017F, U+2000-209F, U+20A0-20BF, U+2122,
+    U+2190-21BB, U+21D2, U+2212, U+2248, U+2264-2265, U+25A0-25FF;
+}
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-500-cjk.woff2") format("woff2");
+  unicode-range: U+2103, U+3000-303F, U+4E00-9FFF, U+FF01-FF60, U+FFE0-FFE6;
+}
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0100-017F, U+2000-209F, U+20A0-20BF, U+2122,
+    U+2190-21BB, U+21D2, U+2212, U+2248, U+2264-2265, U+25A0-25FF;
+}
+@font-face {
+  font-family: "ET Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/et-sans-600-cjk.woff2") format("woff2");
+  unicode-range: U+2103, U+3000-303F, U+4E00-9FFF, U+FF01-FF60, U+FFE0-FFE6;
+}
+
+/* ---- ET Mono (JetBrains Mono subsets) — IPs / traffic / numbers ---------- */
+@font-face {
+  font-family: "ET Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/et-mono-400.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A7, U+00B0, U+00B7, U+2013-2014,
+    U+2018-2019, U+201C-201D, U+2022, U+2190-21BB, U+2212, U+2248,
+    U+2264-2265, U+25A0, U+25CF;
+}
+@font-face {
+  font-family: "ET Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/et-mono-500.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A7, U+00B0, U+00B7, U+2013-2014,
+    U+2018-2019, U+201C-201D, U+2022, U+2190-21BB, U+2212, U+2248,
+    U+2264-2265, U+25A0, U+25CF;
+}
+@font-face {
+  font-family: "ET Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/et-mono-700.woff2") format("woff2");
+  unicode-range: U+0020-007E, U+00A7, U+00B0, U+00B7, U+2013-2014,
+    U+2018-2019, U+201C-201D, U+2022, U+2190-21BB, U+2212, U+2248,
+    U+2264-2265, U+25A0, U+25CF;
+}
+
 :root {
-  --font-sans: "Segoe UI Variable Display", "Segoe UI", "SF Pro Display", "PingFang SC",
-    "Hiragino Sans GB", "Noto Sans SC", "HarmonyOS Sans", "Microsoft YaHei",
-    ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", "Sarasa Mono SC",
-    ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
+  --font-sans: "ET Sans", "MiSans", "Segoe UI Variable Display", "Segoe UI",
+    "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "HarmonyOS Sans", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "ET Mono", "JetBrains Mono", "SF Mono", "Cascadia Mono",
+    "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
 
   --fw-regular: 400;
   --fw-medium: 500;

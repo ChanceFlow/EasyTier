@@ -1,0 +1,57 @@
+MiSans — license notice & attribution
+=====================================
+
+Embedded fonts
+--------------
+The "ET Sans" faces bundled in this directory
+(et-sans-{400,500,600}-{latin,cjk}.woff2) are subsets of MiSans
+(Regular / Medium / Semibold cuts),
+
+  Copyright © 2020-2025 Beijing Xiaomi Mobile Software Co., Ltd.
+  All Rights Reserved.
+
+Source: the official, unmodified release downloaded from
+https://hyperos.mi.com/font-download/MiSans.zip (2025-01 build).
+Xiaomi retains all copyright in the underlying glyph designs; the
+original name tables (IDs 0/1/2/3 …) are preserved inside every
+subset file.
+
+License
+-------
+MiSans is free for both personal and commercial use. Per the official
+FAQ at https://hyperos.mi.com/font/zh/faq :
+
+  * "MiSans Global 所有的字体都是供全球免费商用，您可以在任何平台、
+    任何商业项目中使用所有字体。"
+    (All MiSans fonts are free for commercial use worldwide, on any
+    platform and in any commercial project.)
+  * Embedding question ("是否可以用作嵌入式字体？"): "可以。但您应在
+    软件中特别注明使用了 MiSans 字体。" — embedding is allowed, provided
+    the software carries a prominent notice of MiSans usage. The notice
+    required by that term lives at the top of ../style.css (imported by
+    the app UI) and in this file.
+  * Modification question ("我可以在软件中修改编辑、二次创作字体吗？"):
+    "您可以自由调节字体的粗细、间距等。但您不得单独将 MiSans 字体或其
+    组件进行外观上的更改。" — the restriction targets standalone
+    re-issuing of altered fonts. The files here are ordinary webfont
+    subsets: glyph outlines are byte-for-byte unchanged, no component's
+    appearance was altered, and they are never distributed standalone —
+    only as part of the EasyTier application, which the license
+    explicitly permits.
+
+Subsetting record
+-----------------
+Produced 2025-08 with fontTools (pyftsubset 4.63.0, woff2/brotli):
+
+  * Latin slices  : U+0000-00FF, U+0100-017F, U+2000-209F, U+20A0-20BF,
+                    U+2122, U+2190-21BB, U+21D2, U+2212, U+2248,
+                    U+2264-2265, U+25A0-25FF
+  * CJK slices    : 3,756 Han characters (GB2312 Level-1 table, 3,755
+                    glyphs, plus every additional Han character found in
+                    EasyTier GUI / web-console / locale sources), plus
+                    CJK punctuation U+3000-303F, fullwidth forms
+                    U+FF01-FF60 / U+FFE0-FFE6 and U+2103 (℃).
+  * Hinting instructions removed; kern kept; woff2 (brotli) compressed.
+
+To regenerate, rerun pyftsubset against the official MiSans TTFs with the
+same options.
