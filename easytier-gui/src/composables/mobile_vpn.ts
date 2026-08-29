@@ -530,11 +530,15 @@ async function tickIoNotification() {
     const info = (await collectNetworkInfo(instanceId))?.info?.map?.[instanceId]
     let rx = 0
     let tx = 0
+    // field naming varies between the vendored proto TS and CI-regenerated
+    // typings (snake vs camel localNames), so read them dynamically
     for (const peer of info?.peers ?? []) {
-      for (const conn of peer?.conns ?? []) {
-        if (conn?.is_closed) continue
-        rx += Number(conn?.stats?.rx_bytes ?? 0)
-        tx += Number(conn?.stats?.tx_bytes ?? 0)
+      for (const raw of peer?.conns ?? []) {
+        const conn = raw as Record<string, unknown>
+        if (conn.is_closed ?? conn.isClosed) continue
+        const st = (conn.stats ?? {}) as Record<string, unknown>
+        rx += Number(st.rx_bytes ?? st.rxBytes ?? 0)
+        tx += Number(st.tx_bytes ?? st.txBytes ?? 0)
       }
     }
 
