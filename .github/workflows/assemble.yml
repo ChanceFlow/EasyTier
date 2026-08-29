@@ -31,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           fetch-tags: true
 
       - name: Dispatch release.yml when the trio is green on one sha
@@ -44,7 +45,7 @@ jobs:
               --jq '.workflow_runs[] | select(.conclusion=="success") | "\(.id) \(.head_sha)"' | head -1
           }
           C=$(latest core.yml); G=$(latest gui.yml); M=$(latest mobile.yml)
-          if [ -z "$C$G$M" ]; then echo "trio incomplete yet"; exit 0; fi
+          if [ -z "$C" ] || [ -z "$G" ] || [ -z "$M" ]; then echo "trio incomplete yet"; exit 0; fi
           SC=${C#* }; SG=${G#* }; SM=${M#* }
           if [ "$SC" != "$SG" ] || [ "$SG" != "$SM" ]; then
             echo "trio shas differ ($SC $SG $SM) - a build is stale or pending, waiting"; exit 0
