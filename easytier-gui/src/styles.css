@@ -1,53 +1,115 @@
-@layer tailwind-base, primevue, tailwind-utilities;
+/* EasyTier GUI chrome — tokens live in easytier-frontend-lib/style.css */
 
-@layer tailwind-base {
-  @tailwind base;
-}
-
-@layer tailwind-utilities {
-  @tailwind components;
-  @tailwind utilities;
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 12px;
-  line-height: 24px;
-  font-weight: 400;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.card {
-  background: var(--surface-card);
-  padding: 2rem;
-  border-radius: 10px;
-  margin-bottom: 1rem;
-}
-
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-track {
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  border-radius: 4px;
-  background-color: #0000005d;
-}
-
-.p-password {
+.et-app {
+  height: 100%;
   width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 480px at 50% -12%, var(--et-accent-dim), transparent 55%),
+    var(--et-bg);
 }
 
-.p-password>input {
+.et-nav {
+  min-height: calc(var(--et-nav-height) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  border-bottom: 1px solid var(--et-border);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  background: color-mix(in srgb, var(--et-bg) 78%, transparent);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.et-nav-inner {
+  height: var(--et-nav-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.et-nav-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.et-status-pill {
+  font-size: 0.72rem;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 9.5rem;
+}
+
+.et-status-pill.is-on {
+  background: var(--et-accent-dim);
+  color: var(--et-accent);
+}
+
+.et-status-pill.is-off {
+  background: var(--et-surface-2);
+  color: var(--et-text-secondary);
+}
+
+.et-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--et-accent);
+  box-shadow: 0 0 0 0 var(--et-glow);
+  animation: et-pulse 1.8s ease-out infinite;
+}
+
+@keyframes et-pulse {
+  0% { box-shadow: 0 0 0 0 var(--et-glow); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.et-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.et-main-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+@media (min-width: 720px) {
+  .et-main-body {
+    max-width: 560px;
+  }
+}
+
+.et-empty {
+  min-height: 60%;
+  padding: 2rem 1.5rem;
+}
+
+.et-sheet-card {
+  background: var(--et-surface) !important;
+  border-radius: 20px 20px 0 0 !important;
+}
+
+.et-dialog-card {
+  background: var(--et-surface) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .et-pulse-dot { animation: none; }
 }

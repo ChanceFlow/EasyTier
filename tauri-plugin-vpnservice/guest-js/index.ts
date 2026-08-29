@@ -45,3 +45,9 @@ export async function stop_vpn(): Promise<InvokeResponse | null> {
 export async function get_vpn_status(): Promise<VpnStatusResponse | null> {
   return await invoke<VpnStatusResponse>('plugin:vpnservice|get_vpn_status', {})
 }
+
+// Update the ongoing notification with live tunnel throughput (bytes/sec).
+// When both rates are 0 the notification falls back to the idle text.
+export async function update_notification(rxRate: number, txRate: number): Promise<InvokeResponse | null> {
+  return await invoke<InvokeResponse>('plugin:vpnservice|update_notification', { rxRate, txRate })
+}

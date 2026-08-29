@@ -43,11 +43,6 @@ const normalMode = computed({
   }
 })
 
-const rpcListenOptions = computed(() => [
-  { label: t('web.common.disable'), value: false },
-  { label: t('web.common.enable'), value: true },
-])
-
 const rpcListenEnabled = computed<boolean>({
   get: () => !!normalMode.value?.enable_rpc_port_listen,
   set: (value) => {
@@ -89,16 +84,16 @@ const remoteMode = computed({
   }
 })
 
-const statusColorClass = computed(() => {
+const statusColor = computed(() => {
   switch (serviceStatus.value) {
     case 'Running':
-      return 'text-green-600'
+      return 'success'
     case 'Stopped':
-      return 'text-orange-600'
+      return 'warning'
     case 'NotInstalled':
-      return 'text-gray-600'
+      return 'grey'
     default:
-      return 'text-gray-600'
+      return 'grey'
   }
 })
 
@@ -163,74 +158,119 @@ watch(() => model.value.mode, async (newMode, oldMode) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <div>
-      <SelectButton id="mode-select" v-model="model.mode" :options="modeOptions" option-label="label"
-        option-value="value" fluid />
-    </div>
+  <div class="d-flex flex-column ga-4">
+    <v-btn-toggle
+      id="mode-select"
+      :model-value="model.mode"
+      density="comfortable"
+      divided
+      color="primary"
+      class="w-100"
+      @update:model-value="model.mode = $event"
+    >
+      <v-btn v-for="opt in modeOptions" :key="opt.value" :value="opt.value" class="flex-grow-1">
+        {{ opt.label }}
+      </v-btn>
+    </v-btn-toggle>
 
-    <!-- Mode descriptions -->
-    <div v-if="model.mode === 'normal'" class="text-sm text-gray-500">
+    <div v-if="model.mode === 'normal'" class="text-body-2 text-medium-emphasis">
       {{ t('mode.normal_description') }}
     </div>
-    <div v-else-if="model.mode === 'service'" class="text-sm text-gray-500">
+    <div v-else-if="model.mode === 'service'" class="text-body-2 text-medium-emphasis">
       {{ t('mode.service_description') }}
     </div>
-    <div v-else-if="model.mode === 'remote'" class="text-sm text-gray-500">
+    <div v-else-if="model.mode === 'remote'" class="text-body-2 text-medium-emphasis">
       {{ t('mode.remote_description') }}
     </div>
 
-    <div v-if="normalMode" class="flex flex-col gap-2">
-      <div class="flex items-center gap-2">
-        <label for="rpc-listen-toggle">{{ t('mode.enable_rpc_tcp_listen') }}</label>
-        <SelectButton id="rpc-listen-toggle" v-model="rpcListenEnabled" :options="rpcListenOptions" option-label="label"
-          option-value="value" />
+    <div v-if="normalMode" class="et-group">
+      <div class="et-row">
+        <label for="rpc-listen-toggle" class="mode-label">{{ t('mode.enable_rpc_tcp_listen') }}</label>
+        <v-switch
+          id="rpc-listen-toggle"
+          :model-value="rpcListenEnabled"
+          color="primary"
+          hide-details
+          inset
+          density="compact"
+          @update:model-value="rpcListenEnabled = !!$event"
+        />
       </div>
-      <div v-if="rpcListenEnabled" class="flex flex-col gap-2">
-        <div class="flex items-center gap-2">
-          <label for="rpc-listen-port">{{ t('mode.rpc_listen_port') }}</label>
-          <InputText id="rpc-listen-port" v-model="rpcListenPort" class="flex-1" inputmode="numeric" />
+      <div v-if="rpcListenEnabled" class="et-row">
+        <label for="rpc-listen-port" class="mode-label">{{ t('mode.rpc_listen_port') }}</label>
+        <v-text-field
+          id="rpc-listen-port"
+          v-model="rpcListenPort"
+          inputmode="numeric"
+          variant="outlined"
+          hide-details
+          class="mode-field"
+        />
+      </div>
+    </div>
+
+    <div v-if="serviceMode" class="et-group">
+      <div class="et-row et-row-stack">
+        <label for="config-dir" class="mode-label">{{ t('mode.config_dir') }}</label>
+        <v-text-field id="config-dir" v-model="serviceMode.config_dir" variant="outlined" hide-details class="w-100" />
+      </div>
+      <div class="et-row et-row-stack">
+        <label for="rpc-portal" class="mode-label">{{ t('mode.rpc_portal') }}</label>
+        <v-text-field id="rpc-portal" v-model="serviceMode.rpc_portal" variant="outlined" hide-details class="w-100" />
+      </div>
+      <div class="et-row">
+        <label for="log-level" class="mode-label">{{ t('mode.log_level') }}</label>
+        <v-select
+          id="log-level"
+          v-model="serviceMode.file_log_level"
+          :items="['off', 'warn', 'info', 'debug', 'trace']"
+          variant="outlined"
+          hide-details
+          class="mode-field"
+        />
+      </div>
+      <div class="et-row et-row-stack">
+        <label for="log-dir" class="mode-label">{{ t('mode.log_dir') }}</label>
+        <v-text-field id="log-dir" v-model="serviceMode.file_log_dir" variant="outlined" hide-details class="w-100" />
+      </div>
+      <div class="et-row et-row-stack">
+        <div class="d-flex align-center justify-space-between w-100">
+          <span class="mode-label">{{ t('mode.service_status') }}</span>
+          <span class="font-weight-medium" :class="`text-${statusColor}`">{{ t(`mode.service_status_${serviceStatus.toLowerCase()}`) }}</span>
+        </div>
+        <div class="d-flex align-center ga-2 w-100">
+          <v-btn v-if="serviceStatus === 'Running'" variant="tonal" color="warning" :prepend-icon="'mdi-stop-circle-outline'" @click="emit('stop-service')">
+            {{ t('mode.stop_service') }}
+          </v-btn>
+          <v-btn v-if="serviceStatus !== 'NotInstalled'" variant="tonal" color="error" :prepend-icon="'mdi-trash-can-outline'" @click="emit('uninstall-service')">
+            {{ t('mode.uninstall_service') }}
+          </v-btn>
         </div>
       </div>
     </div>
 
-    <div v-if="serviceMode" class="flex flex-col gap-2">
-      <div class="flex items-center gap-2">
-        <label for="config-dir">{{ t('mode.config_dir') }}</label>
-        <InputText id="config-dir" v-model="serviceMode.config_dir" class="flex-1" />
-      </div>
-      <div class="flex items-center gap-2">
-        <label for="rpc-portal">{{ t('mode.rpc_portal') }}</label>
-        <InputText id="rpc-portal" v-model="serviceMode.rpc_portal" class="flex-1" />
-      </div>
-      <div class="flex items-center gap-2">
-        <label for="log-level">{{ t('mode.log_level') }}</label>
-        <Select id="log-level" v-model="serviceMode.file_log_level"
-          :options="['off', 'warn', 'info', 'debug', 'trace']" />
-      </div>
-      <div class="flex items-center gap-2">
-        <label for="log-dir">{{ t('mode.log_dir') }}</label>
-        <InputText id="log-dir" v-model="serviceMode.file_log_dir" class="flex-1" />
-      </div>
-      <div class="flex items-center gap-2 justify-between">
-        <div class="flex items-center gap-2">
-          <label>{{ t('mode.service_status') }}</label>
-          <span :class="statusColorClass">{{ t(`mode.service_status_${serviceStatus.toLowerCase()}`) }}</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <Button :label="t('mode.stop_service')" icon="pi pi-stop-circle" v-if="serviceStatus === 'Running'"
-            @click="emit('stop-service')" severity="warn" text />
-          <Button :label="t('mode.uninstall_service')" icon="pi pi-trash" v-if="serviceStatus !== 'NotInstalled'"
-            @click="emit('uninstall-service')" severity="danger" text />
-        </div>
-      </div>
-    </div>
-
-    <div v-if="remoteMode" class="flex flex-col gap-2">
-      <div class="flex items-center gap-2">
-        <label for="remote-addr">{{ t('mode.remote_rpc_address') }}</label>
-        <InputText id="remote-addr" v-model="remoteMode.remote_rpc_address" class="flex-1" />
+    <div v-if="remoteMode" class="et-group">
+      <div class="et-row et-row-stack">
+        <label for="remote-addr" class="mode-label">{{ t('mode.remote_rpc_address') }}</label>
+        <v-text-field id="remote-addr" v-model="remoteMode.remote_rpc_address" variant="outlined" hide-details class="w-100" />
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.mode-label {
+  color: var(--et-text);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.mode-field {
+  max-width: 10rem;
+}
+.et-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+</style>
+

@@ -1,7 +1,7 @@
 import type { NetworkTypes } from 'easytier-frontend-lib'
 import { addPluginListener } from '@tauri-apps/api/core'
 import { Utils } from 'easytier-frontend-lib'
-import { get_vpn_status, prepare_vpn, start_vpn, stop_vpn } from 'tauri-plugin-vpnservice-api'
+import { get_vpn_status, prepare_vpn, start_vpn, stop_vpn, update_notification } from 'tauri-plugin-vpnservice-api'
 import { collectNetworkInfo, getConfig, listNetworkInstanceIds, setTunFd } from './backend'
 
 type Route = NetworkTypes.Route
@@ -502,4 +502,59 @@ export async function syncMobileVpnService() {
   }
 
   await onNetworkInstanceChange('')
+}
+
+// ---- ongoing notification: live tunnel throughput (WireGuard-style) ----
+const IO_NOTIFY_INTERVAL_MS = 2000
+let ioNotifyTimer: ReturnType<typeof setInterval> | null = null
+let ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
+let ioNotifyWasActive = false
+
+async function tickIoNotification() {
+  const instanceId = activeVpnInstanceId
+  try {
+    if (!instanceId) {
+      // tunnel just dropped: put the notification back to idle text
+      if (ioNotifyWasActive) {
+        await update_notification(0, 0)
+        ioNotifyWasActive = false
+        ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
+      }
+      return
+    }
+    ioNotifyWasActive = true
+    if (ioNotifyLast.inst !== instanceId) {
+      ioNotifyLast = { inst: instanceId, rx: 0, tx: 0, at: 0 }
+    }
+
+    const info = (await collectNetworkInfo(instanceId))?.info?.map?.[instanceId]
+    let rx = 0
+    let tx = 0
+    // field naming varies between the vendored proto TS and CI-regenerated
+    // typings (snake vs camel localNames), so read them dynamically
+    for (const peer of info?.peers ?? []) {
+      for (const raw of peer?.conns ?? []) {
+        const conn = raw as unknown as Record<string, unknown>
+        if (conn.is_closed ?? conn.isClosed) continue
+        const st = (conn.stats ?? {}) as unknown as Record<string, unknown>
+        rx += Number(st.rx_bytes ?? st.rxBytes ?? 0)
+        tx += Number(st.tx_bytes ?? st.txBytes ?? 0)
+      }
+    }
+
+    const now = Date.now()
+    const dt = ioNotifyLast.at > 0 ? (now - ioNotifyLast.at) / 1000 : 0
+    const rxRate = dt > 0.2 ? Math.max(0, (rx - ioNotifyLast.rx) / dt) : 0
+    const txRate = dt > 0.2 ? Math.max(0, (tx - ioNotifyLast.tx) / dt) : 0
+    ioNotifyLast = { inst: instanceId, rx, tx, at: now }
+    await update_notification(rxRate, txRate)
+  }
+  catch (e) {
+    console.debug('io notification tick skipped', e)
+  }
+}
+
+export function startMobileIoNotification() {
+  if (ioNotifyTimer) return
+  ioNotifyTimer = setInterval(() => { void tickIoNotification() }, IO_NOTIFY_INTERVAL_MS)
 }

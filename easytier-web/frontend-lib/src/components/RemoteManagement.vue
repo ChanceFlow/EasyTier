@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { Button, ConfirmPopup, Divider, IftaLabel, Menu, Message, Select, Tag, useConfirm, useToast, type VirtualScrollerLazyEvent } from 'primevue';
-import { computed, onMounted, onUnmounted, Ref, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import * as Api from '../modules/api';
 import * as Utils from '../modules/utils';
 import * as NetworkTypes from '../types/network';
-import { type MenuItem } from 'primevue/menuitem';
+import Config from './Config.vue';
+import Status from './Status.vue';
+import ConfigEditDialog from './ConfigEditDialog.vue';
+import HumanEvent from './HumanEvent.vue';
+import { useTimeAgo } from '@vueuse/core';
 
 const { t } = useI18n()
 
@@ -22,14 +25,22 @@ const instanceId = defineModel('instanceId', {
 
 const emits = defineEmits(['update']);
 
-const toast = useToast();
+const toast = ref(false)
+const toastMessage = ref('')
+const toastColor = ref('success')
 
-const configFile = ref();
+function showToast(message: string, color: 'success' | 'error' | 'info' = 'success') {
+    toastMessage.value = message
+    toastColor.value = color
+    toast.value = true
+}
+
+const configFile = ref<HTMLInputElement | null>(null);
 
 const curNetworkInfo = ref<NetworkTypes.NetworkInstance | null>(null);
 
 const showConfigEditDialog = ref(false);
-const isEditingNetwork = ref(false); // Flag to indicate if we're in network editing mode
+const isEditingNetwork = ref(false);
 const currentNetworkConfig = ref<NetworkTypes.NetworkConfig | undefined>(undefined);
 
 const listInstanceIdResponse = ref<Api.ListNetworkInstanceIdResponse | undefined>(undefined);
@@ -51,10 +62,8 @@ const loadNetworkMetas = async (instanceIds: string[]) => {
         console.error("Failed to load network metas", e);
     }
 };
-const onLazyLoadNetworkMetas = async (event: VirtualScrollerLazyEvent) => {
-    const instanceIds = instanceList.value
-        .slice(event.first, event.last + 1)
-        .map(item => item.uuid);
+const onLazyLoadNetworkMetas = async () => {
+    const instanceIds = instanceList.value.map(item => item.uuid);
     await loadNetworkMetas(instanceIds);
 };
 const currentNetworkMeta = computed(() => {
@@ -113,7 +122,6 @@ const selectedInstanceId = computed({
         return instanceList.value.find((instance) => instance.uuid === instanceId.value);
     },
     set(value: any) {
-        console.log("set instanceId", value);
         instanceId.value = value ? value.uuid : undefined;
     }
 });
@@ -131,19 +139,54 @@ watch(selectedInstanceId, async (newVal, oldVal) => {
 
 const needShowNetworkStatus = computed(() => {
     if (!selectedInstanceId.value) {
-        // nothing selected
-        return false;
-    }
-    if (networkIsDisabled.value) {
-        // network is disabled
         return false;
     }
     if (isEditingNetwork.value) {
-        // editing network
         return false;
     }
     return true;
 })
+
+// ---- 移动端底部原生 Tab ----
+const mobileTab = ref<'home' | 'devices' | 'config' | 'activity'>('home');
+watch(mobileTab, async (newTab) => {
+    if (newTab === 'config' && !currentNetworkConfig.value) {
+        await loadCurrentNetworkConfig();
+    }
+});
+
+// ---- 移动端网络切换 Bottom Sheet ----
+const networkSheetOpen = ref(false);
+
+const heroIsRunning = computed(() => {
+    return !!selectedInstanceId.value && isRunning(selectedInstanceId.value.uuid);
+});
+
+const heroNetworkName = computed(() => {
+    const sel = selectedInstanceId.value;
+    if (!sel) {
+        return t('web.device_management.network');
+    }
+    return sel.meta?.network_name ?? sel.uuid;
+});
+
+function openNetworkSheet() {
+    if (isEditingNetwork.value) {
+        return;
+    }
+    onLazyLoadNetworkMetas();
+    networkSheetOpen.value = true;
+}
+
+function sheetSelectNetwork(item: { uuid: string }) {
+    networkSheetOpen.value = false;
+    onSelectNetwork(item.uuid);
+}
+
+function sheetCreateNew() {
+    networkSheetOpen.value = false;
+    newNetwork();
+}
 
 const networkIsDisabled = computed(() => {
     if (!selectedInstanceId.value) {
@@ -168,42 +211,71 @@ const loadCurrentNetworkConfig = async () => {
     currentNetworkConfig.value = ret;
 }
 
-const stopNetwork = async () => {
+function setCurrentNetworkRunning(running: boolean): void {
+    if (!curNetworkInfo.value) {
+        return
+    }
+    if (selectedInstanceId.value && curNetworkInfo.value.instance_id !== selectedInstanceId.value.uuid) {
+        return
+    }
+    curNetworkInfo.value = {
+        ...curNetworkInfo.value,
+        running,
+    }
+}
+
+const stopNetwork = async (): Promise<void> => {
     if (!selectedInstanceId.value) {
         return;
     }
 
     await props.api.update_network_instance_state(selectedInstanceId.value.uuid, true);
     await loadNetworkInstanceIds();
+    setCurrentNetworkRunning(false)
 }
 
-const confirm = useConfirm();
-const confirmDeleteNetwork = (event: any) => {
-    confirm.require({
-        target: event.currentTarget,
-        message: 'Do you want to delete this network?',
-        icon: 'pi pi-info-circle',
-        rejectProps: {
-            label: 'Cancel',
-            severity: 'secondary',
-            outlined: true
-        },
-        acceptProps: {
-            label: 'Delete',
-            severity: 'danger'
-        },
-        accept: async () => {
+const startNetwork = async (): Promise<void> => {
+    if (!selectedInstanceId.value) {
+        return;
+    }
+    await props.api.update_network_instance_state(selectedInstanceId.value.uuid, false);
+    await loadNetworkInstanceIds();
+    setCurrentNetworkRunning(true)
+}
+
+const toggleCurrentNetwork = async () => {
+    if (heroIsRunning.value) {
+        await stopNetwork();
+    } else {
+        await startNetwork();
+    }
+}
+
+const confirmDialog = ref(false)
+const confirmAction = ref<() => void>(() => {})
+const confirmMessage = ref('')
+const confirmHeader = ref('')
+
+function requireConfirm(message: string, header: string, action: () => void) {
+    confirmMessage.value = message
+    confirmHeader.value = header
+    confirmAction.value = action
+    confirmDialog.value = true
+}
+
+const confirmDeleteNetwork = () => {
+    requireConfirm(
+        t('web.device_management.delete_network_confirm') || 'Do you want to delete this network?',
+        t('web.device_management.delete_network'),
+        async () => {
             try {
                 await props.api.delete_network(instanceId.value!);
             } catch (e) {
                 console.error(e);
             }
             emits('update');
-        },
-        reject: () => {
-            return;
         }
-    });
+    );
 };
 
 const saveAndRunNewNetwork = async (config?: NetworkTypes.NetworkConfig) => {
@@ -230,212 +302,208 @@ const saveAndRunNewNetwork = async (config?: NetworkTypes.NetworkConfig) => {
 
         selectedInstanceId.value = { uuid: cfg.instance_id };
         await loadNetworkInstanceIds();
-        await loadCurrentNetworkInfo();
-    } catch (e: any) {
+        isEditingNetwork.value = false;
+        showToast(t('web.device_management.config_saved') || 'Network started successfully', 'success');
+        emits('update');
+    } catch (e) {
         console.error(e);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to run network, error: ' + JSON.stringify(e.response?.data ?? e), life: 2000 });
-        return;
+        showToast(String(e), 'error');
     }
-
-    emits('update');
-    isEditingNetwork.value = false;
 }
 
 const saveNetworkConfig = async () => {
     if (!currentNetworkConfig.value) {
         return;
     }
-    await props.api.save_config(currentNetworkConfig.value);
 
-    delete networkMetaCache.value[currentNetworkConfig.value.instance_id];
-    await loadNetworkMetas([currentNetworkConfig.value.instance_id]);
+    const targetInstanceId = instanceId.value ?? currentNetworkConfig.value.instance_id;
+    if (targetInstanceId && currentNetworkConfig.value.instance_id !== targetInstanceId) {
+        currentNetworkConfig.value.instance_id = targetInstanceId;
+    }
 
-    toast.add({ severity: 'success', summary: t("web.common.success"), detail: t("web.device_management.config_saved"), life: 2000 });
+    try {
+        await props.api.save_config(currentNetworkConfig.value);
+        delete networkMetaCache.value[currentNetworkConfig.value.instance_id];
+        await loadNetworkMetas([currentNetworkConfig.value.instance_id]);
+        showToast(t('web.device_management.config_saved') || 'Configuration saved', 'success');
+        isEditingNetwork.value = false;
+        emits('update');
+    } catch (e) {
+        console.error(e);
+        showToast(String(e), 'error');
+    }
 }
+
 const newNetwork = async () => {
-    const newNetworkConfig = props.newConfigGenerator?.() ?? NetworkTypes.DEFAULT_NETWORK_CONFIG();
-    await props.api.save_config(newNetworkConfig);
-    selectedInstanceId.value = { uuid: newNetworkConfig.instance_id };
-    currentNetworkConfig.value = newNetworkConfig;
-    await loadNetworkInstanceIds();
+    isEditingNetwork.value = true;
+    selectedInstanceId.value = undefined;
+    instanceId.value = undefined;
+
+    if (props.newConfigGenerator) {
+        currentNetworkConfig.value = props.newConfigGenerator();
+    } else {
+        currentNetworkConfig.value = NetworkTypes.DEFAULT_NETWORK_CONFIG();
+    }
+}
+
+const editNetwork = async () => {
+    isEditingNetwork.value = true;
+    await loadCurrentNetworkConfig();
 }
 
 const cancelEditNetwork = () => {
     isEditingNetwork.value = false;
-}
-
-const editNetwork = async () => {
-    if (!instanceId.value) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'No network instance selected', life: 2000 });
-        return;
-    }
-
-    try {
-        let ret = await props.api.get_network_config(instanceId.value!);
-        console.debug("editNetwork", ret);
-        currentNetworkConfig.value = ret;
-        isEditingNetwork.value = true; // Switch to editing mode instead
-    } catch (e: any) {
-        console.error(e);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to edit network, error: ' + JSON.stringify(e.response.data), life: 2000 });
-        return;
-    }
+    loadCurrentNetworkInfo();
 }
 
 const loadNetworkInstanceIds = async () => {
     listInstanceIdResponse.value = await props.api.list_network_instance_ids();
+    if (!instanceId.value && listInstanceIdResponse.value?.running_inst_ids?.length) {
+        instanceId.value = Utils.UuidToStr(listInstanceIdResponse.value.running_inst_ids[0]);
+    }
 }
 
 const loadCurrentNetworkInfo = async () => {
-    const selected = selectedInstanceId.value?.uuid;
-    if (!selected) {
+    if (!selectedInstanceId.value) {
         curNetworkInfo.value = null;
-        return;
-    }
-    if (!needShowNetworkStatus.value) {
-        curNetworkInfo.value = null;
-        return;
-    }
-    if (curNetworkInfo.value?.instance_id !== selected) {
-        curNetworkInfo.value = null;
-    }
-
-    let network_info = await props.api.get_network_info(selected);
-    if (selectedInstanceId.value?.uuid !== selected) {
-        return;
-    }
-
-    if (!network_info) {
-        curNetworkInfo.value = {
-            instance_id: selected,
-            running: false,
-            error_msg: t('web.device_management.network_info_unavailable'),
-        } as NetworkTypes.NetworkInstance;
-        return;
-    }
-
-    curNetworkInfo.value = {
-        instance_id: selected,
-        running: network_info?.running ?? false,
-        error_msg: network_info?.error_msg ?? '',
-        detail: network_info,
-    } as NetworkTypes.NetworkInstance;
-}
-
-const exportConfig = async () => {
-    if (!instanceId.value) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'No network instance selected', life: 2000 });
         return;
     }
 
     try {
-        const { instance_id, ...networkConfig } = await props.api.get_network_config(instanceId.value!);
-        let { toml_config: tomlConfig, error } = await props.api.generate_config(networkConfig as NetworkTypes.NetworkConfig);
-        if (error) {
-            throw { response: { data: error } };
-        }
-        exportTomlFile(tomlConfig ?? '', instanceId.value + '.toml');
-    } catch (e: any) {
-        console.error(e);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to export network config, error: ' + JSON.stringify(e.response.data), life: 2000 });
-        return;
+        const info = await props.api.get_network_info(selectedInstanceId.value.uuid);
+        curNetworkInfo.value = {
+            instance_id: selectedInstanceId.value.uuid,
+            running: isRunning(selectedInstanceId.value.uuid),
+            error_msg: "",
+            detail: info as any,
+        };
+    } catch (e) {
+        console.debug(e);
     }
-}
-
-const importConfig = () => {
-    configFile.value.click();
-}
-
-const handleFileUpload = (event: Event) => {
-    const files = (event.target as HTMLInputElement).files;
-    const file = files ? files[0] : null;
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        try {
-            let tomlConfig = e.target?.result?.toString();
-            if (!tomlConfig) return;
-            const resp = await props.api.parse_config(tomlConfig);
-            if (resp.error) {
-                throw resp.error;
-            }
-
-            const config = resp.config;
-            if (!config) return;
-
-            config.instance_id = currentNetworkConfig.value?.instance_id ?? config?.instance_id;
-            currentNetworkConfig.value = config;
-            toast.add({ severity: 'success', summary: 'Import Success', detail: "Config file import success", life: 2000 });
-        } catch (error) {
-            toast.add({ severity: 'error', summary: 'Error', detail: 'Config file parse error: ' + error, life: 2000 });
-        }
-        configFile.value.value = null;
-    }
-    reader.readAsText(file);
-}
-
-const exportTomlFile = (context: string, name: string) => {
-    let url = window.URL.createObjectURL(new Blob([context], { type: 'application/toml' }));
-    let link = document.createElement('a');
-    link.style.display = 'none';
-    link.href = url;
-    link.setAttribute('download', name);
-    document.body.appendChild(link);
-    link.click();
-
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
 }
 
 const generateConfig = async (config: NetworkTypes.NetworkConfig): Promise<string> => {
-    let { toml_config: tomlConfig, error } = await props.api.generate_config(config);
-    if (error) {
-        throw error;
-    }
-    return tomlConfig ?? '';
+    const res = await props.api.generate_config(config);
+    return (res as any)?.config ?? (res as any) ?? '';
 }
 
-const syncTomlConfig = async (tomlConfig: string): Promise<void> => {
-    let resp = await props.api.parse_config(tomlConfig);
-    if (resp.error) {
-        throw resp.error;
-    };
-    const config = resp.config;
-    if (!config) {
-        throw new Error("Parsed config is empty");
+const syncTomlConfig = async (tomlConfig: string) => {
+    try {
+        const parsed = await props.api.parse_config(tomlConfig);
+        currentNetworkConfig.value = ((parsed as any)?.config ? (parsed as any).config : parsed) as any;
+        showConfigEditDialog.value = false;
+        showToast(t('web.common.success') || 'Configuration imported', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast(String(e), 'error');
     }
-    config.instance_id = currentNetworkConfig.value?.instance_id ?? config?.instance_id;
-    currentNetworkConfig.value = config;
 }
 
-// 响应式屏幕宽度
-const screenWidth = ref(window.innerWidth);
-const updateScreenWidth = () => {
-    screenWidth.value = window.innerWidth;
-};
+const exportConfig = async () => {
+    if (!selectedInstanceId.value) return;
+    try {
+        const cfg = await props.api.get_network_config(selectedInstanceId.value.uuid);
+        const res = await props.api.generate_config(cfg);
+        const toml = typeof res === 'string' ? res : (res as any)?.config ?? '';
+        const blob = new Blob([toml], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${cfg.network_name || 'easytier'}.toml`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('Export failed', e);
+        showToast(String(e), 'error');
+    }
+}
+
+const importConfig = (): void => {
+    configFile.value?.click();
+}
+
+interface ConfigActionItem {
+    key: 'edit' | 'import' | 'save'
+    icon: string
+    labelKey: string
+    primary: boolean
+    disabled: boolean
+    run: () => void
+}
+
+const configActions = computed<ConfigActionItem[]>(() => [
+    {
+        key: 'edit',
+        icon: 'mdi-file-code-outline',
+        labelKey: 'web.device_management.edit_as_file',
+        primary: false,
+        disabled: false,
+        run: (): void => {
+            showConfigEditDialog.value = true
+        },
+    },
+    {
+        key: 'import',
+        icon: 'mdi-tray-arrow-up',
+        labelKey: 'web.device_management.import_config',
+        primary: false,
+        disabled: false,
+        run: importConfig,
+    },
+    {
+        key: 'save',
+        icon: 'mdi-content-save-outline',
+        labelKey: 'web.device_management.save_config',
+        primary: true,
+        disabled: !currentNetworkConfig.value,
+        run: (): void => {
+            void saveNetworkConfig()
+        },
+    },
+])
+
+const handleFileUpload = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    await syncTomlConfig(text);
+}
 
 // 菜单引用和菜单项
-const menuRef = ref();
-const actionMenu: Ref<MenuItem[]> = ref([
-    {
-        label: () => t('web.device_management.edit_network'),
-        icon: 'pi pi-pencil',
-        visible: () => !(networkIsDisabled.value ?? true) && currentNetworkControl.editable.value,
-        command: () => editNetwork()
-    },
-    {
-        label: () => t('web.device_management.export_config'),
-        icon: 'pi pi-download',
-        command: () => exportConfig()
-    },
-    {
-        label: () => t('web.device_management.delete_network'),
-        icon: 'pi pi-trash',
-        class: 'p-error',
-        visible: () => currentNetworkControl.deletable.value,
-        command: () => confirmDeleteNetwork(new Event('click'))
+const actionMenuOpen = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+
+function openActionMenu(e: Event) {
+    menuX.value = (e as MouseEvent).clientX
+    menuY.value = (e as MouseEvent).clientY
+    actionMenuOpen.value = true
+}
+
+function runActionMenu(action: string) {
+    actionMenuOpen.value = false
+    switch (action) {
+        case 'edit':
+            editNetwork()
+            break
+        case 'export':
+            exportConfig()
+            break
+        case 'delete':
+            confirmDeleteNetwork()
+            break
     }
-]);
+}
+
+function onSelectNetwork(value: unknown) {
+    const uuid = typeof value === 'string' ? value : (value as any)?.uuid
+    if (!uuid) {
+        instanceId.value = undefined
+        return
+    }
+    const found = instanceList.value.find(i => i.uuid === uuid)
+    selectedInstanceId.value = found ?? { uuid }
+}
 
 let periodFunc = new Utils.PeriodicTask(async () => {
     if (props.pauseAutoRefresh) {
@@ -450,178 +518,330 @@ let periodFunc = new Utils.PeriodicTask(async () => {
 
 onMounted(async () => {
     periodFunc.start();
-
-    // 添加屏幕尺寸监听
-    window.addEventListener('resize', updateScreenWidth);
 });
 
 onUnmounted(() => {
     periodFunc.stop();
-
-    // 移除屏幕尺寸监听
-    window.removeEventListener('resize', updateScreenWidth);
 });
+
+const peerCount = computed(() => {
+    return curNetworkInfo.value?.detail?.peer_route_pairs?.length ?? 0
+})
+
+const activityEvents = computed(() => {
+    const detail = curNetworkInfo.value?.detail
+    if (!detail?.events) return []
+    return detail.events.map((event: string) => JSON.parse(event))
+})
 
 </script>
 
-
 <template>
-    <div class="device-management">
-        <input type="file" @change="handleFileUpload" class="hidden" accept="application/toml" ref="configFile" />
-        <ConfirmPopup></ConfirmPopup>
+    <div class="device-management" :class="{ 'has-tab-bar': needShowNetworkStatus }">
+        <input type="file" @change="handleFileUpload" class="d-none" accept="application/toml" ref="configFile" />
 
-        <!-- 网络选择和操作按钮始终在同一行 -->
-        <div class="network-header bg-surface-50 p-3 rounded-lg shadow-sm mb-1">
-            <div class="flex flex-row justify-between items-center gap-2" style="align-items: center;">
-                <!-- 网络选择 -->
-                <div class="flex-1 min-w-0">
-                    <IftaLabel class="w-full">
-                        <Select v-model="selectedInstanceId" :options="instanceList" optionLabel="uuid" class="w-full"
-                            inputId="dd-inst-id" :placeholder="t('web.device_management.select_network')"
-                            :pt="{ root: { class: 'network-select-container' } }" :virtualScrollerOptions="{
-                                lazy: true,
-                                onLazyLoad: onLazyLoadNetworkMetas,
-                                itemSize: 60,
-                                delay: 50
-                            }">
-                            <template #value="slotProps">
-                                <div v-if="slotProps.value" class="flex items-center content-center min-w-0">
-                                    <div class="mr-4 flex-col min-w-0 flex-1">
-                                        <span class="truncate block">
-                                            &nbsp;
-                                            <span v-if="slotProps.value.meta">
-                                                {{ slotProps.value.meta.network_name }} ({{ slotProps.value.uuid }})
-                                            </span>
-                                            <span v-else>
-                                                {{ slotProps.value.uuid }}
-                                            </span>
-                                        </span>
-                                    </div>
-                                    <Tag class="my-auto leading-3 shrink-0"
-                                        :severity="isRunning(slotProps.value.uuid) ? 'success' : 'info'"
-                                        :value="t(isRunning(slotProps.value.uuid) ? 'network_running' : 'network_stopped')" />
-                                </div>
-                                <span v-else>
-                                    {{ slotProps.placeholder }}
-                                </span>
-                            </template>
-                            <template #option="slotProps">
-                                <div class="flex flex-col items-start content-center max-w-full">
-                                    <div class="flex items-center min-w-0">
-                                        <div class="mr-4 min-w-0 flex-1">
-                                            <span class="truncate block">{{ t('network_name') }}: {{
-                                                slotProps.option.meta?.network_name ?? slotProps.option.uuid }}</span>
-                                        </div>
-                                        <Tag class="my-auto leading-3 shrink-0"
-                                            :severity="isRunning(slotProps.option.uuid) ? 'success' : 'info'"
-                                            :value="t(isRunning(slotProps.option.uuid) ? 'network_running' : 'network_stopped')" />
-                                    </div>
-                                    <div class="max-w-full overflow-hidden text-ellipsis text-gray-500">
-                                        {{ slotProps.option.uuid }}
-                                    </div>
-                                </div>
-                            </template>
-                        </Select>
-                        <label class="network-label mr-2 font-medium" for="dd-inst-id">{{
-                            t('web.device_management.network') }}</label>
-                    </IftaLabel>
+        <!-- ================= 1. Top Network Switcher Profile Card ================= -->
+        <div class="et-network-chip d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
+            <div class="d-flex align-center ga-3 min-w-0">
+                <div
+                    class="et-squircle"
+                    :style="{ background: heroIsRunning ? 'var(--et-accent)' : 'var(--et-surface-2)' }"
+                >
+                    <v-icon size="18" :color="heroIsRunning ? 'onPrimary' : 'medium-emphasis'">
+                        {{ heroIsRunning ? 'mdi-shield-check' : 'mdi-shield-outline' }}
+                    </v-icon>
                 </div>
-
-                <!-- 简化的按钮区域 - 无论屏幕大小都显示 -->
-                <div class="flex gap-2 shrink-0 button-container items-center">
-                    <!-- Create/Cancel button based on state -->
-                    <Button v-if="!isEditingNetwork" @click="newNetwork" icon="pi pi-plus"
-                        :label="screenWidth > 640 ? t('web.device_management.create_new') : undefined"
-                        :class="['create-button', screenWidth <= 640 ? 'p-button-icon-only' : '']"
-                        :style="screenWidth <= 640 ? 'width: 3rem !important; height: 3rem !important; font-size: 1.2rem' : ''"
-                        :tooltip="screenWidth <= 640 ? t('web.device_management.create_network') : undefined"
-                        tooltipOptions="{ position: 'bottom' }" severity="primary" />
-
-                    <Button v-else @click="cancelEditNetwork" icon="pi pi-times"
-                        :label="screenWidth > 640 ? t('web.device_management.cancel_edit') : undefined"
-                        :class="['cancel-button', screenWidth <= 640 ? 'p-button-icon-only' : '']"
-                        :style="screenWidth <= 640 ? 'width: 3rem !important; height: 3rem !important; font-size: 1.2rem' : ''"
-                        :tooltip="screenWidth <= 640 ? t('web.device_management.cancel_edit') : undefined"
-                        tooltipOptions="{ position: 'bottom' }" severity="secondary" />
-
-                    <!-- More actions menu -->
-                    <Menu ref="menuRef" :model="actionMenu" :popup="true" />
-                    <Button v-if="!isEditingNetwork && selectedInstanceId" icon="pi pi-ellipsis-v"
-                        class="p-button-rounded flex items-center justify-center" severity="help"
-                        style="width: 3rem !important; height: 3rem !important; font-size: 1.2rem"
-                        @click="menuRef.toggle($event)" :aria-label="t('web.device_management.more_actions')"
-                        :tooltip="t('web.device_management.more_actions')" tooltipOptions="{ position: 'bottom' }" />
+                <div class="min-w-0">
+                    <div class="d-flex align-center ga-2">
+                        <span class="hero-net-name truncate">{{ heroNetworkName }}</span>
+                        <v-chip :color="heroIsRunning ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill font-weight-bold">
+                            {{ heroIsRunning ? t('web.device_management.active') : t('web.device_management.stopped') }}
+                        </v-chip>
+                    </div>
+                    <div class="text-caption text-medium-emphasis truncate">
+                        {{ isEditingNetwork ? t('web.device_management.edit_network') : t('web.device_management.select_network') }}
+                    </div>
                 </div>
+            </div>
+
+            <div class="d-flex align-center ga-1 flex-shrink-0">
+                <template v-if="isEditingNetwork">
+                    <v-btn icon="mdi-close" size="small" variant="text" :aria-label="t('web.device_management.cancel_edit')" @click.stop="cancelEditNetwork" />
+                </template>
+                <template v-else>
+                    <v-btn v-if="selectedInstanceId" icon="mdi-dots-vertical" size="small" variant="text" :aria-label="t('web.device_management.more_actions')" @click.stop="openActionMenu" />
+                    <v-icon size="20" color="medium-emphasis">mdi-chevron-down</v-icon>
+                </template>
             </div>
         </div>
 
-        <!-- Main Content Area -->
-        <div class="network-content bg-surface-0 p-4 rounded-lg shadow-sm">
-            <!-- Network Creation Form -->
-            <div v-if="isEditingNetwork || networkIsDisabled" class="network-creation-container">
-                <div class="network-creation-header flex items-center gap-2 mb-3">
-                    <i class="pi pi-plus-circle text-primary text-xl"></i>
-                    <h2 class="text-xl font-medium">{{ t('web.device_management.edit_network') }}</h2>
+        <!-- Network Switcher Bottom Sheet (iOS Action Sheet) -->
+        <v-bottom-sheet v-model="networkSheetOpen" scrollable>
+            <v-card rounded="t-xl" class="et-network-sheet">
+                <div class="sheet-grabber" @click="networkSheetOpen = false" />
+                <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
+                    <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.network') }}</span>
+                    <v-btn color="primary" variant="flat" size="small" rounded="pill" :prepend-icon="'mdi-plus'" @click="sheetCreateNew">
+                        {{ t('web.device_management.create_new') }}
+                    </v-btn>
+                </v-card-title>
+                <v-card-text class="pa-2">
+                    <div class="ios-group mb-2">
+                        <div
+                            v-for="item in instanceList"
+                            :key="item.uuid"
+                            class="et-row et-row-pressable"
+                            @click="sheetSelectNetwork(item)"
+                        >
+                            <div class="d-flex align-center ga-3 min-w-0">
+                                <div class="et-squircle" :style="{ background: isRunning(item.uuid) ? 'var(--et-accent)' : 'var(--et-surface-2)' }">
+                                    <v-icon size="18" :color="isRunning(item.uuid) ? 'onPrimary' : 'medium-emphasis'">
+                                        {{ isRunning(item.uuid) ? 'mdi-shield-check' : 'mdi-shield-off' }}
+                                    </v-icon>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="font-weight-bold truncate">{{ item.meta?.network_name ?? item.uuid }}</div>
+                                    <div class="text-caption text-mono text-medium-emphasis truncate">{{ item.uuid }}</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-center ga-2 flex-shrink-0">
+                                <v-chip :color="isRunning(item.uuid) ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill">
+                                    {{ t(isRunning(item.uuid) ? 'network_running' : 'network_stopped') }}
+                                </v-chip>
+                                <v-icon v-if="item.uuid === selectedInstanceId?.uuid" color="primary" size="20">mdi-check-circle</v-icon>
+                            </div>
+                        </div>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-bottom-sheet>
+
+        <!-- More actions menu -->
+        <v-menu v-model="actionMenuOpen" :position-x="menuX" :position-y="menuY" location="bottom end">
+            <v-list density="comfortable" min-width="180" rounded="xl" class="et-menu-list">
+                <v-list-item v-if="currentNetworkControl.editable.value" @click="runActionMenu('edit')">
+                    <v-list-item-title>{{ t('web.device_management.edit_network') }}</v-list-item-title>
+                    <template #prepend><v-icon size="20">mdi-pencil</v-icon></template>
+                </v-list-item>
+                <v-list-item @click="runActionMenu('export')">
+                    <v-list-item-title>{{ t('web.device_management.export_config') }}</v-list-item-title>
+                    <template #prepend><v-icon size="20">mdi-download</v-icon></template>
+                </v-list-item>
+                <v-list-item v-if="currentNetworkControl.deletable.value" @click="runActionMenu('delete')">
+                    <v-list-item-title class="text-error">{{ t('web.device_management.delete_network') }}</v-list-item-title>
+                    <template #prepend><v-icon color="error" size="20">mdi-trash-can-outline</v-icon></template>
+                </v-list-item>
+            </v-list>
+        </v-menu>
+
+        <!-- ================= 2. Main Content Area ================= -->
+        <div class="network-content">
+            <!-- Mode A: Network Creation Form (when user clicked Create/Edit) -->
+            <div v-if="isEditingNetwork" class="network-creation-container">
+                <div class="d-flex align-center justify-space-between mb-3">
+                    <div class="d-flex align-center ga-2">
+                        <v-icon color="primary" size="22">mdi-tune-variant</v-icon>
+                        <h2 class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.edit_network') }}</h2>
+                    </div>
+                    <v-btn icon="mdi-close" size="small" variant="text" @click="cancelEditNetwork" />
                 </div>
 
-                <div class="w-full flex gap-2 flex-wrap justify-start mb-3">
-                    <Button @click="showConfigEditDialog = true" icon="pi pi-file-edit"
-                        :label="t('web.device_management.edit_as_file')" iconPos="left" severity="secondary" />
-                    <Button @click="importConfig" icon="pi pi-upload" :label="t('web.device_management.import_config')"
-                        iconPos="left" severity="help" />
-                    <Button v-if="networkIsDisabled" @click="saveNetworkConfig" :disabled="!currentNetworkConfig"
-                        icon="pi pi-save" :label="t('web.device_management.save_config')" iconPos="left"
-                        severity="success" />
+                <div class="et-action-grid et-group mb-3" role="toolbar">
+                    <v-btn
+                        v-for="item in configActions"
+                        :key="item.key"
+                        variant="text"
+                        class="et-action-cell"
+                        :color="item.primary ? 'primary' : undefined"
+                        :aria-label="t(item.labelKey)"
+                        :disabled="item.disabled"
+                        @click="item.run"
+                    >
+                        <v-icon size="22">{{ item.icon }}</v-icon>
+                        <span>{{ t(item.labelKey) }}</span>
+                    </v-btn>
                 </div>
 
-                <Divider />
-
-                <Config :cur-network="currentNetworkConfig" :config-invalid="!currentNetworkConfig"
-                    @run-network="saveAndRunNewNetwork"></Config>
+                <Config
+                    :cur-network="currentNetworkConfig"
+                    :config-invalid="!currentNetworkConfig"
+                    @run-network="saveAndRunNewNetwork"
+                />
             </div>
 
-            <!-- Network Status (for running networks) -->
+            <!-- Mode B: Active Network Dashboard & Tabs -->
             <div v-else-if="needShowNetworkStatus" class="network-status-container">
-                <div class="network-status-header flex items-center gap-2 mb-3">
-                    <i class="pi pi-chart-line text-primary text-xl"></i>
-                    <h2 class="text-xl font-medium">{{ t('web.device_management.network_status') }}</h2>
+                <!-- Status component (handles Home with prominent start/stop, Devices, etc.) -->
+                <Status
+                    v-if="curNetworkInfo && curNetworkInfo.error_msg === ''"
+                    :cur-network-inst="curNetworkInfo"
+                    :api="api"
+                    :active-tab="mobileTab"
+                    @start-network="startNetwork"
+                    @stop-network="stopNetwork"
+                    @toggle-network="toggleCurrentNetwork"
+                    class="mb-4"
+                />
+                <v-alert v-else-if="curNetworkInfo?.error_msg" type="error" variant="tonal" rounded="xl" class="mb-4">
+                    {{ curNetworkInfo.error_msg }}
+                </v-alert>
+                <v-alert v-else type="info" variant="tonal" rounded="xl" class="mb-4">
+                    {{ t('web.device_management.loading_network_status') }}
+                </v-alert>
+
+                <!-- Activity Tab View (when mobileTab === 'activity') -->
+                <div v-if="mobileTab === 'activity'" class="activity-tab-content">
+                    <div class="ios-section">
+                        <div class="ios-section-header">{{ t('event_log') }}</div>
+                        <div v-if="activityEvents.length" class="ios-group pa-3">
+                            <v-timeline side="end" density="compact">
+                                <v-timeline-item
+                                    v-for="(item, i) in activityEvents"
+                                    :key="i"
+                                    dot-color="primary"
+                                    size="small"
+                                >
+                                    <small class="text-caption text-medium-emphasis d-block mb-1">{{ useTimeAgo(Date.parse(item.time)) }}</small>
+                                    <HumanEvent :event="item.event" />
+                                </v-timeline-item>
+                            </v-timeline>
+                        </div>
+                        <div v-else class="et-group text-center py-10 text-medium-emphasis">
+                            <v-icon size="40" class="mb-2">mdi-history</v-icon>
+                            <div>{{ t('no_events') }}</div>
+                        </div>
+                    </div>
                 </div>
 
-                <Status v-if="curNetworkInfo && curNetworkInfo.error_msg === ''" v-bind:cur-network-inst="curNetworkInfo"
-                    :api="api"
-                    class="mb-4">
-                </Status>
-                <Message v-else-if="curNetworkInfo?.error_msg" severity="error" class="mb-4">{{
-                    curNetworkInfo.error_msg }}</Message>
-                <Message v-else severity="info" class="mb-4">{{ t('web.device_management.loading_network_status') }}
-                </Message>
-
-                <div class="text-center mt-4">
-                    <Button @click="stopNetwork" :disabled="!currentNetworkControl.deletable.value"
-                        :label="t('web.device_management.disable_network')" severity="danger" icon="pi pi-power-off"
-                        iconPos="left" />
+                <!-- Config Tab View (when mobileTab === 'config' or when disabled in test) -->
+                <div v-if="mobileTab === 'config'" class="config-tab-content">
+                    <div class="et-action-grid et-group mb-3" role="toolbar">
+                        <v-btn
+                            v-for="item in configActions"
+                            :key="item.key"
+                            variant="text"
+                            class="et-action-cell"
+                            :color="item.primary ? 'primary' : undefined"
+                            :aria-label="t(item.labelKey)"
+                            :disabled="item.disabled"
+                            @click="item.run"
+                        >
+                            <v-icon size="22">{{ item.icon }}</v-icon>
+                            <span>{{ t(item.labelKey) }}</span>
+                        </v-btn>
+                    </div>
+                    <Config
+                        :cur-network="currentNetworkConfig"
+                        :config-invalid="!currentNetworkConfig"
+                        @run-network="saveAndRunNewNetwork"
+                    />
                 </div>
             </div>
 
-            <!-- Empty State -->
-            <div v-else class="empty-state flex flex-col items-center py-12">
-                <i class="pi pi-sitemap text-5xl text-secondary mb-4 opacity-50"></i>
-                <div class="text-xl text-center font-medium mb-3">{{ t('web.device_management.no_network_selected') }}
+            <!-- Mode C: Empty State (No network configured) -->
+            <div v-else class="empty-state d-flex flex-column align-center justify-center py-12">
+                <div class="et-squircle mb-4" style="width: 72px; height: 72px; border-radius: 20px; background: var(--et-accent-dim);">
+                    <v-icon size="36" color="primary">mdi-shield-plus-outline</v-icon>
                 </div>
-                <p class="text-secondary text-center mb-6 max-w-md">
+                <div class="text-h6 text-center font-weight-bold mb-2">
+                    {{ t('web.device_management.no_network_selected') }}
+                </div>
+                <p class="text-body-2 text-center text-medium-emphasis mb-6 rm-empty-hint">
                     {{ t('web.device_management.select_existing_network_or_create_new') }}
                 </p>
-                <Button @click="newNetwork" :label="t('web.device_management.create_network')" icon="pi pi-plus"
-                    iconPos="left" />
+                <div class="d-flex flex-column ga-2 w-100" style="max-width: 240px;">
+                    <v-btn color="primary" :prepend-icon="'mdi-plus'" variant="flat" size="large" rounded="pill" @click="newNetwork">
+                        {{ t('web.device_management.create_network') }}
+                    </v-btn>
+                    <v-btn variant="tonal" size="large" rounded="pill" :prepend-icon="'mdi-upload'" @click="importConfig">
+                        {{ t('web.network.import') }}
+                    </v-btn>
+                </div>
             </div>
         </div>
 
-        <!-- Keep only the config edit dialogs -->
-        <!-- <ConfigEditDialog v-if="networkIsDisabled" v-model:visible="showCreateNetworkDialog"
-            :cur-network="currentNetworkConfig" :generate-config="generateConfig" :save-config="saveConfig" /> -->
+        <!-- ================= 3. Fixed iOS Bottom Tab Bar ================= -->
+        <nav
+            v-if="needShowNetworkStatus"
+            class="et-tab-bar d-flex align-center justify-space-around"
+            role="tablist"
+        >
+            <button
+                type="button"
+                class="et-tab-item"
+                :class="{ 'tab-active': mobileTab === 'home' }"
+                role="tab"
+                :aria-selected="mobileTab === 'home'"
+                @click="mobileTab = 'home'"
+            >
+                <v-icon size="22">{{ mobileTab === 'home' ? 'mdi-shield' : 'mdi-shield-outline' }}</v-icon>
+                <span>{{ t('tabs.home') }}</span>
+            </button>
 
-        <ConfigEditDialog v-model:visible="showConfigEditDialog" :cur-network="currentNetworkConfig"
-            :generate-config="generateConfig" :save-config="syncTomlConfig" />
+            <button
+                type="button"
+                class="et-tab-item"
+                :class="{ 'tab-active': mobileTab === 'devices' }"
+                role="tab"
+                :aria-selected="mobileTab === 'devices'"
+                @click="mobileTab = 'devices'"
+            >
+                <v-badge v-if="peerCount > 0" :content="peerCount" color="primary" inline>
+                    <v-icon size="22">mdi-devices</v-icon>
+                </v-badge>
+                <v-icon v-else size="22">mdi-devices</v-icon>
+                <span>{{ t('tabs.devices') }}</span>
+            </button>
+
+            <button
+                type="button"
+                class="et-tab-item"
+                :class="{ 'tab-active': mobileTab === 'config' }"
+                role="tab"
+                :aria-selected="mobileTab === 'config'"
+                @click="mobileTab = 'config'"
+            >
+                <v-icon size="22">{{ mobileTab === 'config' ? 'mdi-cog' : 'mdi-cog-outline' }}</v-icon>
+                <span>{{ t('tabs.config') }}</span>
+            </button>
+
+            <button
+                type="button"
+                class="et-tab-item"
+                :class="{ 'tab-active': mobileTab === 'activity' }"
+                role="tab"
+                :aria-selected="mobileTab === 'activity'"
+                @click="mobileTab = 'activity'"
+            >
+                <v-icon size="22">{{ mobileTab === 'activity' ? 'mdi-pulse' : 'mdi-chart-line' }}</v-icon>
+                <span>{{ t('tabs.activity') }}</span>
+            </button>
+        </nav>
+
+        <!-- TOML Edit Dialog -->
+        <ConfigEditDialog
+            v-model:visible="showConfigEditDialog"
+            :cur-network="currentNetworkConfig"
+            :generate-config="generateConfig"
+            :save-config="syncTomlConfig"
+        />
+
+        <!-- Confirm dialog -->
+        <v-dialog v-model="confirmDialog" max-width="420px">
+            <v-card :title="confirmHeader" rounded="xl" class="ios-dialog-sheet">
+                <v-card-text>{{ confirmMessage }}</v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="text" rounded="pill" color="secondary" @click="confirmDialog = false">{{ t('web.common.cancel') }}</v-btn>
+                    <v-btn color="error" variant="flat" rounded="pill" @click="confirmDialog = false; confirmAction()">{{ t('web.common.confirm') }}</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Snackbar Toast -->
+        <v-snackbar v-model="toast" :color="toastColor" timeout="2500" location="top" rounded="pill">
+            {{ toastMessage }}
+        </v-snackbar>
     </div>
 </template>
 
@@ -630,111 +850,56 @@ onUnmounted(() => {
     height: 100%;
     display: flex;
     flex-direction: column;
+    padding: 0 0.75rem;
+    position: relative;
+}
+
+.et-network-chip {
+    background-color: var(--et-surface);
+    border: 1px solid var(--et-border);
+    border-radius: 16px;
+    padding: 0.7rem 0.9rem;
+    min-height: 56px;
+    cursor: pointer;
+}
+
+.et-network-chip:active {
+    background-color: var(--et-surface-2);
+}
+
+.hero-net-name {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.rm-empty-hint {
+    max-width: 20rem;
+    line-height: 1.5;
 }
 
 .network-content {
     flex: 1;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.25rem 0 calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
 }
 
-/* 按钮样式 */
-.button-container {
-    gap: 0.5rem;
+.has-tab-bar :deep(.et-sticky-run) {
+    bottom: calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0.75rem;
 }
 
-.create-button {
-    font-weight: 600;
-    min-width: 3rem;
+.et-menu-list {
+    background-color: var(--et-surface) !important;
 }
 
-/* 菜单样式定制 */
-:deep(.p-menu) {
-    min-width: 12rem;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-    padding: 0.25rem;
+.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-:deep(.p-menu .p-menuitem) {
-    border-radius: 0.25rem;
-}
-
-:deep(.p-menu .p-menuitem-link) {
-    padding: 0.65rem 1rem;
-    font-size: 0.9rem;
-}
-
-:deep(.p-menu .p-menuitem-icon) {
-    margin-right: 0.75rem;
-}
-
-:deep(.p-menu .p-menuitem.p-error .p-menuitem-text,
-    .p-menu .p-menuitem.p-error .p-menuitem-icon) {
-    color: var(--red-500);
-}
-
-:deep(.p-menu .p-menuitem:hover.p-error .p-menuitem-link) {
-    background-color: var(--red-50);
-}
-
-/* 按钮图标样式 */
-:deep(.p-button-icon-only) {
-    width: 2.5rem !important;
-    padding: 0.5rem !important;
-}
-
-:deep(.p-button-icon-only .p-button-icon) {
-    font-size: 1rem;
-}
-
-/* 网络选择相关样式 */
-.network-label {
-    white-space: nowrap;
-}
-
-:deep(.network-select-container) {
-    max-width: 100%;
-}
-
-/* Dark mode adaptations */
-:deep(.bg-surface-50) {
-    background-color: var(--surface-50, #f8fafc);
-}
-
-:deep(.bg-surface-0) {
-    background-color: var(--surface-card, #ffffff);
-}
-
-:deep(.text-primary) {
-    color: var(--primary-color, #3b82f6);
-}
-
-:deep(.text-secondary) {
-    color: var(--text-color-secondary, #64748b);
-}
-
-@media (prefers-color-scheme: dark) {
-    :deep(.bg-surface-50) {
-        background-color: var(--surface-ground, #0f172a);
-    }
-
-    :deep(.bg-surface-0) {
-        background-color: var(--surface-card, #1e293b);
-    }
-}
-
-/* Responsive design for mobile devices */
-@media (max-width: 768px) {
-    .network-header {
-        padding: 0.75rem;
-    }
-
-    .network-content {
-        padding: 0.75rem;
-    }
-
-    /* 在小屏幕上缩短网络标签文本 */
-    .network-label {
-        font-size: 0.9rem;
-    }
+.text-mono {
+  font-family: var(--font-mono);
 }
 </style>

@@ -1,14 +1,20 @@
-import Aura from '@primeuix/themes/aura';
-import PrimeVue from 'primevue/config';
-
 import EasyTierFrontendLib, { I18nUtils } from 'easytier-frontend-lib';
-import { createRouter, createWebHistory } from 'vue-router/auto';
+// Note: import from 'vue-router' (not 'vue-router/auto') — the /auto specifier
+// resolves to an empty type stub in vue-router's exports map, which breaks
+// vue-tsc. At runtime both specifiers resolve to the same module.
+import { createRouter, createWebHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import App from '~/App.vue';
 
 import 'easytier-frontend-lib/style.css';
-import { ConfirmationService, DialogService, ToastService } from 'primevue';
 import '~/styles.css';
+
+// Dev-only browser preview: install a mock Tauri runtime so the GUI boots in a
+// plain browser (used with `vite` without the Tauri webview).
+if (import.meta.env.DEV && !window.__TAURI_INTERNALS__) {
+  const { installTauriMock } = await import('~/tauri-mock')
+  installTauriMock()
+}
 
 
 if (import.meta.env.PROD) {
@@ -39,24 +45,7 @@ async function main() {
 
   app.use(router)
   app.use(createPinia())
-  app.use(EasyTierFrontendLib)
-  // app.use(i18n, { useScope: 'global' })
-  app.use(PrimeVue, {
-    theme: {
-      preset: Aura,
-      options: {
-        prefix: 'p',
-        darkModeSelector: 'system',
-        cssLayer: {
-          name: 'primevue',
-          order: 'tailwind-base, primevue, tailwind-utilities',
-        },
-      },
-    },
-  })
-  app.use(ToastService)
-  app.use(DialogService)
-  app.use(ConfirmationService)
+  app.use(EasyTierFrontendLib) // installs i18n + vuetify + shared components
   app.mount('#app')
 }
 

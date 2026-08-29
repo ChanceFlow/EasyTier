@@ -1,9 +1,15 @@
 package com.plugin.vpnservice
 
 import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import androidx.activity.result.ActivityResult
+import androidx.core.app.NotificationCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.InvokeArg
@@ -16,6 +22,12 @@ import android.webkit.WebView
 @InvokeArg
 class PingArgs {
     var value: String? = null
+}
+
+@InvokeArg
+class UpdateNotificationArgs {
+    var rxRate: Double? = null
+    var txRate: Double? = null
 }
 
 @InvokeArg
@@ -115,5 +127,53 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         ret.put("routes", TauriVpnService.routes)
         ret.put("dns", TauriVpnService.dns)
         invoke.resolve(ret)
+    }
+
+    @Command
+    fun updateNotification(invoke: Invoke) {
+        val args = invoke.parseArgs(UpdateNotificationArgs::class.java)
+        val ctx = activity.applicationContext
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // same channel + id as the MainForegroundService ongoing notification;
+        // re-posting the startForeground notification id keeps it foreground.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(NOTIFY_CHANNEL_ID, "easytier notice",
+                NotificationManager.IMPORTANCE_LOW)
+            channel.setShowBadge(false)
+            nm.createNotificationChannel(channel) // idempotent
+        }
+        val rx = (args.rxRate ?: 0.0).coerceAtLeast(0.0)
+        val tx = (args.txRate ?: 0.0).coerceAtLeast(0.0)
+        val text = if (rx <= 0.0 && tx <= 0.0)
+            "easytier is available on localhost"
+        else
+            "↑ %s  ↓ %s".format(formatRate(tx), formatRate(rx))
+        val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
+            .setContentTitle("easytier")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .build()
+        nm.notify(NOTIFY_ID, notification)
+        invoke.resolve(JSObject())
+    }
+
+    private fun formatRate(bytesPerSec: Double): String {
+        val units = arrayOf("B/s", "KB/s", "MB/s", "GB/s")
+        var v = bytesPerSec
+        var i = 0
+        while (v >= 1024.0 && i < units.size - 1) {
+            v /= 1024.0
+            i++
+        }
+        return if (i == 0) "%d %s".format(v.toLong(), units[i]) else "%.1f %s".format(v, units[i])
+    }
+
+    companion object {
+        // must match MainForegroundService.CHANNEL_ID / NOTIFICATION_ID
+        private const val NOTIFY_CHANNEL_ID = "easytier_channel"
+        private const val NOTIFY_ID = 1355
     }
 }

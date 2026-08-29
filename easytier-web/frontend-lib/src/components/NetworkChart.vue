@@ -1,19 +1,18 @@
 <template>
-  <div
-    class="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-800/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700 shadow-md hover:shadow-lg transition-all duration-300">
-    <div class="flex items-center justify-center mb-3">
-      <div class="flex gap-2 text-sm">
-        <span class="flex items-center gap-1 w-32">
-          <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span class="text-green-600 dark:text-green-400 truncate">{{ t('upload') }}: {{ currentUpload }}/s</span>
+  <div class="network-chart">
+    <div class="d-flex align-center justify-center mb-3">
+      <div class="d-flex ga-4 text-body-2">
+        <span class="d-flex align-center ga-1" style="width: 8rem">
+          <div class="chart-dot" style="background: #1ec8a3"></div>
+          <span class="truncate">{{ t('upload') }}: {{ currentUpload }}/s</span>
         </span>
-        <span class="flex items-center gap-1 w-32">
-          <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
-          <span class="text-blue-600 dark:text-blue-400 truncate">{{ t('download') }}: {{ currentDownload }}/s</span>
+        <span class="d-flex align-center ga-1" style="width: 8rem">
+          <div class="chart-dot" style="background: #5aa7ff"></div>
+          <span class="truncate">{{ t('download') }}: {{ currentDownload }}/s</span>
         </span>
       </div>
     </div>
-    <div class="h-32">
+    <div style="height: 8rem">
       <canvas ref="chartCanvas"></canvas>
     </div>
   </div>
@@ -159,8 +158,8 @@ function initChart() {
         {
           label: t('upload'),
           data: uploadHistory,
-          borderColor: 'rgb(34, 197, 94)',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          borderColor: 'rgb(30, 200, 163)',
+          backgroundColor: 'rgba(30, 200, 163, 0.12)',
           borderWidth: 2,
           fill: true,
           tension: 0.4,
@@ -170,8 +169,8 @@ function initChart() {
         {
           label: t('download'),
           data: downloadHistory,
-          borderColor: 'rgb(59, 130, 246)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderColor: 'rgb(90, 167, 255)',
+          backgroundColor: 'rgba(90, 167, 255, 0.12)',
           borderWidth: 2,
           fill: true,
           tension: 0.4,
@@ -218,7 +217,7 @@ function initChart() {
           beginAtZero: true,
           min: 0,
           grid: {
-            color: 'rgba(0, 0, 0, 0.1)'
+            color: 'rgba(139, 147, 167, 0.22)'
           },
           ticks: {
             callback: function (value: any) {
@@ -277,3 +276,19 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<style scoped>
+.network-chart {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.5rem 0.25rem;
+  box-shadow: none;
+}
+.chart-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+</style>

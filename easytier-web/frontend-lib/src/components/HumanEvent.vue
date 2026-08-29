@@ -2,7 +2,6 @@
 import { useI18n } from 'vue-i18n';
 import { EventType } from '../types/network'
 import { computed } from 'vue';
-import { Fieldset } from 'primevue';
 
 const props = defineProps<{
   event: {
@@ -23,13 +22,30 @@ const eventValue = computed(() => {
 </script>
 
 <template>
-  <Fieldset :legend="t(`event.${eventKey}`)">
-    <template v-if="eventKey !== 'Unknown'">
+  <div class="et-event">
+    <div class="et-event-title">{{ t(`event.${eventKey}`) }}</div>
+    <div v-if="eventKey !== 'Unknown'" class="et-event-body">
       <div v-if="event.DhcpIpv4Changed">
         {{ `${eventValue[0]} -> ${eventValue[1]}` }}
       </div>
-      <pre v-else>{{ eventValue }}</pre>
-    </template>
-    <pre v-else>{{ eventValue }}</pre>
-  </Fieldset>
+      <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+    </div>
+    <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+  </div>
 </template>
+
+<style scoped>
+.et-event-title {
+  font-weight: 650;
+  font-size: 0.875rem;
+}
+.et-event-body {
+  margin-top: 4px;
+  color: var(--et-text-secondary);
+}
+.text-mono {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>

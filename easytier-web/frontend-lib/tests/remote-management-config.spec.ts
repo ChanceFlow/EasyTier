@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import RemoteManagement from '../src/components/RemoteManagement.vue'
+import { vuetify } from '../src/theme'
 import {
   DEFAULT_NETWORK_CONFIG,
   type NetworkConfig,
@@ -48,78 +49,6 @@ vi.mock('vue-i18n', () => ({
     t: (key: string) => key,
   }),
 }))
-
-vi.mock('primevue', async () => {
-  const { defineComponent, h } = await import('vue')
-
-  const PassThrough = defineComponent({
-    name: 'PassThrough',
-    props: {
-      label: String,
-      value: String,
-    },
-    setup(props, { slots }) {
-      return () => h('div', {
-        'data-label': props.label,
-        'data-value': props.value,
-        'data-stub': 'pass-through',
-      }, slots.default?.())
-    },
-  })
-
-  const ButtonStub = defineComponent({
-    name: 'Button',
-    props: {
-      label: String,
-      icon: String,
-      disabled: Boolean,
-    },
-    emits: ['click'],
-    setup(props, { slots, emit }) {
-      return () => h('button', {
-        type: 'button',
-        disabled: props.disabled,
-        'data-label': props.label ?? props.icon,
-        onClick: (event: MouseEvent) => emit('click', event),
-      }, slots.default?.() ?? props.label ?? props.icon)
-    },
-  })
-
-  const SelectStub = defineComponent({
-    name: 'Select',
-    props: {
-      modelValue: Object,
-      options: Array,
-    },
-    emits: ['update:modelValue'],
-    setup(props, { slots }) {
-      return () => h('div', { 'data-stub': 'select' }, [
-        slots.value?.({ value: props.modelValue, placeholder: '' }),
-      ])
-    },
-  })
-
-  const MenuStub = defineComponent({
-    name: 'Menu',
-    setup(_, { expose }) {
-      expose({ toggle: vi.fn() })
-      return () => h('div', { 'data-stub': 'menu' })
-    },
-  })
-
-  return {
-    Button: ButtonStub,
-    ConfirmPopup: PassThrough,
-    Divider: PassThrough,
-    IftaLabel: PassThrough,
-    Menu: MenuStub,
-    Message: PassThrough,
-    Select: SelectStub,
-    Tag: PassThrough,
-    useConfirm: () => ({ require: vi.fn() }),
-    useToast: () => ({ add: vi.fn() }),
-  }
-})
 
 const INSTANCE_ID = '00000000-0000-0000-0000-000000000001'
 const INSTANCE_UUID = {
@@ -197,6 +126,7 @@ describe('RemoteManagement config save', () => {
         instanceId: INSTANCE_ID,
       },
       global: {
+        plugins: [vuetify],
         stubs: {
           Config: true,
           ConfigEditDialog: true,
@@ -208,11 +138,19 @@ describe('RemoteManagement config save', () => {
     try {
       await settleRemoteManagement()
 
-      const saveButton = wrapper.find('button[data-label="web.device_management.save_config"]')
-      expect(saveButton.exists()).toBe(true)
-      expect(saveButton.attributes('disabled')).toBeUndefined()
+      const configTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.config'),
+      )
+      expect(configTab).toBeTruthy()
+      await configTab!.trigger('click')
+      await nextTick()
 
-      await saveButton.trigger('click')
+      const saveButton = wrapper.findAll('button.v-btn')
+        .find((button) => button.text().includes('web.device_management.save_config'))
+      expect(saveButton).toBeTruthy()
+      expect((saveButton!.element as HTMLButtonElement).disabled).toBe(false)
+
+      await saveButton!.trigger('click')
       await flushPromises()
 
       expect(api.save_config).toHaveBeenCalledOnce()
@@ -221,6 +159,81 @@ describe('RemoteManagement config save', () => {
       for (const field of BOOLEAN_CONFIG_FIELDS) {
         expect(savedConfig[field], `${field} should be saved`).toBe(expectedFlags[field])
       }
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('stays on the home tab after stopping a running network', async () => {
+    let disabledInstIds: Array<typeof INSTANCE_UUID> = []
+    let runningInstIds: Array<typeof INSTANCE_UUID> = [INSTANCE_UUID]
+    const config = makeFlagConfig()
+    const api = {
+      delete_network: vi.fn(),
+      generate_config: vi.fn(),
+      get_network_config: vi.fn(async () => cloneConfig(config)),
+      get_network_info: vi.fn(async () => ({})),
+      get_vpn_portal_info: vi.fn(),
+      get_network_metas: vi.fn(async (instanceIds: string[]) => ({
+        metas: Object.fromEntries(instanceIds.map((id) => [id, {
+          config_permission: 0xffffffff,
+          inst_id: INSTANCE_UUID,
+          instance_name: 'mesh-save',
+          network_name: 'mesh-save',
+          source: 2,
+        }])),
+      })),
+      list_network_instance_ids: vi.fn(async () => ({
+        disabled_inst_ids: disabledInstIds,
+        running_inst_ids: runningInstIds,
+      })),
+      parse_config: vi.fn(),
+      run_network: vi.fn(),
+      save_config: vi.fn(async () => undefined),
+      update_network_instance_state: vi.fn(async (_id: string, disable: boolean) => {
+        if (disable) {
+          disabledInstIds = [INSTANCE_UUID]
+          runningInstIds = []
+        }
+        else {
+          disabledInstIds = []
+          runningInstIds = [INSTANCE_UUID]
+        }
+      }),
+      validate_config: vi.fn(),
+    }
+
+    const wrapper = mount(RemoteManagement, {
+      props: {
+        api,
+        instanceId: INSTANCE_ID,
+      },
+      global: {
+        plugins: [vuetify],
+        stubs: {
+          Config: true,
+          ConfigEditDialog: true,
+          Status: true,
+        },
+      },
+    })
+
+    try {
+      await settleRemoteManagement()
+
+      const homeTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.home'),
+      )
+      const configTab = wrapper.findAll('[role="tab"]').find((button) =>
+        button.text().includes('tabs.config'),
+      )
+      expect(homeTab?.attributes('aria-selected')).toBe('true')
+
+      wrapper.findComponent({ name: 'Status' }).vm.$emit('toggle-network')
+      await settleRemoteManagement()
+
+      expect(homeTab?.attributes('aria-selected')).toBe('true')
+      expect(configTab?.attributes('aria-selected')).toBe('false')
     } finally {
       wrapper.unmount()
     }

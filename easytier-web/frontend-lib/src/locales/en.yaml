@@ -253,6 +253,73 @@ status:
   local: Local
   server: Server
   relay: Relay
+  connected: Connected
+  disconnected: Disconnected
+  connect: Connect
+  disconnect: Disconnect
+  tap_to_connect: Tap the ring to connect
+  tap_to_disconnect: Tap the ring to disconnect
+  virtual_ip: Virtual IP
+  tun_interface: TUN Interface
+  network_identity: Network Identity
+  live_bandwidth: Live Bandwidth
+  features: Features
+  vpn_portal: VPN Portal
+  mesh_devices: Mesh Devices
+  no_devices: No devices found
+  search_devices: Search name or IP
+  filter_all: All
+  filter_direct: Direct
+  filter_relay: Relay
+  filter_server: Server
+  connectivity: Connectivity
+  traffic: Traffic
+  copy_ip: Copy IP Address
+  copied: Copied
+  total: total
+  devices_unit: devices
+  route_cost: Route
+  ping: Ping
+  packet_loss: Loss
+  uploaded: Uploaded
+  downloaded: Downloaded
+  peer_id: Peer ID
+  public_ipv4: Public IPv4
+  public_ipv6: Public IPv6
+  listener: Listener
+  appearance: Appearance
+  appearance_dark: Dark
+  appearance_light: Light
+
+tabs:
+  home: Mesh
+  devices: Devices
+  config: Config
+  activity: Activity
+
+nat:
+  unknown: Unknown
+  open_internet: Open Internet
+  no_pat: No PAT
+  full_cone: Full Cone
+  restricted: Restricted
+  port_restricted: Port Restricted
+  symmetric: Symmetric
+  sym_udp_firewall: Symmetric UDP Firewall
+  symmetric_easy_inc: Symmetric Easy Inc
+  symmetric_easy_dec: Symmetric Easy Dec
+
+flags_group:
+  path: Path Selection
+  protocol: Transport
+  p2p: Peer Connectivity
+  stack: Interface & Stack
+  security: Security & Privacy
+
+port_forwards_bind_port: Bind Port
+port_forwards_dst_port: Destination Port
+no_events: No events yet
+vpn_portal_label: VPN Portal (WireGuard)
 
 run_network: Run Network
 stop_network: Stop Network
@@ -367,10 +434,10 @@ web:
     create_network: Create Network
     cancel_edit: Cancel Edit
     more_actions: More Actions
-    edit_as_file: Edit as File
-    save_config: Save Config
+    edit_as_file: TOML
+    save_config: Save
     config_saved: Config Saved
-    import_config: Import Config
+    import_config: Import
     create_new: Create New Network
     network_status: Network Status
     loading_network_status: Loading Network Status
@@ -380,6 +447,9 @@ web:
     no_network_selected: No Network Selected
     select_existing_network_or_create_new: Select an existing network instance or create a new one to manage network settings
     disable_network: Disable Network
+    save_and_start: Save & Connect
+    active: Active
+    stopped: Stopped
 
   network:
     title: Network

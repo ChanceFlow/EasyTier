@@ -7,21 +7,24 @@ import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { open } from '@tauri-apps/plugin-shell'
 import { exit } from '@tauri-apps/plugin-process'
 import { I18nUtils, RemoteManagement, Utils } from "easytier-frontend-lib"
-import type { MenuItem } from 'primevue/menuitem'
 import { useTray } from '~/composables/tray'
-import { initMobileVpnService, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { initMobileVpnService, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
 import { GUIRemoteClient } from '~/modules/api'
 
-import { useToast, useConfirm } from 'primevue'
 import { loadMode, saveMode, WebClientConfig, type Mode } from '~/composables/mode'
 import { saveLastNetworkInstanceId, loadLastNetworkInstanceId } from '~/composables/config'
 import ModeSwitcher from '~/components/ModeSwitcher.vue'
 import { getEasytierVersion, getServiceStatus } from '~/composables/backend'
+import { useDisplay, useTheme } from 'vuetify'
 
 const { t, locale } = useI18n()
-const confirm = useConfirm()
+const { smAndDown: mobileUI } = useDisplay()
+const theme = useTheme()
 const aboutVisible = ref(false)
 const modeDialogVisible = ref(false)
+const settingsSheetOpen = ref(false)
+const logSheetOpen = ref(false)
+const currentLogLevel = ref('off')
 const currentMode = ref<Mode>({ mode: 'normal' })
 const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
@@ -29,6 +32,35 @@ const manualDisconnect = ref(false)
 
 const configServerDialogVisible = ref(false)
 const configServerConnected = ref(false)
+
+// ---- Vuetify toast/snackbar ----
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+
+function toast(message: string, severity: 'success' | 'error' | 'info' = 'success', life = 3000) {
+  snackbarMessage.value = message
+  snackbarColor.value = severity
+  snackbar.value = true
+}
+
+// ---- Confirm dialog ----
+const confirmDialog = ref(false)
+const confirmMessage = ref('')
+const confirmHeader = ref('')
+let confirmCallback: (() => void) | null = null
+
+function requireConfirm(message: string, header: string, callback: () => void) {
+  confirmMessage.value = message
+  confirmHeader.value = header
+  confirmCallback = callback
+  confirmDialog.value = true
+}
+function confirmAccept() {
+  confirmDialog.value = false
+  confirmCallback?.()
+  confirmCallback = null
+}
 
 async function openModeDialog() {
   editingMode.value = JSON.parse(JSON.stringify(loadMode()))
@@ -45,7 +77,7 @@ async function onModeSave() {
     modeDialogVisible.value = false
   }
   catch (e: any) {
-    toast.add({ severity: 'error', summary: t('error'), detail: e, life: 10000 })
+    toast(t('error') + ': ' + e, 'error', 10000)
     console.error("Error switching mode", e, currentMode.value, editingMode.value)
     await initWithMode(currentMode.value);
   }
@@ -55,33 +87,19 @@ async function onModeSave() {
 }
 
 async function onUninstallService() {
-  confirm.require({
-    message: t('mode.uninstall_service_confirm'),
-    header: t('mode.uninstall_service'),
-    icon: 'pi pi-exclamation-triangle',
-    rejectProps: {
-      label: t('web.common.cancel'),
-      severity: 'secondary',
-      outlined: true
-    },
-    acceptProps: {
-      label: t('mode.uninstall_service'),
-      severity: 'danger'
-    },
-    accept: async () => {
-      isModeSaving.value = true
-      try {
-        await initWithMode({ ...currentMode.value, mode: 'normal' });
-        await initService(undefined)
-        toast.add({ severity: 'success', summary: t('web.common.success'), detail: t('mode.uninstall_service_success'), life: 3000 })
-        modeDialogVisible.value = false
-      } catch (e: any) {
-        toast.add({ severity: 'error', summary: t('error'), detail: e, life: 10000 })
-        console.error("Error uninstalling service", e)
-      } finally {
-        isModeSaving.value = false
-      }
-    },
+  requireConfirm(t('mode.uninstall_service_confirm'), t('mode.uninstall_service'), async () => {
+    isModeSaving.value = true
+    try {
+      await initWithMode({ ...currentMode.value, mode: 'normal' });
+      await initService(undefined)
+      toast(t('web.common.success'), 'success')
+      modeDialogVisible.value = false
+    } catch (e: any) {
+      toast(t('error') + ': ' + e, 'error', 10000)
+      console.error("Error uninstalling service", e)
+    } finally {
+      isModeSaving.value = false
+    }
   });
 }
 
@@ -104,11 +122,11 @@ async function onStopService() {
   manualDisconnect.value = true
   try {
     await setServiceStatus(false)
-    toast.add({ severity: 'success', summary: t('web.common.success'), detail: t('mode.stop_service_success'), life: 3000 })
+    toast(t('web.common.success'))
     modeDialogVisible.value = false
   }
   catch (e: any) {
-    toast.add({ severity: 'error', summary: t('error'), detail: e, life: 10000 })
+    toast(t('error') + ': ' + e, 'error', 10000)
     console.error("Error stopping service", e)
   }
   finally {
@@ -143,14 +161,14 @@ async function initWithMode(mode: Mode) {
   switch (mode.mode) {
     case 'remote':
       if (!mode.remote_rpc_address) {
-        toast.add({ severity: 'error', summary: t('error'), detail: t('mode.remote_rpc_address_empty'), life: 10000 })
+        toast(t('error') + ': ' + t('mode.remote_rpc_address_empty'), 'error', 10000)
         return initWithMode({ ...mode, mode: 'normal' });
       }
       url = mode.remote_rpc_address
       break;
     case 'service': {
       if (!mode.config_dir || !mode.file_log_dir || !mode.file_log_level || !mode.rpc_portal) {
-        toast.add({ severity: 'error', summary: t('error'), detail: t('mode.service_config_empty'), life: 10000 })
+        toast(t('error') + ': ' + t('mode.service_config_empty'), 'error', 10000)
         return initWithMode({ ...mode, mode: 'normal' });
       }
       let serviceStatus = await getServiceStatus()
@@ -185,12 +203,7 @@ async function initWithMode(mode: Mode) {
     } catch (e) {
       if (i === retrys - 1) {
         const errMsg = e instanceof Error ? e.message : String(e)
-        toast.add({
-          severity: 'error',
-          summary: t('error'),
-          detail: t('mode.rpc_connection_failed', { error: errMsg }),
-          life: 1000,
-        })
+        toast(t('error') + ': ' + t('mode.rpc_connection_failed', { error: errMsg }), 'error', 1000)
         throw e;
       }
       console.error("Error connecting rpc client, retrying...", e)
@@ -207,12 +220,18 @@ async function initWithMode(mode: Mode) {
   clientRunning.value = await isClientRunning()
 }
 
-onMounted(async () => {
-  const cleanupFns: Array<() => void> = []
+// Registered synchronously (not after an await inside onMounted) so the
+// lifecycle hook is bound to the component instance.
+const cleanupFns: Array<() => void> = []
+onUnmounted(() => {
+  cleanupFns.forEach(unlisten => unlisten())
+})
 
+onMounted(async () => {
   if (type() === 'android') {
     try {
       await initMobileVpnService()
+      startMobileIoNotification()
     } catch (e: any) {
       console.error("easytier init vpn service failed", e)
     }
@@ -229,14 +248,9 @@ onMounted(async () => {
       console.error("easytier sync vpn service failed", e)
     }
   }
-
-  onUnmounted(() => {
-    cleanupFns.forEach(unlisten => unlisten())
-  })
 });
 
 useTray(true)
-let toast = useToast();
 
 const remoteClient = computed(() => new GUIRemoteClient());
 const instanceId = ref<string | undefined>(undefined);
@@ -264,7 +278,6 @@ watch(clientRunning, async (newVal, oldVal) => {
 })
 
 onMounted(async () => {
-  clientRunning.value = await isClientRunning().catch(() => false)
   const timer = setInterval(async () => {
     try {
       clientRunning.value = await isClientRunning()
@@ -277,6 +290,8 @@ onMounted(async () => {
   onUnmounted(() => {
     clearInterval(timer)
   })
+
+  clientRunning.value = await isClientRunning().catch(() => false)
 })
 async function reconnectClient() {
   editingMode.value = JSON.parse(JSON.stringify(loadMode()));
@@ -292,55 +307,50 @@ onMounted(async () => {
   }, 1000)
 })
 
-let current_log_level = 'off'
+const isAndroid = computed(() => {
+  try {
+    return type() === 'android'
+  }
+  catch {
+    return false
+  }
+})
 
-const log_menu = ref()
+const isDarkTheme = computed(() => theme.global.name.value === 'm3Dark')
+
+function toggleTheme(): void {
+  const next = isDarkTheme.value ? 'm3Light' : 'm3Dark'
+  theme.global.name.value = next
+  localStorage.setItem('et-theme', next)
+}
+
+const logLevels: Array<'off' | 'warn' | 'info' | 'debug' | 'trace'> = ['off', 'warn', 'info', 'debug', 'trace']
+
+async function applyLogLevel(level: typeof logLevels[number]): Promise<void> {
+  currentLogLevel.value = level
+  await setLoggingLevel(level)
+}
+
 // 从后端获取正确的日志路径
 async function getLogDirPath(): Promise<string> {
   return await invoke<string>('get_log_dir_path')
 }
 
-const log_menu_items_popup: Ref<MenuItem[]> = ref([
-  ...['off', 'warn', 'info', 'debug', 'trace'].map(level => ({
-    label: () => t(`logging_level_${level}`) + (current_log_level === level ? ' ✓' : ''),
-    command: async () => {
-      current_log_level = level
-      await setLoggingLevel(level)
-    },
-  })),
-  {
-    separator: true,
-  },
-  {
-    label: () => t('logging_open_dir'),
-    icon: 'pi pi-folder-open',
-    command: async () => {
-      // console.log('open log dir', await getLogDirPath())
-      await open(await getLogDirPath())
-    },
-    visible: () => type() !== 'android',
-  },
-  {
-    label: () => t('logging_copy_dir'),
-    icon: 'pi pi-tablet',
-    command: async () => {
-      await writeText(await getLogDirPath())
-    },
-  },
-])
-
-function toggle_log_menu(event: any) {
-  log_menu.value.toggle(event)
+interface SettingsSheetItem {
+  key: string
+  label: string
+  icon: string
+  value: string
+  command: () => void | Promise<void>
+  visible?: boolean
 }
 
-function getLabel(item: MenuItem) {
-  return typeof item.label === 'function' ? item.label() : item.label
-}
-
-const setting_menu_items: Ref<MenuItem[]> = ref([
+const settingsSheetItems = computed<SettingsSheetItem[]>(() => [
   {
-    label: () => t('exchange_language'),
-    icon: 'pi pi-language',
+    key: 'language',
+    label: t('exchange_language'),
+    icon: 'mdi-translate',
+    value: locale.value === 'en' ? 'EN' : '中文',
     command: async () => {
       await I18nUtils.loadLanguageAsync((locale.value === 'en' ? 'cn' : 'en'))
       await setTrayMenu([
@@ -350,38 +360,50 @@ const setting_menu_items: Ref<MenuItem[]> = ref([
     },
   },
   {
-    label: () => `${t('mode.switch_mode')}: ${t('mode.' + currentMode.value.mode)}`,
-    icon: 'pi pi-sync',
-    command: openModeDialog,
-    visible: () => type() !== 'android',
+    key: 'theme',
+    label: t('status.appearance'),
+    icon: 'mdi-theme-light-dark',
+    value: isDarkTheme.value ? t('status.appearance_dark') : t('status.appearance_light'),
+    command: toggleTheme,
   },
   {
-    label: () => `${t('config-server.title')}${t('config-server.' + configServerConnectionStatus.value)}`,
-    icon: 'pi pi-globe',
-    command: openConfigServerDialog,
-    visible: () => ["normal", "service"].includes(currentMode.value.mode),
-  },
-  {
-    key: 'logging_menu',
-    label: () => t('logging'),
-    icon: 'pi pi-file',
-    items: [], // Keep this to show it's a parent menu
-  },
-  {
-    label: () => t('about.title'),
-    icon: 'pi pi-at',
-    command: async () => {
-      aboutVisible.value = true
+    key: 'mode',
+    label: t('mode.switch_mode'),
+    icon: 'mdi-sync',
+    value: t('mode.' + currentMode.value.mode),
+    command: () => {
+      settingsSheetOpen.value = false
+      void openModeDialog()
     },
+    visible: !isAndroid.value,
   },
   {
-    label: () => t('exit'),
-    icon: 'pi pi-power-off',
-    command: async () => {
-      await exit(1)
+    key: 'config-server',
+    label: t('config-server.title'),
+    icon: 'mdi-web',
+    value: t('config-server.' + configServerConnectionStatus.value).replace(/^:\s*/, ''),
+    command: () => {
+      settingsSheetOpen.value = false
+      void openConfigServerDialog()
     },
+    visible: ['normal', 'service'].includes(currentMode.value.mode),
+  },
+  {
+    key: 'logging',
+    label: t('logging'),
+    icon: 'mdi-file-document',
+    value: t(`logging_level_${currentLogLevel.value}`),
+    command: () => { logSheetOpen.value = true },
   },
 ])
+
+async function openLogDir(): Promise<void> {
+  await open(await getLogDirPath())
+}
+
+async function copyLogDir(): Promise<void> {
+  await writeText(await getLogDirPath())
+}
 
 async function connectRpcClient(isNormalMode: boolean, url?: string) {
   await initRpcConnection(isNormalMode, url)
@@ -399,24 +421,16 @@ async function onConfigServerSave() {
   }
   if (editingMode.value.mode === 'service') {
     await new Promise<void>((resolve, reject) => {
-      confirm.require({
-        message: t('config-server.update_service_confirm'),
-        icon: 'pi pi-exclamation-triangle',
-        rejectProps: {
-          label: t('web.common.cancel'),
-          severity: 'secondary',
-          outlined: true
-        },
-        acceptProps: {
-          label: t('web.common.confirm'),
-        },
-        accept: async () => {
-          resolve()
-        },
-        reject: () => {
+      requireConfirm(t('config-server.update_service_confirm'), t('config-server.title'), () => {
+        resolve()
+      })
+      // if dialog dismissed without accept, reject
+      const stopWatch = watch(confirmDialog, (val) => {
+        if (!val && confirmCallback === null) {
           reject()
+          stopWatch()
         }
-      });
+      })
     })
   }
   console.log("Saving config server url", (editingMode.value as WebClientConfig).config_server_url)
@@ -444,95 +458,223 @@ const configServerConnectionStatus = computed(() => {
   return configServerConnected.value ? 'connected' : 'connecting'
 })
 
+function visibleSettingsItems(): SettingsSheetItem[] {
+  return settingsSheetItems.value.filter((item: SettingsSheetItem) => item.visible !== false)
+}
+
+async function exitApp(): Promise<void> {
+  await exit(1)
+}
+
 </script>
 
 <template>
-  <div id="root" class="flex flex-col">
-    <Dialog v-model:visible="aboutVisible" modal :header="t('about.title')" :style="{ width: '70%' }">
-      <About />
-    </Dialog>
-    <Dialog v-model:visible="modeDialogVisible" modal :header="t('mode.switch_mode')" :style="{ width: '50vw' }">
-      <ModeSwitcher v-model="editingMode" @uninstall-service="onUninstallService" @stop-service="onStopService" />
-      <template #footer>
-        <Button :label="t('web.common.cancel')" icon="pi pi-times" @click="modeDialogVisible = false" text />
-        <Button :label="t('web.common.save')" icon="pi pi-save" @click="onModeSave" autofocus :loading="isModeSaving" />
-      </template>
-    </Dialog>
+  <div id="root" class="et-app">
+    <header class="et-nav">
+      <div class="et-nav-inner">
+        <div class="d-flex align-center ga-2 min-w-0">
+          <div class="et-squircle" style="background: var(--et-accent);">
+            <v-icon size="18" color="onPrimary">mdi-shield-outline</v-icon>
+          </div>
+          <span class="et-nav-title">EasyTier</span>
+        </div>
 
-    <Dialog v-model:visible="configServerDialogVisible" modal :header="t('config-server.title')"
-      :style="{ width: '50vw' }">
-      <div class="flex flex-col gap-3">
-        <label for="config-server-address">{{ t('config-server.address') }}</label>
-        <InputText id="config-server-address" v-model="(editingMode as WebClientConfig).config_server_url"
-          :placeholder="t('config-server.address_placeholder')" />
-        <small class="p-text-secondary whitespace-pre-wrap">{{ t('config-server.description') }}</small>
+        <div class="d-flex align-center ga-1">
+          <div v-if="clientRunning" class="et-status-pill is-on">
+            <div class="et-pulse-dot" />
+            <span class="truncate">{{ t('status.connected') }}</span>
+          </div>
+          <div v-else class="et-status-pill is-off">
+            <v-icon size="12">mdi-wifi-off</v-icon>
+            <span class="truncate">{{ t('status.disconnected') }}</span>
+          </div>
+          <v-btn
+            icon="mdi-cog-outline"
+            variant="text"
+            size="small"
+            :aria-label="t('web.settings.title')"
+            @click="settingsSheetOpen = true"
+          />
+        </div>
       </div>
-      <template #footer>
-        <Button :label="t('web.common.cancel')" icon="pi pi-times" @click="configServerDialogVisible = false" text />
-        <Button :label="t('web.common.save')" icon="pi pi-save" @click="onConfigServerSave" autofocus
-          :loading="isModeSaving" />
-      </template>
-    </Dialog>
+    </header>
 
-    <Menu ref="log_menu" :model="log_menu_items_popup" :popup="true" />
+    <v-bottom-sheet v-model="settingsSheetOpen">
+      <v-card class="et-sheet-card pb-4">
+        <div class="sheet-grabber" />
+        <v-card-title class="text-subtitle-1 font-weight-bold pt-1">{{ t('web.settings.title') }}</v-card-title>
+        <v-card-text class="pt-2">
+          <div class="et-group mb-3">
+            <div
+              v-for="item in visibleSettingsItems()"
+              :key="item.key"
+              class="et-row et-row-pressable"
+              @click="item.command()"
+            >
+              <div class="d-flex align-center ga-3 min-w-0">
+                <div class="et-squircle" style="background: var(--et-surface-2);">
+                  <v-icon size="18" color="primary">{{ item.icon }}</v-icon>
+                </div>
+                <span class="font-weight-medium">{{ item.label }}</span>
+              </div>
+              <div class="d-flex align-center ga-1 flex-shrink-0">
+                <span class="text-caption text-medium-emphasis">{{ item.value }}</span>
+                <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
+              </div>
+            </div>
+          </div>
 
-    <RemoteManagement v-if="clientRunning" class="flex-1 overflow-y-auto" :api="remoteClient"
-      :pause-auto-refresh="isModeSaving" v-model:instance-id="instanceId" />
-    <div v-else class="empty-state flex-1 flex flex-col items-center py-12">
-      <i class="pi pi-server text-5xl text-secondary mb-4 opacity-50"></i>
-      <div class="text-xl text-center font-medium mb-3">{{ t('client.not_running') }}
+          <div class="et-group mb-3">
+            <div class="et-row et-row-pressable" @click="aboutVisible = true; settingsSheetOpen = false">
+              <div class="d-flex align-center ga-3">
+                <div class="et-squircle" style="background: var(--et-surface-2);">
+                  <v-icon size="18" color="primary">mdi-information-outline</v-icon>
+                </div>
+                <span class="font-weight-medium">{{ t('about.title') }}</span>
+              </div>
+              <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
+            </div>
+          </div>
+
+          <v-btn
+            block
+            color="error"
+            variant="tonal"
+            size="large"
+            rounded="pill"
+            prepend-icon="mdi-power"
+            @click="exitApp"
+          >
+            {{ t('exit') }}
+          </v-btn>
+        </v-card-text>
+      </v-card>
+    </v-bottom-sheet>
+
+    <v-bottom-sheet v-model="logSheetOpen">
+      <v-card class="et-sheet-card pb-4">
+        <div class="sheet-grabber" />
+        <v-card-title class="text-subtitle-1 font-weight-bold pt-1">{{ t('logging') }}</v-card-title>
+        <v-card-text>
+          <div class="et-group mb-3">
+            <div
+              v-for="level in logLevels"
+              :key="level"
+              class="et-row et-row-pressable"
+              @click="applyLogLevel(level)"
+            >
+              <span class="font-weight-medium">{{ t(`logging_level_${level}`) }}</span>
+              <v-icon v-if="currentLogLevel === level" color="primary" size="20">mdi-check</v-icon>
+            </div>
+          </div>
+          <div class="et-group">
+            <div v-if="!isAndroid" class="et-row et-row-pressable" @click="openLogDir">
+              <span>{{ t('logging_open_dir') }}</span>
+              <v-icon size="18" color="medium-emphasis">mdi-folder-open-outline</v-icon>
+            </div>
+            <div class="et-row et-row-pressable" @click="copyLogDir">
+              <span>{{ t('logging_copy_dir') }}</span>
+              <v-icon size="18" color="medium-emphasis">mdi-content-copy</v-icon>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-bottom-sheet>
+
+    <v-dialog v-model="aboutVisible" max-width="480px" :fullscreen="mobileUI">
+      <v-card rounded="xl" class="et-dialog-card">
+        <v-card-text class="pt-6"><About /></v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" @click="aboutVisible = false">{{ t('close') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="modeDialogVisible" max-width="540px" :fullscreen="mobileUI">
+      <v-card :title="t('mode.switch_mode')" rounded="xl" class="et-dialog-card">
+        <v-card-text>
+          <ModeSwitcher v-model="editingMode" @uninstall-service="onUninstallService" @stop-service="onStopService" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" @click="modeDialogVisible = false">{{ t('web.common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" rounded="pill" :prepend-icon="'mdi-content-save'" :loading="isModeSaving" @click="onModeSave">
+            {{ t('web.common.save') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="configServerDialogVisible" max-width="540px" :fullscreen="mobileUI">
+      <v-card :title="t('config-server.title')" rounded="xl" class="et-dialog-card">
+        <v-card-text>
+          <div class="d-flex flex-column ga-3">
+            <label for="config-server-address" class="text-caption font-weight-medium">{{ t('config-server.address') }}</label>
+            <v-text-field
+              id="config-server-address"
+              v-model="(editingMode as WebClientConfig).config_server_url"
+              variant="outlined"
+              hide-details
+              :placeholder="t('config-server.address_placeholder')"
+            />
+            <small class="text-medium-emphasis config-server-desc">{{ t('config-server.description') }}</small>
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" @click="configServerDialogVisible = false">{{ t('web.common.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" rounded="pill" :prepend-icon="'mdi-content-save'" :loading="isModeSaving" @click="onConfigServerSave">
+            {{ t('web.common.save') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <main class="et-main">
+      <div class="et-main-body">
+        <RemoteManagement
+          v-if="clientRunning"
+          class="fill-height"
+          :api="remoteClient"
+          :pause-auto-refresh="isModeSaving"
+          v-model:instance-id="instanceId"
+        />
+        <div v-else class="et-empty d-flex flex-column align-center justify-center">
+          <v-icon size="56" class="mb-4" color="medium-emphasis">mdi-server-network-off</v-icon>
+          <div class="text-h6 text-center font-weight-bold mb-3">{{ t('client.not_running') }}</div>
+          <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" :prepend-icon="'mdi-replay'" @click="reconnectClient">
+            {{ t('client.retry') }}
+          </v-btn>
+        </div>
       </div>
-      <Button @click="reconnectClient" :loading="isModeSaving" :label="t('client.retry')" icon="pi pi-replay"
-        iconPos="left" />
-    </div>
+    </main>
 
-    <Menubar :model="setting_menu_items" breakpoint="795px">
-      <template #item="{ item, props }">
-        <a v-if="item.key === 'logging_menu'" v-bind="props.action" @click="toggle_log_menu">
-          <span :class="item.icon" />
-          <span class="p-menubar-item-label">{{ getLabel(item) }}</span>
-          <span class="pi pi-angle-down p-menubar-item-icon text-[9px]"></span>
-        </a>
-        <a v-else v-bind="props.action">
-          <span :class="item.icon" />
-          <span class="p-menubar-item-label">{{ getLabel(item) }}</span>
-        </a>
-      </template>
-    </Menubar>
+    <v-dialog v-model="confirmDialog" max-width="420px">
+      <v-card :title="confirmHeader" rounded="xl" class="et-dialog-card">
+        <v-card-text>{{ confirmMessage }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" color="secondary" @click="confirmDialog = false; confirmCallback = null">{{ t('web.common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" rounded="pill" @click="confirmAccept">{{ t('web.common.confirm') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="2500" location="top" rounded="pill">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </div>
 </template>
 
-<style scoped lang="postcss">
-#root {
-  height: 100vh;
-  width: 100vw;
+<style scoped>
+.config-server-desc {
+  white-space: pre-wrap;
 }
 
-.p-dropdown :deep(.p-dropdown-panel .p-dropdown-items .p-dropdown-item) {
-  padding: 0 0.5rem;
-}
-</style>
-
-<style>
-body {
-  height: 100vh;
-  width: 100vw;
-  padding: 0;
-  margin: 0;
+.truncate {
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.p-menubar .p-menuitem {
-  margin: 0;
-}
-
-.p-select-overlay {
-  max-width: calc(100% - 2rem);
-}
-
-/*
-
-.p-tabview-panel {
-  height: 100%;
-} */
 </style>

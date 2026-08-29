@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Button, Menu, Tab, TabList, TabPanel, TabPanels, Tabs } from 'primevue'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Acl, AclAction, AclChainType, ensureAclV1 } from '../../types/network'
@@ -11,14 +10,16 @@ const acl = defineModel<Acl>({ required: true })
 const { t } = useI18n()
 
 const activeTab = ref(0)
-const menu = ref()
+const menuOpen = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
 const aclV1 = computed(() => ensureAclV1(acl.value))
 
-const addMenuModel = ref([
-  { label: () => t('acl.inbound'), command: () => addChain(AclChainType.Inbound) },
-  { label: () => t('acl.outbound'), command: () => addChain(AclChainType.Outbound) },
-  { label: () => t('acl.forward'), command: () => addChain(AclChainType.Forward) },
-])
+function openMenu(e: Event) {
+  menuX.value = (e as MouseEvent).clientX
+  menuY.value = (e as MouseEvent).clientY
+  menuOpen.value = true
+}
 
 function addChain(type: AclChainType) {
   let defaultName = ''
@@ -38,10 +39,11 @@ function addChain(type: AclChainType) {
   })
 
   activeTab.value = aclV1.value.chains.length - 1
+  menuOpen.value = false
 }
 
 function removeChain(index: number) {
-  if (confirm(t('acl.delete_chain_confirm'))) {
+  if (window.confirm(t('acl.delete_chain_confirm'))) {
     aclV1.value.chains.splice(index, 1)
     if (activeTab.value >= aclV1.value.chains.length) {
       activeTab.value = Math.max(0, aclV1.value.chains.length)
@@ -85,51 +87,102 @@ const tabs = computed(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <Tabs v-model:value="activeTab">
-      <div class="flex items-center border-b border-surface-200 dark:border-surface-700">
-        <TabList class="flex-grow min-w-0 overflow-x-auto" style="border-bottom: none;">
-          <Tab v-for="tab in tabs" :key="tab.type + tab.index" :value="tab.index">
-            <div class="flex items-center gap-2 whitespace-nowrap">
-              {{ tab.label }}
-              <Button v-if="tab.type === 'chain'" icon="pi pi-times" severity="danger" text rounded size="small"
-                class="w-6 h-6 p-0" @click.stop="removeChain(tab.index)" />
-            </div>
-          </Tab>
-        </TabList>
-        <div
-          class="flex-shrink-0 flex items-center px-2 bg-white dark:bg-gray-900 border-l border-surface-100 dark:border-surface-800">
-          <Button icon="pi pi-plus" text rounded size="small" class="w-8 h-8 p-0"
-            @click="(event) => menu.toggle(event)" />
-          <Menu ref="menu" :model="addMenuModel" :popup="true" />
+  <div class="d-flex flex-column ga-4">
+    <div class="d-flex align-center acl-tabs-row">
+      <v-tabs v-model="activeTab" show-arrows density="comfortable" class="flex-grow-1">
+        <v-tab v-for="tab in tabs" :key="tab.type + tab.index" :value="tab.index" class="acl-tab">
+          <div class="d-flex align-center ga-1">
+            <span class="whitespace-nowrap">{{ tab.label }}</span>
+            <v-btn
+              v-if="tab.type === 'chain'"
+              icon="mdi-close"
+              variant="text"
+              color="error"
+              size="x-small"
+              density="comfortable"
+              @click.stop="removeChain(tab.index)"
+            />
+          </div>
+        </v-tab>
+      </v-tabs>
+
+      <v-btn icon="mdi-plus" variant="text" size="small" rounded @click="openMenu" />
+      <v-menu v-model="menuOpen" :position-x="menuX" :position-y="menuY" location="bottom end">
+        <v-list density="comfortable" min-width="160">
+          <v-list-item @click="addChain(AclChainType.Inbound)">
+            <v-list-item-title>{{ t('acl.inbound') }}</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="addChain(AclChainType.Outbound)">
+            <v-list-item-title>{{ t('acl.outbound') }}</v-list-item-title>
+          </v-list-item>
+          <v-list-item @click="addChain(AclChainType.Forward)">
+            <v-list-item-title>{{ t('acl.forward') }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+    </div>
+
+    <!-- Tab content -->
+    <v-window v-model="activeTab" class="acl-window">
+      <v-window-item v-for="tab in tabs" :key="'panel' + tab.type + tab.index" :value="tab.index">
+        <!-- Empty State -->
+        <div v-if="tab.type === 'empty'" class="acl-empty">
+          <v-icon size="56" color="primary">mdi-shield-lock</v-icon>
+          <div class="text-h6 font-weight-bold mb-2">{{ t('acl.chains') }}</div>
+          <p class="text-body-2 acl-help">{{ t('acl.help') }}</p>
+          <div class="d-flex flex-wrap ga-2 justify-center">
+            <v-btn color="primary" variant="flat" :prepend-icon="'mdi-arrow-bottom-left'" @click="addChain(AclChainType.Inbound)">
+              {{ t('acl.inbound') }}
+            </v-btn>
+            <v-btn color="primary" variant="flat" :prepend-icon="'mdi-arrow-top-right'" @click="addChain(AclChainType.Outbound)">
+              {{ t('acl.outbound') }}
+            </v-btn>
+            <v-btn color="primary" variant="flat" :prepend-icon="'mdi-directions'" @click="addChain(AclChainType.Forward)">
+              {{ t('acl.forward') }}
+            </v-btn>
+          </div>
         </div>
-      </div>
-      <TabPanels>
-        <TabPanel v-for="tab in tabs" :key="'panel' + tab.type + tab.index" :value="tab.index">
-          <!-- Empty State within TabPanel -->
-          <div v-if="tab.type === 'empty'"
-            class="py-8 flex flex-col items-center justify-center border-2 border-dashed border-surface-200 rounded-lg bg-surface-50 dark:bg-surface-900 dark:border-surface-700">
-            <i class="pi pi-shield text-5xl mb-4 text-primary" />
-            <div class="text-xl font-bold mb-2">{{ t('acl.chains') }}</div>
-            <p class="text-surface-500 mb-8 text-center max-w-sm px-4">{{ t('acl.help') }}</p>
-            <div class="flex flex-wrap gap-3 justify-center">
-              <Button :label="t('acl.inbound')" icon="pi pi-arrow-down-left" @click="addChain(AclChainType.Inbound)" />
-              <Button :label="t('acl.outbound')" icon="pi pi-arrow-up-right" @click="addChain(AclChainType.Outbound)" />
-              <Button :label="t('acl.forward')" icon="pi pi-directions" @click="addChain(AclChainType.Forward)" />
-            </div>
-          </div>
 
-          <!-- Rule Chains -->
-          <div v-if="tab.type === 'chain' && aclV1.chains[tab.index]" class="py-4">
-            <AclChainEditor v-model="aclV1.chains[tab.index]" :group-names="groupNames" />
-          </div>
+        <!-- Rule Chains -->
+        <div v-if="tab.type === 'chain' && aclV1.chains[tab.index]" class="py-4">
+          <AclChainEditor v-model="aclV1.chains[tab.index]" :group-names="groupNames" />
+        </div>
 
-          <!-- Group Management -->
-          <div v-if="tab.type === 'groups'" class="py-4">
-            <AclGroupEditor v-model="aclV1.group" :group-names="groupNames" @rename-group="handleRenameGroup" />
-          </div>
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+        <!-- Group Management -->
+        <div v-if="tab.type === 'groups'" class="py-4">
+          <AclGroupEditor v-model="aclV1.group" :group-names="groupNames" @rename-group="handleRenameGroup" />
+        </div>
+      </v-window-item>
+    </v-window>
   </div>
 </template>
+
+<style scoped>
+.acl-tabs-row {
+  border-bottom: 1px solid var(--v-theme-outlineVariant);
+}
+.acl-tab {
+  text-transform: none;
+}
+.acl-empty {
+  padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--v-theme-outlineVariant);
+  border-radius: 12px;
+  background: var(--v-theme-surfaceContainerLow);
+  gap: 4px;
+}
+.acl-help {
+  color: var(--v-theme-onSurfaceVariant);
+  max-width: 24rem;
+  text-align: center;
+  padding: 0 1rem;
+  margin-bottom: 1.5rem;
+}
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+</style>
