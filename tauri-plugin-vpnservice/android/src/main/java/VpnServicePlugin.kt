@@ -1,15 +1,20 @@
 package com.plugin.vpnservice
 
 import android.app.Activity
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
+import android.util.Log
+import android.view.View
 import androidx.activity.result.ActivityResult
 import androidx.core.app.NotificationCompat
+import androidx.core.view.WindowCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.ActivityCallback
 import app.tauri.annotation.InvokeArg
@@ -28,6 +33,11 @@ class PingArgs {
 class UpdateNotificationArgs {
     var rxRate: Double? = null
     var txRate: Double? = null
+}
+
+@InvokeArg
+class UiChromeArgs {
+    var dark: Boolean = false
 }
 
 @InvokeArg
@@ -139,25 +149,90 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(NOTIFY_CHANNEL_ID, "easytier notice",
                 NotificationManager.IMPORTANCE_LOW)
+            channel.description = "显示 EasyTier 隧道在线状态与实时收发速率，可用于快速打开 App。"
             channel.setShowBadge(false)
             nm.createNotificationChannel(channel) // idempotent
         }
         val rx = (args.rxRate ?: 0.0).coerceAtLeast(0.0)
         val tx = (args.txRate ?: 0.0).coerceAtLeast(0.0)
-        val text = if (rx <= 0.0 && tx <= 0.0)
-            "easytier is available on localhost"
+        val active = rx > 0.0 || tx > 0.0
+        val title = if (active) "EasyTier · 已连接" else "EasyTier"
+        val text = if (active)
+            "↑ %s · ↓ %s".format(formatRate(tx), formatRate(rx))
         else
-            "↑ %s  ↓ %s".format(formatRate(tx), formatRate(rx))
+            "网络空闲 · 隧道守护中"
         val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
-            .setContentTitle("easytier")
+            .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .setSmallIcon(resolveSmallIcon(ctx))
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setShowWhen(false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .addAction(NotificationCompat.Action(
+                resolveSmallIcon(ctx), "打开", openAppIntent(ctx)))
             .build()
         nm.notify(NOTIFY_ID, notification)
         invoke.resolve(JSObject())
+    }
+
+    /**
+     * The app module owns res/drawable/ic_notification.xml; the library module
+     * cannot reference app resources at compile time, but everything is merged
+     * into one APK at build time — resolve the id at runtime and fall back to
+     * the stock wrench icon if the lookup fails.
+     */
+    private fun resolveSmallIcon(ctx: Context): Int {
+        val id = ctx.resources.getIdentifier("ic_notification", "drawable", ctx.packageName)
+        return if (id != 0) id else android.R.drawable.ic_menu_manage
+    }
+
+    /** PendingIntent that brings the EasyTier MainActivity to the front. */
+    private fun openAppIntent(ctx: Context): PendingIntent {
+        val launch = Intent()
+            .setClassName(ctx.packageName, "${ctx.packageName}.MainActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or (
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        return PendingIntent.getActivity(ctx, 0, launch, piFlags)
+    }
+
+    /**
+     * Drive the system-bar appearance from the web theme:
+     * dark=false (light theme) -> dark status/navigation bar icons;
+     * dark=true (dark theme)   -> light icons.
+     */
+    @Command
+    fun setUiChrome(invoke: Invoke) {
+        val args = invoke.parseArgs(UiChromeArgs::class.java)
+        val lightBars = !args.dark
+        activity.runOnUiThread {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val controller = WindowCompat.getInsetsController(
+                        activity.window, activity.window.decorView)
+                    controller.isAppearanceLightStatusBars = lightBars
+                    controller.isAppearanceLightNavigationBars = lightBars
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    // Pre-R fallback: the same systemUiVisibility flags WindowCompat
+                    // would toggle internally (LIGHT_NAVIGATION_BAR is a no-op below 26).
+                    val decorView = activity.window.decorView
+                    var vis = decorView.systemUiVisibility
+                    vis = if (lightBars) {
+                        vis or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                    } else {
+                        vis and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and
+                            View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+                    }
+                    decorView.systemUiVisibility = vis
+                }
+                // Below API 23 light system-bar icons are unsupported: no-op.
+            } catch (e: Exception) {
+                Log.e("VpnServicePlugin", "set ui chrome failed", e)
+            }
+            invoke.resolve(JSObject())
+        }
     }
 
     private fun formatRate(bytesPerSec: Double): String {

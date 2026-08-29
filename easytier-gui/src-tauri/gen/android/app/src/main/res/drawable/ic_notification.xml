@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EasyTier ongoing-notification small icon: a mesh of linked nodes.
+     Pure white on transparent (the status bar tints alpha masks anyway);
+     kept deliberately chunky so it survives the ~18px status-bar scale. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- links: hub at (12,12) to three satellites, plus a peer link -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M5,6 L19,6" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M5,6 L12,12" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M19,6 L12,12" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M12,12 L12,20.5" />
+
+    <!-- nodes -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9.5,12 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,6 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,6 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10,20.5 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 Z" />
+</vector>
