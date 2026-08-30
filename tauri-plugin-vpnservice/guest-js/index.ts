@@ -58,3 +58,19 @@ export async function update_notification(rxRate: number, txRate: number): Promi
 export async function set_ui_chrome(dark: boolean): Promise<InvokeResponse | null> {
   return await invoke<InvokeResponse>('plugin:vpnservice|set_ui_chrome', { dark })
 }
+
+export interface NotificationStatusResponse {
+  granted: boolean;
+  enabled: boolean;
+}
+
+// Are system notifications usable (runtime permission granted AND the app-wide
+// toggle on)? When false the app should surface its own warning + settings jump.
+export async function notification_status(): Promise<NotificationStatusResponse | null> {
+  return await invoke<NotificationStatusResponse>('plugin:vpnservice|notification_status', {})
+}
+
+// Open this app's notification settings screen (fallback: app details page).
+export async function open_notification_settings(): Promise<InvokeResponse | null> {
+  return await invoke<InvokeResponse>('plugin:vpnservice|open_notification_settings', {})
+}

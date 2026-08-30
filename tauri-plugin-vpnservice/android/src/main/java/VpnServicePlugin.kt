@@ -1,5 +1,6 @@
 package com.plugin.vpnservice
 
+import android.Manifest
 import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,12 +9,17 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import android.net.VpnService
 import android.os.Build
 import android.util.Log
 import android.view.View
 import androidx.activity.result.ActivityResult
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.ActivityCallback
@@ -230,6 +236,40 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
                 // Below API 23 light system-bar icons are unsupported: no-op.
             } catch (e: Exception) {
                 Log.e("VpnServicePlugin", "set ui chrome failed", e)
+            }
+            invoke.resolve(JSObject())
+        }
+    }
+
+    @Command
+    fun notificationStatus(invoke: Invoke) {
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        val enabled = NotificationManagerCompat.from(activity).areNotificationsEnabled()
+        val ret = JSObject()
+        ret.put("granted", granted)
+        ret.put("enabled", enabled)
+        invoke.resolve(ret)
+    }
+
+    @Command
+    fun openNotificationSettings(invoke: Invoke) {
+        activity.runOnUiThread {
+            try {
+                activity.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                try {
+                    activity.startActivity(
+                        Intent(Intent.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:${'$'}{activity.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e2: Exception) {
+                    Log.w("VpnServicePlugin", "open notification settings failed", e2)
+                }
             }
             invoke.resolve(JSObject())
         }

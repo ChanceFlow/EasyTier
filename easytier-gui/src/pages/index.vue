@@ -10,6 +10,7 @@ import { I18nUtils, RemoteManagement, Utils } from "easytier-frontend-lib"
 import { useTray } from '~/composables/tray'
 import { initMobileVpnService, mobileStats, setMobileStatsInstanceId, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
 import { initSysBarSync } from '~/composables/sysbar'
+import { checkNotificationGate, notificationsBlocked, openNotificationSettings } from '~/composables/notification_gate'
 import { usePhoneText } from '~/composables/hero_text'
 import { GUIRemoteClient } from '~/modules/api'
 
@@ -246,6 +247,7 @@ onMounted(async () => {
 
   if (type() === 'android') {
     initSysBarSync(theme.global.name)
+    void checkNotificationGate()
     try {
       await initMobileVpnService()
     } catch (e: any) {
@@ -745,10 +747,12 @@ async function exitApp(): Promise<void> {
             :busy="heroBusy || isModeSaving"
             :booted="heroBooted"
             :is-android="isAndroid"
+            :notif-blocked="notificationsBlocked"
             @connect="heroConnect"
             @disconnect="heroDisconnect"
             @grant="heroGrantVpn"
             @retry="reconnectClient"
+            @open-notif-settings="openNotificationSettings"
           />
 
           <div class="et-adv-wrap pb-6">

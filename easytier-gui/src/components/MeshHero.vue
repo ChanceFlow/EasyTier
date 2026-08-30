@@ -13,6 +13,8 @@ const props = defineProps<{
   /** First isClientRunning() probe has resolved (prevents boot-time flash). */
   booted?: boolean
   isAndroid?: boolean
+  /** System notifications blocked -> shows the tap-to-fix warning card. */
+  notifBlocked?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,6 +22,7 @@ const emit = defineEmits<{
   (e: 'disconnect'): void
   (e: 'grant'): void
   (e: 'retry'): void
+  (e: 'openNotifSettings'): void
 }>()
 
 const { pt } = usePhoneText()
@@ -333,6 +336,25 @@ const statusTone = computed(() => {
       >
         {{ actionLabel }}
       </v-btn>
+    </div>
+
+    <!-- notifications blocked: one tap to the system settings, self-clears on return -->
+    <div
+      v-if="props.notifBlocked"
+      class="et-hero-notif"
+      role="alert"
+      @click="emit('openNotifSettings')"
+    >
+      <v-icon size="18" style="color: var(--et-warning);">
+        mdi-bell-off-outline
+      </v-icon>
+      <div class="et-hero-notif-text">
+        <span class="et-hero-notif-title">{{ pt('hero.notif_off', '通知被禁用', 'Notifications are off') }}</span>
+        <span class="et-hero-notif-sub">{{ pt('hero.notif_off_sub', '看不到实时速率常驻通知 · 点击去开启', 'The live-speed notification stays hidden · tap to enable') }}</span>
+      </div>
+      <v-icon size="16" style="color: var(--et-text-tertiary);">
+        mdi-chevron-right
+      </v-icon>
     </div>
   </section>
 </template>
@@ -678,5 +700,37 @@ const statusTone = computed(() => {
     animation: none;
     box-shadow: 0 0 22px -8px var(--et-glow);
   }
+}
+</style>
+
+<style scoped>
+.et-hero-notif {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--et-touch);
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: var(--et-radius-sm);
+  border: 1px solid color-mix(in srgb, var(--et-warning) 35%, transparent);
+  background: color-mix(in srgb, var(--et-warning) 10%, transparent);
+  cursor: pointer;
+}
+.et-hero-notif:active {
+  transform: scale(0.985);
+}
+.et-hero-notif-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.et-hero-notif-title {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.et-hero-notif-sub {
+  font-size: 0.7rem;
+  color: var(--et-text-secondary);
 }
 </style>
