@@ -37,15 +37,6 @@ jobs:
       GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
       DISPATCH_BUILDS: ${{ inputs.dispatch_builds }}
     steps:
-      - name: Token sanity (masked)
-        run: |
-          L=${#GH_PUSH_TOKEN}
-          P4=$(printf '%s' "${GH_PUSH_TOKEN:-}" | head -c 4)
-          S=$(printf '%s' "${GH_PUSH_TOKEN:-}" | sha256sum | cut -c1-16)
-          echo "GHPT len=$L prefix4=$P4 sha16=$S"
-          L2=${#ET_TOKEN}
-          S2=$(printf '%s' "${ET_TOKEN:-}" | sha256sum | cut -c1-16)
-          echo "ETT len=$L2 sha16=$S2"
       - name: Fast-forward GitHub fork with main
         run: |
           set -euo pipefail
