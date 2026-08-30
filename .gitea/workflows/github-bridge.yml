@@ -30,7 +30,7 @@ env:
 
 jobs:
   bridge:
-    runs-on: easytier-builder
+    runs-on: et-glue
     env:
       ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
       ET_TOKEN: ${{ secrets.ET_TOKEN }}
