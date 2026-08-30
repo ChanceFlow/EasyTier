@@ -37,6 +37,15 @@ jobs:
       GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
       DISPATCH_BUILDS: ${{ inputs.dispatch_builds }}
     steps:
+      - name: Token sanity (masked)
+        run: |
+          L=${#GH_PUSH_TOKEN}
+          P4=$(printf '%s' "${GH_PUSH_TOKEN:-}" | head -c 4)
+          S=$(printf '%s' "${GH_PUSH_TOKEN:-}" | sha256sum | cut -c1-16)
+          echo "GHPT len=$L prefix4=$P4 sha16=$S"
+          L2=${#ET_TOKEN}
+          S2=$(printf '%s' "${ET_TOKEN:-}" | sha256sum | cut -c1-16)
+          echo "ETT len=$L2 sha16=$S2"
       - name: Fast-forward GitHub fork with main
         run: |
           set -euo pipefail
@@ -49,9 +58,8 @@ jobs:
           git clone -q --single-branch -b main "$GIT_URL/$REPO.git" "$WORK/r"
           echo "==> gitea main @ $(git -C "$WORK/r" rev-parse --short HEAD) -> github $GH_REPO"
 
-          AUTHB=$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 | tr -d '\n')
-          if ! git -C "$WORK/r" -c "http.extraHeader=Authorization: Basic $AUTHB" \
-              push https://github.com/$GH_REPO.git main:main; then
+          PUSH_URL=$(printf 'https://x-access-token:%s@github.com/%s.git' "$GH_PUSH_TOKEN" "$GH_REPO")
+          if ! git -C "$WORK/r" push "$PUSH_URL" main:main; then
             echo "error: fork rejected the fast-forward (diverged?). Sync manually;" >&2
             echo "       never rewrite fork history behind CI's back." >&2
             exit 1
