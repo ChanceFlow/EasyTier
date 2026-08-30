@@ -46,7 +46,16 @@ jobs:
           REPO="${{ github.repository }}"
           GIT_URL=$(printf '%s' "$ET_SERVER_URL" | sed "s#://#://x-access-token:${ET_TOKEN}@#")
           WORK=$(mktemp -d)
-          git clone -q --single-branch -b main "$GIT_URL/$REPO.git" "$WORK/r"
+          # transient curl-18 drops happen on gitea's smart-http; retry like the
+          # asset uploader does. --no-checkout skips 1000+ file extraction.
+          for attempt in 1 2 3; do
+            if git clone -q --no-checkout --single-branch -b main "$GIT_URL/$REPO.git" "$WORK/r"; then
+              break
+            fi
+            rm -rf "$WORK/r"
+            [ "$attempt" = 3 ] && { echo "clone failed 3x" >&2; exit 1; }
+            echo "clone attempt $attempt failed, retrying in 5s"; sleep 5
+          done
           echo "==> gitea main @ $(git -C "$WORK/r" rev-parse --short HEAD) -> github $GH_REPO"
 
           PUSH_URL=$(printf 'https://x-access-token:%s@github.com/%s.git' "$GH_PUSH_TOKEN" "$GH_REPO")
