@@ -263,10 +263,13 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (e: Exception) {
                 try {
-                    activity.startActivity(
-                        Intent(Intent.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:${'$'}{activity.packageName}"))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    // some SDK levels lag on the Intent.* constant alias; the
+                    // action string and fromParts() work on every API level
+                    val details = Intent()
+                    details.action = "android.settings.APPLICATION_DETAILS_SETTINGS"
+                    details.data = Uri.fromParts("package", activity.packageName, null)
+                    details.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    activity.startActivity(details)
                 } catch (e2: Exception) {
                     Log.w("VpnServicePlugin", "open notification settings failed", e2)
                 }
