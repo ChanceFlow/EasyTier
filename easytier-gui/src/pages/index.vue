@@ -635,16 +635,18 @@ async function exitApp(): Promise<void> {
         </div>
 
         <div class="d-flex align-center ga-1">
-          <div v-if="clientRunning" class="et-status-pill is-on">
-            <div class="et-pulse-dot" />
-            <span class="truncate">{{ t('status.connected') }}</span>
-          </div>
-          <div v-else class="et-status-pill is-off">
-            <v-icon size="12">
-              mdi-wifi-off
-            </v-icon>
-            <span class="truncate">{{ t('status.disconnected') }}</span>
-          </div>
+          <template v-if="!mobileUI">
+            <div v-if="clientRunning" class="et-status-pill is-on">
+              <div class="et-pulse-dot" />
+              <span class="truncate">{{ t('status.connected') }}</span>
+            </div>
+            <div v-else class="et-status-pill is-off">
+              <v-icon size="12">
+                mdi-wifi-off
+              </v-icon>
+              <span class="truncate">{{ t('status.disconnected') }}</span>
+            </div>
+          </template>
           <v-btn
             icon="mdi-cog-outline"
             variant="text"
@@ -918,7 +920,7 @@ async function exitApp(): Promise<void> {
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="2500" location="top" rounded="pill">
+    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="2500" :location="mobileUI ? 'bottom' : 'top'" rounded="pill">
       {{ snackbarMessage }}
     </v-snackbar>
   </div>
