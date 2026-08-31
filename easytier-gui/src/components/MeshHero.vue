@@ -10,6 +10,8 @@ const props = defineProps<{
   instanceId?: string
   /** A connect/disconnect round-trip is in flight. */
   busy?: boolean
+  /** Transition state: 'idle' | 'connecting' | 'disconnecting' */
+  desired?: 'idle' | 'connecting' | 'disconnecting'
   /** First isClientRunning() probe has resolved (prevents boot-time flash). */
   booted?: boolean
   isAndroid?: boolean
@@ -45,6 +47,10 @@ const stoppedState = computed(() => !running.value && !notFound.value && !permis
 
 const waitingPeers = computed(() => running.value && mobileStats.peerCount === 0)
 
+const isConnecting = computed(() => props.desired === 'connecting')
+const isDisconnecting = computed(() => props.desired === 'disconnecting')
+const isTransitioning = computed(() => isConnecting.value || isDisconnecting.value)
+
 const title = computed(() => {
   if (notFound.value)
     return t('client.not_running')
@@ -52,6 +58,10 @@ const title = computed(() => {
     return pt('hero.permission_title', '需要 VPN 权限', 'VPN permission required')
   if (failedState.value)
     return pt('hero.failed_title', '连接失败', 'Connection failed')
+  if (isConnecting.value)
+    return pt('hero.connecting_title', '正在建立隧道…', 'Establishing tunnel…')
+  if (isDisconnecting.value)
+    return pt('hero.disconnecting_title', '正在断开连接…', 'Disconnecting…')
   if (stoppedState.value)
     return pt('hero.stopped_title', '网络未运行', 'Network is stopped')
   return mobileStats.networkName || 'EasyTier'
@@ -64,6 +74,10 @@ const subtitle = computed(() => {
     return pt('hero.permission_sub', 'Android 需要授权后才能建立 VPN 通道，重试并在系统弹窗中点“允许”。', 'Android needs your approval before the tunnel can start. Tap retry and allow the system prompt.')
   if (failedState.value)
     return mobileStats.lastError
+  if (isConnecting.value)
+    return pt('hero.connecting_sub', '正在与节点建立安全隧道，请稍候…', 'Establishing secure tunnel with peers, please wait…')
+  if (isDisconnecting.value)
+    return pt('hero.disconnecting_sub', '正在断开虚拟网络连接…', 'Closing virtual network tunnel…')
   if (stoppedState.value) {
     return props.instanceId
       ? pt('hero.stopped_sub', '配置已就绪，点“连接”即可接入组网。', 'Your config is ready. Tap Connect to join the mesh.')
@@ -128,13 +142,17 @@ const actionLabel = computed(() => {
     return t('client.retry')
   if (permissionState.value)
     return pt('hero.action_grant', '重新授权', 'Grant permission')
+  if (isConnecting.value)
+    return pt('hero.action_connecting', '正在连接…', 'Connecting…')
+  if (isDisconnecting.value)
+    return pt('hero.action_disconnecting', '正在断开…', 'Disconnecting…')
   if (actionIsDisconnect.value)
     return t('status.disconnect')
   return pt('hero.action_connect', '连接', 'Connect')
 })
 
 function onAction() {
-  if (props.busy)
+  if (props.busy || isTransitioning.value)
     return
   if (notFound.value) {
     emit('retry')
@@ -152,6 +170,8 @@ function onAction() {
 }
 
 const statusTone = computed(() => {
+  if (isTransitioning.value)
+    return 'is-warn'
   if (running.value)
     return 'is-on'
   if (permissionState.value || failedState.value)
@@ -187,6 +207,13 @@ const statusTone = computed(() => {
           <v-icon v-else-if="failedState" size="30">
             mdi-shield-alert-outline
           </v-icon>
+          <v-progress-circular
+            v-else-if="isConnecting || isDisconnecting"
+            indeterminate
+            size="30"
+            width="3"
+            color="warning"
+          />
           <v-icon v-else size="30">
             mdi-shield-off-outline
           </v-icon>
@@ -228,12 +255,21 @@ const statusTone = computed(() => {
             {{ mobileStats.virtualIp || '—.—.—.—' }}
           </div>
         </div>
-        <div class="et-hero-state et-status-pill" :class="running ? 'is-on' : 'is-off'">
-          <div v-if="running" class="et-pulse-dot" />
-          <v-icon v-else size="12">
-            mdi-wifi-off
-          </v-icon>
-          <span>{{ running ? t('status.connected') : t('status.disconnected') }}</span>
+        <div class="et-hero-state et-status-pill" :class="statusTone">
+          <template v-if="isConnecting || isDisconnecting">
+            <v-progress-circular indeterminate size="12" width="2" color="warning" />
+            <span>{{ isConnecting ? pt('hero.connecting_pill', '建立中…', 'Connecting…') : pt('hero.disconnecting_pill', '断开中…', 'Disconnecting…') }}</span>
+          </template>
+          <template v-else-if="running">
+            <div class="et-pulse-dot" />
+            <span>{{ t('status.connected') }}</span>
+          </template>
+          <template v-else>
+            <v-icon size="12">
+              mdi-wifi-off
+            </v-icon>
+            <span>{{ t('status.disconnected') }}</span>
+          </template>
         </div>
       </div>
 
@@ -302,7 +338,7 @@ const statusTone = computed(() => {
               size="x-large"
               :color="actionIsDisconnect ? 'error' : 'primary'"
               :variant="actionIsDisconnect ? 'outlined' : 'flat'"
-              :loading="busy"
+              :loading="busy || isTransitioning"
               :prepend-icon="actionIsDisconnect ? 'mdi-lan-disconnect' : 'mdi-lan-connect'"
               @click="onAction"
             >
@@ -330,7 +366,7 @@ const statusTone = computed(() => {
         size="x-large"
         color="primary"
         variant="flat"
-        :loading="busy"
+        :loading="busy || isTransitioning"
         :prepend-icon="notFound ? 'mdi-replay' : (permissionState ? 'mdi-shield-key-outline' : 'mdi-lan-connect')"
         @click="onAction"
       >
