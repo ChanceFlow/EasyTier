@@ -35,6 +35,11 @@ const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
 const manualDisconnect = ref(false)
 
+// declared up front: initWithMode and the hero actions reference them
+const remoteClient = computed(() => new GUIRemoteClient())
+const instanceId = ref<string | undefined>(undefined)
+const clientRunning = ref(false)
+
 // ---- phone hero / onboarding ----
 const onboardingVisible = ref(false)
 const createNetworkDialogVisible = ref(false)
@@ -309,10 +314,6 @@ onMounted(async () => {
 
 useTray(true)
 
-const remoteClient = computed(() => new GUIRemoteClient())
-const instanceId = ref<string | undefined>(undefined)
-const clientRunning = ref(false)
-
 watch(instanceId, (newVal) => {
   if (newVal) {
     saveLastNetworkInstanceId(newVal)
@@ -510,6 +511,16 @@ async function getLogDirPath(): Promise<string> {
   return await invoke<string>('get_log_dir_path')
 }
 
+const configServerConnectionStatus = computed(() => {
+  if (currentMode.value.mode !== 'normal') {
+    return 'unknown'
+  }
+  if (!currentMode.value.config_server_url) {
+    return 'disconnected'
+  }
+  return configServerConnected.value ? 'connected' : 'connecting'
+})
+
 interface SettingsSheetItem {
   key: string
   label: string
@@ -592,7 +603,6 @@ async function copyLogDir(): Promise<void> {
 
 async function connectRpcClient(isNormalMode: boolean, url?: string) {
   await initRpcConnection(isNormalMode, url)
-  console.log('easytier rpc connection established, isNormalMode: ', isNormalMode)
 }
 
 async function openConfigServerDialog() {
@@ -612,13 +622,12 @@ async function onConfigServerSave() {
       // if dialog dismissed without accept, reject
       const stopWatch = watch(confirmDialog, (val) => {
         if (!val && confirmCallback === null) {
-          reject()
+          reject(new Error('cancelled from settings'))
           stopWatch()
         }
       })
     })
   }
-  console.log('Saving config server url', (editingMode.value as WebClientConfig).config_server_url)
   await onModeSave()
   configServerDialogVisible.value = false
 }
@@ -638,16 +647,6 @@ onMounted(() => {
     clearInterval(timer)
   })
 })
-const configServerConnectionStatus = computed(() => {
-  if (currentMode.value.mode !== 'normal') {
-    return 'unknown'
-  }
-  if (!currentMode.value.config_server_url) {
-    return 'disconnected'
-  }
-  return configServerConnected.value ? 'connected' : 'connecting'
-})
-
 function visibleSettingsItems(): SettingsSheetItem[] {
   return settingsSheetItems.value.filter((item: SettingsSheetItem) => item.visible !== false)
 }
