@@ -35,7 +35,7 @@ jobs:
       ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
       ET_TOKEN: ${{ secrets.ET_TOKEN }}
       GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
-      DISPATCH_BUILDS: ${{ inputs.dispatch_builds }}
+      DISPATCH_BUILDS: ${{ github.event.inputs.dispatch_builds }}  # 'inputs' ctx renders empty on dispatch in this Gitea
     steps:
       - name: Fast-forward GitHub fork with main
         run: |
