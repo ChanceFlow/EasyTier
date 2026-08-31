@@ -11,9 +11,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.net.VpnService
-import android.os.Build
 import android.util.Log
 import android.view.View
 import androidx.activity.result.ActivityResult
@@ -58,6 +60,17 @@ class StartVpnArgs {
 @TauriPlugin
 class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
     private val implementation = Example()
+
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private var lastRxRate: Double = 0.0
+    private var lastTxRate: Double = 0.0
+    private var lastTunnelActive: Boolean = false
+    private val watchdogRunnable = Runnable { handleWatchdogTimeout() }
+
+    // Cached icon identifier to avoid repeated getIdentifier() lookups on every rate tick.
+    // Note: getIdentifier relies on resource entry name keeping; if shrinkResources is enabled,
+    // ic_notification must be kept or resolved with fallback.
+    private var cachedSmallIcon: Int = 0
 
     override fun load(webView: WebView) {
         println("load vpn service plugin")
@@ -128,6 +141,10 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
     fun stopVpn(invoke: Invoke) {
         activity.runOnUiThread {
             println("stop vpn in plugin")
+            watchdogHandler.removeCallbacks(watchdogRunnable)
+            lastTunnelActive = false
+            lastRxRate = 0.0
+            lastTxRate = 0.0
             TauriVpnService.self?.onRevoke()
             activity.stopService(Intent(activity, TauriVpnService::class.java))
             println("stop vpn in plugin end")
@@ -148,39 +165,145 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun updateNotification(invoke: Invoke) {
         val args = invoke.parseArgs(UpdateNotificationArgs::class.java)
-        val ctx = activity.applicationContext
+        val ctx = activity?.applicationContext ?: activity
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // same channel + id as the MainForegroundService ongoing notification;
-        // re-posting the startForeground notification id keeps it foreground.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(NOTIFY_CHANNEL_ID, "easytier notice",
-                NotificationManager.IMPORTANCE_LOW)
-            channel.description = "显示 EasyTier 隧道在线状态与实时收发速率，可用于快速打开 App。"
-            channel.setShowBadge(false)
-            nm.createNotificationChannel(channel) // idempotent
-        }
+
+        ensureNotificationChannel(ctx)
+
         val rx = (args.rxRate ?: 0.0).coerceAtLeast(0.0)
         val tx = (args.txRate ?: 0.0).coerceAtLeast(0.0)
         val active = rx > 0.0 || tx > 0.0
-        val title = if (active) "EasyTier · 已连接" else "EasyTier"
-        val text = if (active)
+
+        lastRxRate = rx
+        lastTxRate = tx
+        lastTunnelActive = active
+
+        // Reset watchdog on fresh JS tick
+        watchdogHandler.removeCallbacks(watchdogRunnable)
+        watchdogHandler.postDelayed(watchdogRunnable, WATCHDOG_TIMEOUT_MS)
+
+        val title = if (active) {
+            resolveString(ctx, "notification_title_connected", "EasyTier · 已连接")
+        } else {
+            resolveString(ctx, "app_name", "EasyTier")
+        }
+
+        val text = if (active) {
             "↑ %s · ↓ %s".format(formatRate(tx), formatRate(rx))
-        else
-            "网络空闲 · 隧道守护中"
+        } else {
+            resolveString(ctx, "notification_text_idle", "网络空闲 · 隧道守护中")
+        }
+
+        val actionText = resolveString(ctx, "notification_action_open", "打开")
+
         val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(resolveSmallIcon(ctx))
+            .setContentIntent(openAppIntent(ctx))
             .setCategory(Notification.CATEGORY_SERVICE)
             .setShowWhen(false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
-            .addAction(NotificationCompat.Action(
-                resolveSmallIcon(ctx), "打开", openAppIntent(ctx)))
+            .addAction(
+                NotificationCompat.Action(
+                    resolveSmallIcon(ctx),
+                    actionText,
+                    openAppIntent(ctx)
+                )
+            )
             .build()
+
         nm.notify(NOTIFY_ID, notification)
         invoke.resolve(JSObject())
+    }
+
+    /**
+     * 需真机验证冻结时机:
+     * When the app goes to background or the screen turns off, Android may throttle/freeze
+     * WebView timers, causing rate updates from JS to stop.
+     * If no new rate update arrives within WATCHDOG_TIMEOUT_MS, we re-issue the notification
+     * with a static background status so the notification does not look permanently frozen on old rates.
+     */
+    private fun handleWatchdogTimeout() {
+        try {
+            val ctx = activity?.applicationContext ?: activity
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            ensureNotificationChannel(ctx)
+
+            val title = if (lastTunnelActive) {
+                resolveString(ctx, "notification_title_connected", "EasyTier · 已连接")
+            } else {
+                resolveString(ctx, "app_name", "EasyTier")
+            }
+
+            val text = if (lastTunnelActive) {
+                resolveString(ctx, "notification_text_background", "后台运行中 · 隧道保持")
+            } else {
+                resolveString(ctx, "notification_text_idle", "网络空闲 · 隧道守护中")
+            }
+
+            val actionText = resolveString(ctx, "notification_action_open", "打开")
+
+            val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setSmallIcon(resolveSmallIcon(ctx))
+                .setContentIntent(openAppIntent(ctx))
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setShowWhen(false)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
+                .addAction(
+                    NotificationCompat.Action(
+                        resolveSmallIcon(ctx),
+                        actionText,
+                        openAppIntent(ctx)
+                    )
+                )
+                .build()
+
+            nm.notify(NOTIFY_ID, notification)
+        } catch (e: Exception) {
+            Log.e("VpnServicePlugin", "Watchdog notification update failed", e)
+        }
+    }
+
+    private fun resolveString(ctx: Context, name: String, fallback: String): String {
+        val id = ctx.resources.getIdentifier(name, "string", ctx.packageName)
+        return if (id != 0) {
+            try {
+                ctx.getString(id)
+            } catch (_: Exception) {
+                fallback
+            }
+        } else {
+            fallback
+        }
+    }
+
+    private fun ensureNotificationChannel(ctx: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                try {
+                    nm.deleteNotificationChannel(OLD_NOTIFY_CHANNEL_ID)
+                } catch (_: Exception) {}
+                if (nm.getNotificationChannel(NOTIFY_CHANNEL_ID) == null) {
+                    val name = resolveString(ctx, "notification_channel_name", "EasyTier Notice")
+                    val desc = resolveString(ctx, "notification_channel_desc", "Shows EasyTier tunnel status and real-time network traffic rate.")
+                    val channel = NotificationChannel(NOTIFY_CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW).apply {
+                        description = desc
+                        setShowBadge(false)
+                    }
+                    nm.createNotificationChannel(channel)
+                }
+            } catch (e: Exception) {
+                Log.e("VpnServicePlugin", "Failed to ensure notification channel", e)
+            }
+        }
     }
 
     /**
@@ -190,15 +313,21 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
      * the stock wrench icon if the lookup fails.
      */
     private fun resolveSmallIcon(ctx: Context): Int {
+        if (cachedSmallIcon != 0) {
+            return cachedSmallIcon
+        }
         val id = ctx.resources.getIdentifier("ic_notification", "drawable", ctx.packageName)
-        return if (id != 0) id else android.R.drawable.ic_menu_manage
+        cachedSmallIcon = if (id != 0) id else android.R.drawable.ic_menu_manage
+        return cachedSmallIcon
     }
 
     /** PendingIntent that brings the EasyTier MainActivity to the front. */
     private fun openAppIntent(ctx: Context): PendingIntent {
-        val launch = Intent()
-            .setClassName(ctx.packageName, "${ctx.packageName}.MainActivity")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+            ?: Intent().apply {
+                setClassName(ctx.packageName, "${ctx.packageName}.MainActivity")
+            }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or (
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         return PendingIntent.getActivity(ctx, 0, launch, piFlags)
@@ -290,8 +419,10 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     companion object {
-        // must match MainForegroundService.CHANNEL_ID / NOTIFICATION_ID
-        private const val NOTIFY_CHANNEL_ID = "easytier_channel"
+        // Contract: must match MainForegroundService.CHANNEL_ID / NOTIFICATION_ID across modules
+        private const val NOTIFY_CHANNEL_ID = "easytier_channel_v2"
+        private const val OLD_NOTIFY_CHANNEL_ID = "easytier_channel"
         private const val NOTIFY_ID = 1355
+        private const val WATCHDOG_TIMEOUT_MS = 15000L
     }
 }

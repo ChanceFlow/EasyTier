@@ -1,6 +1,4 @@
 <resources>
-    <string name="app_name">EasyTier</string>
-    <string name="main_activity_title">EasyTier</string>
     <string name="notification_channel_name">EasyTier Notice</string>
     <string name="notification_channel_desc">Shows EasyTier tunnel status and real-time network traffic rate.</string>
     <string name="notification_title_connected">EasyTier · Connected</string>
