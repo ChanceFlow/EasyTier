@@ -16,6 +16,9 @@
 # and can also be triggered manually (Gitea -> Actions -> "Mirror GitHub
 # Release" -> Run workflow), optionally pinned to a version. Re-runs are
 # idempotent: assets already attached under the same name are skipped.
+# Set overwrite=true to REPLACE same-named assets (delete + re-upload) -
+# use it after a same-version rebuild, when the GitHub release carries
+# fresh binaries under the old file names.
 
 name: Mirror GitHub Release
 
@@ -34,6 +37,11 @@ on:
         type: string
         default: 'ChanceFlow/EasyTier'
         required: false
+      overwrite:
+        description: 'Replace same-named assets on the Gitea release instead of skipping'
+        type: boolean
+        default: false
+        required: false
 
 jobs:
   mirror:
@@ -44,6 +52,7 @@ jobs:
       GH_RO_TOKEN: ${{ secrets.GH_RO_TOKEN }}
       VERSION: ${{ inputs.version }}
       SOURCE_REPO: ${{ inputs.source_repo }}
+      OVERWRITE: ${{ inputs.overwrite }}
     steps:
       - name: Mirror release and assets
         run: |
@@ -98,11 +107,16 @@ jobs:
           print(json.load(sys.stdin)["id"])')
           echo "gitea release id: $RID"
 
-          # idempotency: names already attached on gitea
+          # idempotency: name + asset id already attached on gitea.
+          # OVERWRITE=true replaces same-named assets: the fresh file is
+          # downloaded FIRST and only then the stale asset is deleted, so a
+          # failed download can never leave the release with fewer files.
+          [[ "${OVERWRITE:-false}" == "true" ]] || OVERWRITE=false
+          echo "overwrite mode: $OVERWRITE"
           existing=$(printf '%s' "$relg" | python3 -c '
           import json, sys
           for a in json.load(sys.stdin).get("assets", []):
-              print(a["name"])' 2>/dev/null || true)
+              print(str(a["id"]) + "\t" + a["name"])' 2>/dev/null || true)
 
           printf '%s' "$ghrel" | python3 -c '
           import json, sys
@@ -113,12 +127,17 @@ jobs:
           count=0
           while IFS=$(printf '\t') read -r fname furl; do
             [[ -n "$fname" ]] || continue
-            if printf '%s\n' "$existing" | grep -qxF "$fname"; then
+            aid=$(printf '%s\n' "$existing" | awk -F'\t' -v n="$fname" '$2==n {print $1; exit}')
+            if [[ -n "$aid" && "$OVERWRITE" != "true" ]]; then
               echo "skip $fname (already attached)"
               continue
             fi
             echo "==> $fname"
             curl -fsSL --retry 3 -o "/tmp/$fname" "$furl"
+            if [[ -n "$aid" ]]; then
+              echo "overwrite: dropping stale asset $aid after fresh download"
+              curl -fsS -X DELETE "$API/releases/$RID/assets/$aid" -H "$AUTH" -o /dev/null
+            fi
             ok=false
             for attempt in 1 2 3 4 5; do
               if curl -fsS -X POST "$API/releases/$RID/assets?name=$fname" \
