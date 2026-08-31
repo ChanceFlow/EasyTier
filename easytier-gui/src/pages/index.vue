@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { loadMode, type Mode, saveMode, type WebClientConfig } from '~/composables/mode'
-
 import { invoke } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { type } from '@tauri-apps/plugin-os'
@@ -14,10 +12,10 @@ import OnboardingDialog from '~/components/OnboardingDialog.vue'
 import QuickNetworkDialog from '~/components/QuickNetworkDialog.vue'
 import { getEasytierVersion, getServiceStatus, saveNetworkConfig } from '~/composables/backend'
 import { loadLastNetworkInstanceId, saveLastNetworkInstanceId } from '~/composables/config'
-
 import { usePhoneText } from '~/composables/hero_text'
 import { createHeroTransition } from '~/composables/hero_transition'
 import { initMobileVpnService, mobileStats, setMobileStatsInstanceId, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
+import { loadMode, type Mode, saveMode, type WebClientConfig } from '~/composables/mode'
 import { checkNotificationGate, notificationsBlocked, openNotificationSettings } from '~/composables/notification_gate'
 import { initSysBarSync } from '~/composables/sysbar'
 import { useTray } from '~/composables/tray'
@@ -341,6 +339,9 @@ watch(clientRunning, async (newVal, oldVal) => {
 
 onMounted(async () => {
   const timer = setInterval(async () => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      return
+    }
     try {
       clientRunning.value = await isClientRunning()
     }
@@ -623,6 +624,9 @@ async function onConfigServerSave() {
 }
 onMounted(() => {
   const timer = setInterval(async () => {
+    if (typeof document !== 'undefined' && document.hidden) {
+      return
+    }
     if (currentMode.value.mode !== 'normal')
       return
     if (!currentMode.value.config_server_url)
@@ -682,7 +686,8 @@ async function exitApp(): Promise<void> {
           <v-btn
             icon="mdi-cog-outline"
             variant="text"
-            size="small"
+            size="default"
+            class="et-nav-btn"
             :aria-label="t('web.settings.title')"
             @click="settingsSheetOpen = true"
           />
@@ -996,5 +1001,12 @@ async function exitApp(): Promise<void> {
   font-size: 0.72rem;
   color: var(--et-text-secondary);
   margin-top: 1px;
+}
+
+.et-nav-btn {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  width: 44px;
+  height: 44px;
 }
 </style>
