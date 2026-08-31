@@ -43,6 +43,11 @@ on:
         default: false
         required: false
 
+concurrency:
+  # never let two mirror passes race on the same asset table
+  group: mirror-github-release
+  cancel-in-progress: false
+
 jobs:
   mirror:
     runs-on: et-glue
@@ -137,8 +142,23 @@ jobs:
             echo "==> $fname"
             curl -fsSL --retry 3 -o "/tmp/$fname" "$furl"
             if [[ -n "$aid" ]]; then
-              echo "overwrite: dropping stale asset $aid after fresh download"
-              curl -fsS -X DELETE "$API/releases/$RID/assets/$aid" -H "$AUTH" -o /dev/null
+              # re-read the release: a concurrent pass may have replaced this
+              # name with a NEW asset id since our snapshot; delete every id
+              # that currently carries the name, tolerating vanished assets.
+              cur=$(curl -fsS "$API/releases/$RID" -H "$AUTH" \
+                | FNAME="$fname" python3 -c '
+          import json, os, sys
+          name = os.environ["FNAME"]
+          for a in json.load(sys.stdin).get("assets", []):
+              if a["name"] == name:
+                  print(a["id"])' 2>/dev/null || true)
+              if [[ -z "$cur" ]]; then
+                cur="$aid"
+              fi
+              for vid in $cur; do
+                echo "overwrite: dropping stale asset $vid"
+                curl -fsS -X DELETE "$API/releases/$RID/assets/$vid" -H "$AUTH" -o /dev/null || echo "  (already gone)"
+              done
             fi
             ok=false
             for attempt in 1 2 3 4 5; do
