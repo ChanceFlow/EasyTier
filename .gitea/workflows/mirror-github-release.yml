@@ -50,9 +50,11 @@ jobs:
       ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
       ET_TOKEN: ${{ secrets.ET_TOKEN }}
       GH_RO_TOKEN: ${{ secrets.GH_RO_TOKEN }}
-      VERSION: ${{ inputs.version }}
-      SOURCE_REPO: ${{ inputs.source_repo }}
-      OVERWRITE: ${{ inputs.overwrite }}
+      # NOTE: this Gitea does not populate the `inputs` context on
+      # workflow_dispatch (renders empty) - the legacy event path works.
+      VERSION: ${{ github.event.inputs.version }}
+      SOURCE_REPO: ${{ github.event.inputs.source_repo }}
+      OVERWRITE: ${{ github.event.inputs.overwrite }}
     steps:
       - name: Mirror release and assets
         run: |
