@@ -178,6 +178,16 @@ const statusTone = computed(() => {
     return 'is-warn'
   return 'is-off'
 })
+
+const revealedOnce = ref(false)
+
+watch(skeleton, (isSkel) => {
+  if (!isSkel && !revealedOnce.value) {
+    setTimeout(() => {
+      revealedOnce.value = true
+    }, 600)
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -195,7 +205,7 @@ const statusTone = computed(() => {
     </template>
 
     <!-- ========================= empty / error states ======================== -->
-    <div v-else-if="notFound || permissionState || failedState || stoppedState" class="et-hero-card et-reveal" style="--et-reveal-delay: 0ms">
+    <div v-else-if="notFound || permissionState || failedState || stoppedState" class="et-hero-card" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 0ms">
       <div class="et-hero-empty">
         <div class="et-hero-empty-orb" :class="statusTone">
           <v-icon v-if="notFound" size="30">
@@ -230,7 +240,7 @@ const statusTone = computed(() => {
     <!-- ============================== live hero ============================== -->
     <template v-else>
       <!-- status card: name + virtual IP, pulse when connected -->
-      <div class="et-hero-card et-reveal et-hero-status" style="--et-reveal-delay: 0ms">
+      <div class="et-hero-card et-hero-status" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 0ms">
         <div class="et-hero-shield" :class="{ 'is-on': running }">
           <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
             <path
@@ -276,7 +286,7 @@ const statusTone = computed(() => {
       <div class="et-hero-cols">
         <div class="et-hero-col">
           <!-- rates + 60s sparkline -->
-          <div class="et-hero-card et-reveal" style="--et-reveal-delay: 90ms">
+          <div class="et-hero-card" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 90ms">
             <div class="et-hero-rate-row">
               <span class="et-hero-rate-icon is-rx"><v-icon size="15">mdi-arrow-down-bold</v-icon></span>
               <span class="et-hero-rate-value mono"><span :key="rxText" class="et-rate-roll">{{ rxText }}</span></span>
@@ -312,7 +322,7 @@ const statusTone = computed(() => {
 
         <div class="et-hero-col">
           <!-- stat chips -->
-          <div class="et-hero-chips et-reveal" style="--et-reveal-delay: 170ms">
+          <div class="et-hero-chips" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 170ms">
             <div class="et-hero-chip">
               <v-icon size="15" color="primary">
                 mdi-nodes
@@ -330,7 +340,7 @@ const statusTone = computed(() => {
           </div>
 
           <!-- main action -->
-          <div class="et-reveal" style="--et-reveal-delay: 250ms">
+          <div :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 250ms">
             <v-btn
               class="et-hero-action"
               block
@@ -349,7 +359,7 @@ const statusTone = computed(() => {
       </div>
 
       <!-- waiting for peers nuance -->
-      <div v-if="waitingPeers" class="et-hero-waiting et-reveal" style="--et-reveal-delay: 320ms" role="status">
+      <div v-if="waitingPeers" class="et-hero-waiting" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 320ms" role="status">
         <v-icon size="14" class="mr-2">
           mdi-magnet-on
         </v-icon>
@@ -358,7 +368,7 @@ const statusTone = computed(() => {
     </template>
 
     <!-- the action button is also part of the empty states -->
-    <div v-if="!skeleton && (notFound || permissionState || failedState || stoppedState)" class="et-reveal" style="--et-reveal-delay: 90ms">
+    <div v-if="!skeleton && (notFound || permissionState || failedState || stoppedState)" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 90ms">
       <v-btn
         class="et-hero-action"
         block
