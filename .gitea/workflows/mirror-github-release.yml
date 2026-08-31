@@ -8,7 +8,9 @@
 # This file contains NO server addresses, tokens or secrets:
 #   secrets.ET_SERVER_URL  Gitea base url  (Settings -> Actions -> Secrets)
 #   secrets.ET_TOKEN       Gitea token with repository write scope
-#   secrets.GITHUB_TOKEN   optional GitHub PAT (public releases work without)
+#   secrets.GH_RO_TOKEN      optional GitHub PAT (public releases work without;
+#                            never named GITHUB_TOKEN - Gitea auto-injects its
+#                            own runner JWT under that name and GitHub rejects it)
 #
 # It runs daily (cron) resolving the LATEST GitHub release automatically,
 # and can also be triggered manually (Gitea -> Actions -> "Mirror GitHub
@@ -39,7 +41,7 @@ jobs:
     env:
       ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
       ET_TOKEN: ${{ secrets.ET_TOKEN }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_RO_TOKEN: ${{ secrets.GH_RO_TOKEN }}
       VERSION: ${{ inputs.version }}
       SOURCE_REPO: ${{ inputs.source_repo }}
     steps:
@@ -54,7 +56,7 @@ jobs:
           API="$ET_SERVER_URL/api/v1/repos/${{ github.repository }}"
           AUTH="Authorization: token $ET_TOKEN"
           GH=(-s)
-          if [[ -n "${GITHUB_TOKEN:-}" ]]; then GH+=(-H "Authorization: Bearer $GITHUB_TOKEN"); fi
+          if [[ -n "${GH_RO_TOKEN:-}" ]]; then GH+=(-H "Authorization: Bearer $GH_RO_TOKEN"); fi
 
           if [[ -z "${SOURCE_REPO// /}" ]]; then SOURCE_REPO="ChanceFlow/EasyTier"; fi
           VERSION="${VERSION// /}"
