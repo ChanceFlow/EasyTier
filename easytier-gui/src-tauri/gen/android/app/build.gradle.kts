@@ -44,6 +44,9 @@ val tauriVersionCode = if (tauriProperties.getProperty("tauri.android.versionNam
     major.toInt() * 1_000_000 + minor.toInt() * 1_000 + patch.toInt()
 }
 
+// Allow APK_VERSION_CODE environment variable to override versionCode (e.g. CI nightly using GITHUB_RUN_NUMBER)
+val finalVersionCode = System.getenv("APK_VERSION_CODE")?.toIntOrNull() ?: tauriVersionCode
+
 android {
     compileSdk = 34
     namespace = "com.kkrainbow.easytier"
@@ -52,7 +55,7 @@ android {
         applicationId = "com.kkrainbow.easytier"
         minSdk = 24
         targetSdk = 34
-        versionCode = tauriVersionCode
+        versionCode = finalVersionCode
         versionName = tauriVersionName
     }
     signingConfigs {

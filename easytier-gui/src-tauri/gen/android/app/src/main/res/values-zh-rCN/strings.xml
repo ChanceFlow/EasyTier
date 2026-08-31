@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">EasyTier</string>
+    <string name="main_activity_title">EasyTier</string>
+    <string name="notification_channel_name">EasyTier 服务通知</string>
+    <string name="notification_channel_desc">显示 EasyTier 隧道在线状态与实时收发速率，可用于快速打开 App。</string>
+    <string name="notification_title_connected">EasyTier · 已连接</string>
+    <string name="notification_text_idle">网络空闲 · 隧道守护中</string>
+    <string name="notification_text_background">后台运行中 · 隧道保持</string>
+    <string name="notification_action_open">打开</string>
+</resources>
