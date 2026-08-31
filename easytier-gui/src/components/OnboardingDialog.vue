@@ -76,7 +76,7 @@ const p2Items = computed(() => [
 ])
 
 const p3Steps = computed(() => [
-  pt('onboard.3.step1', '选择运行模式（默认即可）', 'Pick a run mode (default is fine)'),
+  pt('onboard.3.step1', '创建或选择网络配置', 'Create or select a network config'),
   pt('onboard.3.step2', '填写网络名与密码——相同凭据即同一张网', 'Enter network name and secret — same credentials, same mesh'),
   pt('onboard.3.step3', '点「连接」，等待节点出现', 'Tap Connect and watch peers arrive'),
 ])
@@ -162,7 +162,7 @@ const p3Steps = computed(() => [
                 </div>
               </div>
               <p class="et-onboard-hint">
-                {{ pt('onboard.3.hint', '随时可在右上角设置里修改语言、主题与网络配置。', 'Language, theme and network settings live in the cog at the top right.') }}
+                {{ pt('onboard.3.hint', '右上角 ⚙ 可切换语言与主题；组网配置在「高级控制台」里。', 'Switch language and theme via ⚙ at the top right; detailed config lives in the Advanced console.') }}
               </p>
             </div>
           </v-window-item>
