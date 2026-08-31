@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import type { loadMode, type Mode, saveMode, WebClientConfig } from '~/composables/mode'
+import { loadMode, type Mode, saveMode, type WebClientConfig } from '~/composables/mode'
 
 import { invoke } from '@tauri-apps/api/core'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { type } from '@tauri-apps/plugin-os'
 import { exit } from '@tauri-apps/plugin-process'
 import { open } from '@tauri-apps/plugin-shell'
-import { I18nUtils, RemoteManagement, Utils } from 'easytier-frontend-lib'
+import { I18nUtils, NetworkTypes, RemoteManagement, Utils } from 'easytier-frontend-lib'
 import { useDisplay, useTheme } from 'vuetify'
 import MeshHero from '~/components/MeshHero.vue'
 import ModeSwitcher from '~/components/ModeSwitcher.vue'
 import OnboardingDialog from '~/components/OnboardingDialog.vue'
-import { getEasytierVersion, getServiceStatus } from '~/composables/backend'
+import QuickNetworkDialog from '~/components/QuickNetworkDialog.vue'
+import { getEasytierVersion, getServiceStatus, saveNetworkConfig } from '~/composables/backend'
 import { loadLastNetworkInstanceId, saveLastNetworkInstanceId } from '~/composables/config'
 
 import { usePhoneText } from '~/composables/hero_text'
@@ -38,6 +39,8 @@ const manualDisconnect = ref(false)
 
 // ---- phone hero / onboarding ----
 const onboardingVisible = ref(false)
+const createNetworkDialogVisible = ref(false)
+const isCreatingNetwork = ref(false)
 const heroBusy = ref(false)
 // true once the very first isClientRunning() probe resolved
 const heroBooted = ref(false)
@@ -364,6 +367,35 @@ async function reconnectClient() {
 // the collapsed RemoteManagement panel has synced the v-model id
 function heroInstanceId(): string | undefined {
   return instanceId.value || mobileStats.instanceId || undefined
+}
+
+async function handleCreateNetwork(form: { name: string, secret: string, dhcp: boolean, peerUrl: string }) {
+  if (isCreatingNetwork.value) {
+    return
+  }
+  isCreatingNetwork.value = true
+  try {
+    const cfg = NetworkTypes.DEFAULT_NETWORK_CONFIG()
+    cfg.network_name = form.name || 'easytier'
+    cfg.network_secret = form.secret
+    cfg.dhcp = form.dhcp
+    if (form.peerUrl) {
+      cfg.peer_urls = [form.peerUrl]
+    }
+    await saveNetworkConfig(cfg)
+    instanceId.value = cfg.instance_id
+    saveLastNetworkInstanceId(cfg.instance_id)
+    setMobileStatsInstanceId(cfg.instance_id)
+    toast(pt('hero.create_success', '网络已创建', 'Network created'), 'success')
+    createNetworkDialogVisible.value = false
+  }
+  catch (e: any) {
+    toast(`${t('error')}: ${e}`, 'error', 10000)
+    console.error('Failed to create network', e)
+  }
+  finally {
+    isCreatingNetwork.value = false
+  }
 }
 
 async function heroConnect() {
@@ -832,6 +864,7 @@ async function exitApp(): Promise<void> {
             @disconnect="heroDisconnect"
             @grant="heroGrantVpn"
             @retry="reconnectClient"
+            @create="createNetworkDialogVisible = true"
             @open-notif-settings="openNotificationSettings"
           />
 
@@ -904,6 +937,11 @@ async function exitApp(): Promise<void> {
     </main>
 
     <OnboardingDialog v-model="onboardingVisible" />
+    <QuickNetworkDialog
+      v-model="createNetworkDialogVisible"
+      :loading="isCreatingNetwork"
+      @create="handleCreateNetwork"
+    />
 
     <v-dialog v-model="confirmDialog" max-width="420px">
       <v-card :title="confirmHeader" rounded="xl" class="et-dialog-card">

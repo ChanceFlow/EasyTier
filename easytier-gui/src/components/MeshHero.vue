@@ -24,6 +24,7 @@ const emit = defineEmits<{
   (e: 'disconnect'): void
   (e: 'grant'): void
   (e: 'retry'): void
+  (e: 'create'): void
   (e: 'openNotifSettings'): void
 }>()
 
@@ -44,6 +45,7 @@ const failedState = computed(() =>
 )
 // client is up but nothing is running yet — the classic "未运行" empty state
 const stoppedState = computed(() => !running.value && !notFound.value && !permissionState.value && !failedState.value)
+const stoppedStateNoConfig = computed(() => stoppedState.value && !props.instanceId)
 
 const waitingPeers = computed(() => running.value && mobileStats.peerCount === 0)
 
@@ -81,7 +83,7 @@ const subtitle = computed(() => {
   if (stoppedState.value) {
     return props.instanceId
       ? pt('hero.stopped_sub', '配置已就绪，点“连接”即可接入组网。', 'Your config is ready. Tap Connect to join the mesh.')
-      : pt('hero.noconfig_sub', '还没有网络配置——可在下方「高级控制台」新建。', 'No network config yet — create one in the Advanced console below.')
+      : pt('hero.noconfig_sub', '还没有网络配置——点击下方按钮即可快速创建。', 'No network config yet — tap below to create one quickly.')
   }
   return ''
 })
@@ -148,6 +150,8 @@ const actionLabel = computed(() => {
     return pt('hero.action_disconnecting', '正在断开…', 'Disconnecting…')
   if (actionIsDisconnect.value)
     return t('status.disconnect')
+  if (stoppedStateNoConfig.value)
+    return pt('hero.action_create', '创建网络', 'Create Network')
   return pt('hero.action_connect', '连接', 'Connect')
 })
 
@@ -164,6 +168,10 @@ function onAction() {
   }
   if (actionIsDisconnect.value) {
     emit('disconnect')
+    return
+  }
+  if (stoppedStateNoConfig.value) {
+    emit('create')
     return
   }
   emit('connect')
@@ -377,7 +385,7 @@ watch(skeleton, (isSkel) => {
         color="primary"
         variant="flat"
         :loading="busy || isTransitioning"
-        :prepend-icon="notFound ? 'mdi-replay' : (permissionState ? 'mdi-shield-key-outline' : 'mdi-lan-connect')"
+        :prepend-icon="notFound ? 'mdi-replay' : (permissionState ? 'mdi-shield-key-outline' : (stoppedStateNoConfig ? 'mdi-plus' : 'mdi-lan-connect'))"
         @click="onAction"
       >
         {{ actionLabel }}
