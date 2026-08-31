@@ -93,7 +93,9 @@ jobs:
             relg=$(curl -fsS -X POST "$API/releases" -H "$AUTH" \
               -H "Content-Type: application/json" -d "$reljson")
           fi
-          RID=$(printf '%s' "$relg" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          RID=$(printf '%s' "$relg" | python3 -c '
+          import json, sys
+          print(json.load(sys.stdin)["id"])')
           echo "gitea release id: $RID"
 
           # idempotency: names already attached on gitea
