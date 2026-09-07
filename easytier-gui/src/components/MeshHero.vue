@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useId } from 'vue'
 import { usePhoneText } from '~/composables/hero_text'
 import { mobileStats } from '~/composables/mobile_vpn'
@@ -31,6 +32,18 @@ const emit = defineEmits<{
 const { pt } = usePhoneText()
 const { t } = useI18n()
 const uid = useId().replace(/[^\w-]/g, '')
+
+const ipCopied = ref(false)
+async function copyIp() {
+  if (!mobileStats.virtualIp) return
+  try {
+    await writeText(mobileStats.virtualIp)
+    ipCopied.value = true
+    setTimeout(() => { ipCopied.value = false }, 1800)
+  } catch {
+    // ignore
+  }
+}
 
 // ---- derived state -------------------------------------------------------
 const running = computed(() => mobileStats.connected)
@@ -215,25 +228,25 @@ watch(skeleton, (isSkel) => {
     <!-- ========================= empty / error states ======================== -->
     <div v-else-if="notFound || permissionState || failedState || stoppedState" class="et-hero-card" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 0ms">
       <div class="et-hero-empty">
-        <div class="et-hero-empty-orb" :class="statusTone">
-          <v-icon v-if="notFound" size="30">
+        <div class="et-hero-empty-orb" :class="statusTone" role="button" tabindex="0" :aria-label="actionLabel" @click="onAction">
+          <v-icon v-if="notFound" size="32">
             mdi-server-network-off
           </v-icon>
-          <v-icon v-else-if="permissionState" size="30">
+          <v-icon v-else-if="permissionState" size="32">
             mdi-shield-key-outline
           </v-icon>
-          <v-icon v-else-if="failedState" size="30">
+          <v-icon v-else-if="failedState" size="32">
             mdi-shield-alert-outline
           </v-icon>
           <v-progress-circular
             v-else-if="isConnecting || isDisconnecting"
             indeterminate
-            size="30"
+            size="32"
             width="3"
             color="warning"
           />
-          <v-icon v-else size="30">
-            mdi-shield-off-outline
+          <v-icon v-else size="34">
+            mdi-power
           </v-icon>
         </div>
         <div class="text-h6 et-hero-empty-title text-center font-weight-bold">
@@ -269,8 +282,16 @@ watch(skeleton, (isSkel) => {
           <div class="et-hero-name truncate">
             {{ mobileStats.networkName || 'EasyTier' }}
           </div>
-          <div class="et-hero-ip mono" :class="{ 'is-live': running }">
-            {{ mobileStats.virtualIp || '—.—.—.—' }}
+          <div
+            class="et-hero-ip mono d-flex align-center ga-1"
+            :class="{ 'is-live': running }"
+            :style="{ cursor: running && mobileStats.virtualIp ? 'pointer' : 'default' }"
+            @click.stop="running && copyIp()"
+          >
+            <span>{{ mobileStats.virtualIp || '—.—.—.—' }}</span>
+            <v-icon v-if="running && mobileStats.virtualIp" size="14" :color="ipCopied ? 'success' : 'medium-emphasis'">
+              {{ ipCopied ? 'mdi-check' : 'mdi-content-copy' }}
+            </v-icon>
           </div>
         </div>
         <div class="et-hero-state et-status-pill" :class="statusTone">
@@ -634,21 +655,43 @@ watch(skeleton, (isSkel) => {
 }
 
 .et-hero-empty-orb {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  margin-bottom: 8px;
+  margin: 0.5rem auto 1rem;
   background: var(--et-surface-2);
-  border: 1px solid var(--et-border-hairline);
-  color: var(--et-text-tertiary);
+  border: 2px solid var(--et-border-hairline);
+  color: var(--et-text-secondary);
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.et-hero-empty-orb:hover {
+  transform: scale(1.04);
+  border-color: var(--et-accent);
+  box-shadow: 0 0 28px var(--et-glow);
+}
+
+.et-hero-empty-orb:active {
+  transform: scale(0.95);
+}
+
+.et-hero-empty-orb.is-on {
+  color: var(--et-accent);
+  border-color: var(--et-accent);
+  box-shadow: 0 0 32px var(--et-glow);
+  background: color-mix(in srgb, var(--et-accent) 12%, var(--et-surface-2));
 }
 
 .et-hero-empty-orb.is-warn {
   background: color-mix(in srgb, var(--et-warning) 14%, var(--et-surface-2));
   color: var(--et-warning);
-  border-color: color-mix(in srgb, var(--et-warning) 30%, transparent);
+  border-color: color-mix(in srgb, var(--et-warning) 50%, transparent);
+  box-shadow: 0 0 28px rgba(255, 183, 3, 0.25);
 }
 
 .et-hero-empty-title {

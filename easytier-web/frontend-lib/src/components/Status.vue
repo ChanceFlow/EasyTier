@@ -113,14 +113,28 @@ function peerDeviceIcon(info: any): string {
   if (!info?.route?.cost) return 'mdi-laptop'
   const hostname = (info.route?.hostname || '').toLowerCase()
   if (hostname.includes('phone') || hostname.includes('iphone') || hostname.includes('android')) return 'mdi-cellphone'
-  if (hostname.includes('nas') || hostname.includes('server')) return 'mdi-server'
-  if (hostname.includes('gw') || hostname.includes('router')) return 'mdi-router-wireless'
+  if (hostname.includes('mac') || hostname.includes('apple') || hostname.includes('darwin')) return 'mdi-apple'
+  if (hostname.includes('win') || hostname.includes('pc')) return 'mdi-microsoft-windows'
+  if (hostname.includes('linux') || hostname.includes('ubuntu') || hostname.includes('debian')) return 'mdi-linux'
+  if (hostname.includes('nas') || hostname.includes('synology') || hostname.includes('qnap')) return 'mdi-nas'
+  if (hostname.includes('server') || hostname.includes('node') || hostname.includes('vps')) return 'mdi-server'
+  if (hostname.includes('gw') || hostname.includes('router') || hostname.includes('openwrt')) return 'mdi-router-wireless'
   return info.route.cost === 1 ? 'mdi-lightning-bolt' : 'mdi-transit-connection-variant'
 }
 
 function peerRouteCostColor(info: any): string {
   if (!info?.route?.cost) return 'primary'
   return info.route.cost === 1 ? 'success' : 'warning'
+}
+
+function peerLatencyColorClass(info: any): string {
+  const l = latencyMs(info)
+  if (!l) return ''
+  const val = parseInt(l)
+  if (isNaN(val)) return ''
+  if (val < 45) return 'is-green'
+  if (val < 110) return 'is-amber'
+  return 'is-red'
 }
 
 function resolveObjPath(path: string, obj: any = globalThis, separator = '.') {
@@ -663,15 +677,19 @@ const myHostname = computed(() => {
             :aria-label="isRunning ? t('status.disconnect') : t('status.connect')"
             @click="vibrate(12); $emit('toggle-network')"
           >
-            <span class="et-orb-ring" />
-            <v-icon size="40">{{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+            <span class="et-orb-ring r1" />
+            <span class="et-orb-ring r2" />
+            <div class="et-orb-center">
+              <v-icon size="40">{{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+            </div>
           </button>
 
-          <div class="et-hero-state" :class="isRunning ? 'is-on' : 'is-off'">
-            {{ isRunning ? t('status.connected') : t('status.disconnected') }}
+          <div class="et-hero-status-pill mt-3" :class="isRunning ? 'is-on' : 'is-off'">
+            <div class="et-ping-dot is-pulse" :class="isRunning ? 'is-green' : 'is-amber'" />
+            <span class="font-weight-bold">{{ isRunning ? t('status.connected') : t('status.disconnected') }}</span>
           </div>
-          <div class="et-hero-meta">
-            {{ myHostname }} · <span :key="otherPeerCount" class="et-num et-tick">{{ otherPeerCount }}</span> {{ t('status.devices_unit') }}
+          <div class="et-hero-meta mono">
+            {{ myHostname }} · <span :key="otherPeerCount" class="et-num et-tick font-weight-bold">{{ otherPeerCount }}</span> {{ t('status.devices_unit') }}
           </div>
           <div class="et-hero-hint">
             {{ isRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}
@@ -680,44 +698,40 @@ const myHostname = computed(() => {
 
         <div class="et-section">
           <div class="et-section-label">{{ t('status.network_identity') }}</div>
-          <div class="et-group">
-            <div v-if="myVirtualIp" class="et-row et-row-pressable et-press-row" @click="copyText(myVirtualIp); vibrate(8)">
+          <div class="et-id-card et-group pa-3 mb-3">
+            <div class="d-flex align-center justify-space-between">
               <div class="d-flex align-center ga-3 min-w-0">
-                <div class="et-squircle" style="background: var(--et-accent);">
-                  <v-icon size="18" color="onPrimary">mdi-ip-network-outline</v-icon>
+                <div class="et-squircle" style="background: var(--et-accent-dim);">
+                  <v-icon size="20" color="primary">mdi-ip-network</v-icon>
                 </div>
                 <div class="min-w-0">
                   <div class="text-caption text-medium-emphasis">{{ t('status.virtual_ip') }}</div>
-                  <div class="text-body-1 font-weight-bold text-mono et-selectable">{{ myVirtualIp }}</div>
+                  <div class="text-h6 font-weight-bold text-mono et-selectable" style="color: var(--et-accent); line-height: 1.2;">
+                    {{ myVirtualIp || '—.—.—.—' }}
+                  </div>
                 </div>
               </div>
               <v-btn
+                v-if="myVirtualIp"
                 :icon="ipCopied ? 'mdi-check' : 'mdi-content-copy'"
-                :color="ipCopied ? 'success' : 'default'"
-                variant="text"
+                :color="ipCopied ? 'success' : 'primary'"
+                variant="tonal"
                 size="small"
+                class="rounded-pill"
                 :aria-label="t('status.copy_ip')"
+                @click="copyText(myVirtualIp); vibrate(8)"
               />
             </div>
 
-            <div class="et-row">
-              <div class="d-flex align-center ga-3">
-                <div class="et-squircle" style="background: var(--et-info);">
-                  <v-icon size="18" color="white">mdi-router-wireless</v-icon>
-                </div>
-                <span class="text-body-2 font-weight-medium">{{ t('status.tun_interface') }}</span>
+            <div class="d-flex align-center ga-2 mt-3 pt-2 border-t flex-wrap">
+              <div class="et-badge et-badge--cyan">
+                <v-icon size="12">mdi-router-wireless</v-icon>
+                <span class="mono">{{ myDevName }}</span>
               </div>
-              <span class="text-body-2 text-mono text-medium-emphasis">{{ myDevName }}</span>
-            </div>
-
-            <div class="et-row">
-              <div class="d-flex align-center ga-3">
-                <div class="et-squircle" style="background: var(--et-warning);">
-                  <v-icon size="18" color="white">mdi-shield-outline</v-icon>
-                </div>
-                <span class="text-body-2 font-weight-medium">{{ t('nat_type') }}</span>
+              <div class="et-badge" :class="myNatTypeStr.includes('全锥') || myNatTypeStr.includes('Full') || myNatTypeStr.includes('开放') ? 'et-badge--teal' : 'et-badge--amber'">
+                <v-icon size="12">mdi-shield-check</v-icon>
+                <span>NAT: {{ myNatTypeStr }}</span>
               </div>
-              <span class="text-body-2 text-medium-emphasis">{{ myNatTypeStr }}</span>
             </div>
           </div>
         </div>
@@ -846,23 +860,27 @@ const myHostname = computed(() => {
                     <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'">
                       <v-icon size="18" color="white">{{ peerDeviceIcon(info) }}</v-icon>
                     </div>
-                    <div class="ping-dot" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'" />
+                    <div class="ping-dot" :class="peerLatencyColorClass(info) || (routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay')" />
                   </div>
                   <div class="min-w-0">
                     <div class="d-flex align-center ga-1">
                       <span class="device-name truncate font-weight-bold">{{ info.route.hostname }}</span>
-                      <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal">{{ t('status.server') }}</v-chip>
-                      <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal">{{ t('status.relay') }}</v-chip>
+                      <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal" class="rounded-pill">{{ t('status.server') }}</v-chip>
+                      <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal" class="rounded-pill">{{ t('status.relay') }}</v-chip>
                     </div>
                     <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(info) }}</div>
                   </div>
                 </div>
                 <div class="d-flex align-center ga-2 flex-shrink-0">
                   <div class="text-end">
-                    <div class="text-mono text-caption font-weight-bold et-num" style="color: var(--et-accent);">
-                      <span :key="dash(latencyMs(info))" class="et-tick">{{ dash(latencyMs(info)) }}</span>
+                    <div v-if="latencyMs(info)" class="text-mono text-caption font-weight-bold et-num d-flex align-center justify-end ga-1">
+                      <span class="et-ping-dot" :class="peerLatencyColorClass(info) || 'is-green'" style="width: 5px; height: 5px;" />
+                      <span :key="dash(latencyMs(info))" class="et-tick">{{ latencyMs(info) }}</span>
                     </div>
-                    <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill">
+                    <div v-else class="text-mono text-caption text-medium-emphasis">
+                      —
+                    </div>
+                    <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill mt-1">
                       {{ routeCost(info) }}
                     </v-chip>
                   </div>
@@ -1013,9 +1031,18 @@ const myHostname = computed(() => {
 
 .et-orb-ring {
   position: absolute;
-  inset: -6px;
   border-radius: 50%;
+  pointer-events: none;
+}
+
+.et-orb-ring.r1 {
+  inset: -6px;
   border: 2px solid var(--et-border);
+}
+
+.et-orb-ring.r2 {
+  inset: -14px;
+  border: 1px dashed var(--et-border-hairline);
 }
 
 .et-power-orb.is-on {
@@ -1023,10 +1050,44 @@ const myHostname = computed(() => {
   background: color-mix(in srgb, var(--et-accent) 14%, var(--et-surface));
 }
 
-.et-power-orb.is-on .et-orb-ring {
-  border-color: color-mix(in srgb, var(--et-accent) 55%, transparent);
+.et-power-orb.is-on .et-orb-ring.r1 {
+  border-color: color-mix(in srgb, var(--et-accent) 65%, transparent);
   box-shadow: 0 0 28px var(--et-glow);
   animation: et-orb 2.8s ease-in-out infinite;
+}
+
+.et-power-orb.is-on .et-orb-ring.r2 {
+  border-color: color-mix(in srgb, var(--et-accent) 28%, transparent);
+  animation: et-radar-rotate 14s linear infinite;
+}
+
+@keyframes et-radar-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.et-hero-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.et-hero-status-pill.is-on {
+  background: var(--et-accent-dim);
+  color: var(--et-accent);
+  border: 1px solid color-mix(in srgb, var(--et-accent) 30%, transparent);
+}
+
+.et-hero-status-pill.is-off {
+  background: var(--et-surface-2);
+  color: var(--et-text-secondary);
+  border: 1px solid var(--et-border-hairline);
 }
 
 .et-power-orb:active {

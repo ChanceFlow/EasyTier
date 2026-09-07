@@ -578,7 +578,7 @@ const activityEvents = computed(() => {
                     </v-icon>
                 </div>
                 <div class="min-w-0">
-                    <template v-if="initialLoadDone">
+                  <template v-if="initialLoadDone">
                         <div class="d-flex align-center ga-2">
                             <span class="hero-net-name truncate">{{ heroNetworkName }}</span>
                             <v-chip :color="heroIsRunning ? 'success' : 'default'" size="x-small" variant="tonal" class="rounded-pill font-weight-bold">
@@ -1072,5 +1072,60 @@ const activityEvents = computed(() => {
 }
 .text-mono {
   font-family: var(--font-mono);
+}
+
+@media (min-width: 600px) {
+    .network-content {
+        padding-bottom: 1.5rem;
+    }
+    .has-tab-bar :deep(.et-sticky-run) {
+        bottom: 1rem;
+        padding-bottom: 0;
+    }
+}
+
+.et-desktop-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    background: var(--et-surface);
+    border: 1px solid var(--et-border);
+    border-radius: var(--et-radius);
+}
+
+.et-desktop-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border-radius: var(--et-radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--et-text-secondary);
+    font-size: 0.825rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.et-desktop-tab-btn:hover {
+    color: var(--et-text);
+    background: var(--et-surface-2);
+}
+
+.et-desktop-tab-btn.is-active {
+    color: var(--et-accent);
+    background: var(--et-accent-dim);
+    border-color: color-mix(in srgb, var(--et-accent) 35%, transparent);
+}
+
+.et-tab-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--et-accent);
+    color: #04211A;
 }
 </style>
