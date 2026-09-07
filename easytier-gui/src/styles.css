@@ -86,13 +86,14 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto;
 }
 
-@media (min-width: 720px) {
+@media (min-width: 768px) {
   .et-main-body {
-    max-width: 560px;
+    max-width: 1120px;
+    padding: 0 16px;
   }
 }
 

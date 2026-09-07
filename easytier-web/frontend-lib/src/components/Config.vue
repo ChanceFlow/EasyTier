@@ -246,6 +246,53 @@ const showNetworkSecret = ref(false)
 const showVpnKey = ref(false)
 const basicPanel = ref<number | undefined>(0)
 
+const activePreset = computed<'gaming' | 'compat' | 'secure' | 'default' | 'custom'>(() => {
+  const n = curNetwork.value
+  if (!n) return 'custom'
+  if (n.latency_first && n.multi_thread && !n.disable_udp_hole_punching && !n.p2p_only) {
+    return 'gaming'
+  }
+  if (n.enable_kcp_proxy && n.enable_quic_proxy) {
+    return 'compat'
+  }
+  if (n.p2p_only && n.enable_private_mode) {
+    return 'secure'
+  }
+  if (!n.latency_first && !n.p2p_only && !n.enable_private_mode && !n.enable_kcp_proxy && !n.enable_quic_proxy) {
+    return 'default'
+  }
+  return 'custom'
+})
+
+function applyPreset(preset: 'gaming' | 'compat' | 'secure' | 'default') {
+  vibrate(8)
+  if (preset === 'gaming') {
+    curNetwork.value.latency_first = true
+    curNetwork.value.multi_thread = true
+    curNetwork.value.disable_tcp_hole_punching = false
+    curNetwork.value.disable_udp_hole_punching = false
+    curNetwork.value.disable_p2p = false
+    curNetwork.value.p2p_only = false
+  } else if (preset === 'compat') {
+    curNetwork.value.enable_kcp_proxy = true
+    curNetwork.value.enable_quic_proxy = true
+    curNetwork.value.multi_thread = true
+    curNetwork.value.relay_all_peer_rpc = true
+  } else if (preset === 'secure') {
+    curNetwork.value.p2p_only = true
+    curNetwork.value.enable_private_mode = true
+    curNetwork.value.disable_encryption = false
+    curNetwork.value.enable_udp_broadcast_relay = false
+  } else if (preset === 'default') {
+    curNetwork.value.latency_first = false
+    curNetwork.value.p2p_only = false
+    curNetwork.value.enable_private_mode = false
+    curNetwork.value.enable_kcp_proxy = false
+    curNetwork.value.enable_quic_proxy = false
+    curNetwork.value.relay_all_peer_rpc = false
+  }
+}
+
 watch(
   curNetwork,
   (val) => {
@@ -268,6 +315,71 @@ watch(
     </div>
 
     <template v-else>
+    <!-- ============ PRESETS: SMART NETWORK OPTIMIZATION ============ -->
+    <div class="et-preset-container mb-3 pa-3 rounded-xl">
+      <div class="d-flex align-center justify-space-between mb-2">
+        <div class="d-flex align-center ga-2">
+          <v-icon color="primary" size="18">mdi-tune-vertical-variant</v-icon>
+          <span class="text-caption font-weight-bold text-uppercase tracking-wider">网络优化预设</span>
+        </div>
+        <span class="text-caption text-medium-emphasis">一键优化协议与路由特性</span>
+      </div>
+
+      <div class="et-presets-grid">
+        <button
+          type="button"
+          class="et-preset-chip"
+          :class="{ 'is-active': activePreset === 'gaming' }"
+          @click="applyPreset('gaming')"
+        >
+          <v-icon size="18">mdi-gamepad-variant-outline</v-icon>
+          <div class="d-flex flex-column text-start min-w-0">
+            <span class="et-preset-name font-weight-bold">低延迟 / 游戏</span>
+            <span class="et-preset-desc truncate">延迟优先 · 多线程 · 强制直连</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="et-preset-chip"
+          :class="{ 'is-active': activePreset === 'compat' }"
+          @click="applyPreset('compat')"
+        >
+          <v-icon size="18">mdi-swap-horizontal</v-icon>
+          <div class="d-flex flex-column text-start min-w-0">
+            <span class="et-preset-name font-weight-bold">极限穿透 / 漫游</span>
+            <span class="et-preset-desc truncate">KCP + QUIC 代理 · 广域中继</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="et-preset-chip"
+          :class="{ 'is-active': activePreset === 'secure' }"
+          @click="applyPreset('secure')"
+        >
+          <v-icon size="18">mdi-shield-lock-outline</v-icon>
+          <div class="d-flex flex-column text-start min-w-0">
+            <span class="et-preset-name font-weight-bold">严格安全 / 私网</span>
+            <span class="et-preset-desc truncate">严格 P2P · 私有模式 · 强加密</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="et-preset-chip"
+          :class="{ 'is-active': activePreset === 'default' }"
+          @click="applyPreset('default')"
+        >
+          <v-icon size="18">mdi-tune</v-icon>
+          <div class="d-flex flex-column text-start min-w-0">
+            <span class="et-preset-name font-weight-bold">标准均衡模式</span>
+            <span class="et-preset-desc truncate">推荐配置 · 平衡功耗与性能</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <!-- ============ SECTION 1: BASIC SETTINGS ============ -->
     <v-expansion-panels v-model="basicPanel" variant="accordion" class="et-config-panel-group mb-3">
       <v-expansion-panel :title="t('basic_settings')" class="et-config-panel">
@@ -1056,5 +1168,53 @@ watch(
 }
 .text-mono {
   font-family: var(--font-mono);
+}
+
+/* ---------- 智能网络预设卡片 ---------- */
+.et-preset-container {
+  background: var(--et-surface);
+  border: 1px solid var(--et-border);
+}
+
+.et-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.et-preset-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--et-radius-sm);
+  background: var(--et-surface-2);
+  border: 1px solid var(--et-border-hairline);
+  color: var(--et-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+.et-preset-chip:hover {
+  border-color: color-mix(in srgb, var(--et-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--et-surface-2) 90%, var(--et-accent));
+}
+.et-preset-chip.is-active {
+  background: var(--et-accent-dim);
+  border-color: var(--et-accent);
+  color: var(--et-accent);
+  box-shadow: 0 0 14px var(--et-glow);
+}
+.et-preset-name {
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+.et-preset-desc {
+  font-size: 0.65rem;
+  color: var(--et-text-tertiary);
+  margin-top: 2px;
+}
+.et-preset-chip.is-active .et-preset-desc {
+  color: color-mix(in srgb, var(--et-accent) 70%, white);
 }
 </style>

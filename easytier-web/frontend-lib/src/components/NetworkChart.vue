@@ -1,42 +1,62 @@
 <template>
-  <div class="network-chart">
-    <div class="d-flex align-center justify-center mb-3">
-      <div class="d-flex ga-4 text-body-2">
-        <span class="d-flex align-center ga-1" style="width: 8rem">
-          <div class="chart-dot" style="background: #1ec8a3"></div>
-          <span class="truncate">{{ t('upload') }}: {{ currentUpload }}/s</span>
-        </span>
-        <span class="d-flex align-center ga-1" style="width: 8rem">
-          <div class="chart-dot" style="background: #5aa7ff"></div>
-          <span class="truncate">{{ t('download') }}: {{ currentDownload }}/s</span>
-        </span>
+  <div class="network-chart et-chart-host">
+    <div class="d-flex align-center justify-space-between mb-2 px-1">
+      <div class="d-flex align-center ga-3 text-caption">
+        <!-- TX Rate Pill -->
+        <div class="et-rate-pill is-tx">
+          <div class="et-rate-icon">
+            <v-icon size="12">mdi-arrow-up-bold</v-icon>
+          </div>
+          <div class="d-flex flex-column">
+            <span class="et-rate-label">{{ t('upload') }}</span>
+            <span class="et-rate-num mono">{{ currentUpload }}/s</span>
+          </div>
+        </div>
+
+        <!-- RX Rate Pill -->
+        <div class="et-rate-pill is-rx">
+          <div class="et-rate-icon">
+            <v-icon size="12">mdi-arrow-down-bold</v-icon>
+          </div>
+          <div class="d-flex flex-column">
+            <span class="et-rate-label">{{ t('download') }}</span>
+            <span class="et-rate-num mono">{{ currentDownload }}/s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Peak indicator -->
+      <div class="et-peak-pill mono text-caption text-medium-emphasis">
+        <span class="text-xs">{{ t('status.peak', 'PEAK') }}:</span>
+        <span class="font-weight-medium ms-1">{{ peakFormatted }}/s</span>
       </div>
     </div>
-    <div style="height: 8rem">
-      <canvas ref="chartCanvas"></canvas>
+
+    <div class="et-canvas-container" style="height: 8.5rem">
+      <canvas ref="chartCanvas" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
-  Chart as ChartJS,
   CategoryScale,
+  Chart as ChartJS,
+  Filler,
+  Legend,
   LinearScale,
-  PointElement,
-  LineElement,
   LineController,
+  LineElement,
+  PointElement,
   Title,
   Tooltip,
-  Legend,
-  Filler
 } from 'chart.js'
-import { useI18n } from 'vue-i18n';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-// 注册Chart.js组件
+// Register Chart.js components
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -46,7 +66,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 )
 
 interface Props {
@@ -60,52 +80,57 @@ const chartCanvas = ref<HTMLCanvasElement>()
 let chart: ChartJS | null = null
 let updateTimer: number | null = null
 
-// 存储历史数据，最多保存30个数据点（1分钟历史）
-const maxDataPoints = 120
+// Store 60 data points (2 min window at 2s per sample)
+const maxDataPoints = 60
 const uploadHistory: number[] = []
 const downloadHistory: number[] = []
 const timeLabels: string[] = []
 
-const currentUpload = ref('0')
-const currentDownload = ref('0')
+const currentUpload = ref('0 B')
+const currentDownload = ref('0 B')
+const peakBytes = ref(0)
 
-// 将带单位的速率字符串转换为字节数
+const peakFormatted = computed(() => formatBytes(peakBytes.value))
+
+// Parse rate string with units to bytes/sec
 function parseRateToBytes(rateStr: string): number {
-  if (!rateStr || rateStr === '0') return 0
+  if (!rateStr || rateStr === '0')
+    return 0
 
   const match = rateStr.match(/([0-9.]+)\s*([KMGT]?i?B)/i)
-  if (!match) return 0
+  if (!match)
+    return 0
 
   const value = parseFloat(match[1])
   const unit = match[2].toUpperCase()
 
   const multipliers: { [key: string]: number } = {
-    'B': 1,
-    'KB': 1000,
-    'KIB': 1024,
-    'MB': 1000000,
-    'MIB': 1024 * 1024,
-    'GB': 1000000000,
-    'GIB': 1024 * 1024 * 1024,
-    'TB': 1000000000000,
-    'TIB': 1024 * 1024 * 1024 * 1024
+    B: 1,
+    KB: 1000,
+    KIB: 1024,
+    MB: 1000000,
+    MIB: 1024 * 1024,
+    GB: 1000000000,
+    GIB: 1024 * 1024 * 1024,
+    TB: 1000000000000,
+    TIB: 1024 * 1024 * 1024 * 1024,
   }
 
   return value * (multipliers[unit] || 1)
 }
 
-// 格式化字节为可读格式
+// Format bytes to human readable string
 function formatBytes(bytes: number): string {
-  if (bytes < 1) return bytes.toFixed(1) + ' B'
+  if (!Number.isFinite(bytes) || bytes <= 0)
+    return '0 B'
 
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)))
 
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-// 更新数据
 function updateData() {
   const uploadBytes = parseRateToBytes(props.uploadRate)
   const downloadBytes = parseRateToBytes(props.downloadRate)
@@ -113,28 +138,29 @@ function updateData() {
   currentUpload.value = formatBytes(uploadBytes)
   currentDownload.value = formatBytes(downloadBytes)
 
-  // 添加新数据点
+  const currentMax = Math.max(uploadBytes, downloadBytes)
+  if (currentMax > peakBytes.value) {
+    peakBytes.value = currentMax
+  }
+
   uploadHistory.push(uploadBytes)
   downloadHistory.push(downloadBytes)
 
-  // 生成时间标签
   const now = new Date()
-  const timeStr = now.toLocaleTimeString('zh-CN', {
+  const timeStr = now.toLocaleTimeString(navigator.language, {
     hour12: false,
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
   })
   timeLabels.push(timeStr)
 
-  // 保持数据点数量不超过最大值
   if (uploadHistory.length > maxDataPoints) {
     uploadHistory.shift()
     downloadHistory.shift()
     timeLabels.shift()
   }
 
-  // 更新图表
   if (chart) {
     chart.data.labels = timeLabels
     chart.data.datasets[0].data = uploadHistory
@@ -143,12 +169,22 @@ function updateData() {
   }
 }
 
-// 初始化图表
 function initChart() {
-  if (!chartCanvas.value) return
+  if (!chartCanvas.value)
+    return
 
   const ctx = chartCanvas.value.getContext('2d')
-  if (!ctx) return
+  if (!ctx)
+    return
+
+  // Beautiful cyber gradient fills
+  const txGrad = ctx.createLinearGradient(0, 0, 0, 140)
+  txGrad.addColorStop(0, 'rgba(0, 242, 182, 0.28)')
+  txGrad.addColorStop(1, 'rgba(0, 242, 182, 0.01)')
+
+  const rxGrad = ctx.createLinearGradient(0, 0, 0, 140)
+  rxGrad.addColorStop(0, 'rgba(0, 180, 216, 0.24)')
+  rxGrad.addColorStop(1, 'rgba(0, 180, 216, 0.01)')
 
   chart = new ChartJS(ctx, {
     type: 'line',
@@ -158,99 +194,116 @@ function initChart() {
         {
           label: t('upload'),
           data: uploadHistory,
-          borderColor: 'rgb(30, 200, 163)',
-          backgroundColor: 'rgba(30, 200, 163, 0.12)',
+          borderColor: '#00F2B6',
+          backgroundColor: txGrad,
           borderWidth: 2,
           fill: true,
-          tension: 0.4,
+          tension: 0.35,
           pointRadius: 0,
-          pointHoverRadius: 4
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#00F2B6',
+          pointHoverBorderColor: '#080A0F',
+          pointHoverBorderWidth: 2,
         },
         {
           label: t('download'),
           data: downloadHistory,
-          borderColor: 'rgb(90, 167, 255)',
-          backgroundColor: 'rgba(90, 167, 255, 0.12)',
+          borderColor: '#00B4D8',
+          backgroundColor: rxGrad,
           borderWidth: 2,
           fill: true,
-          tension: 0.4,
+          tension: 0.35,
           pointRadius: 0,
-          pointHoverRadius: 4
-        }
-      ]
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#00B4D8',
+          pointHoverBorderColor: '#080A0F',
+          pointHoverBorderWidth: 2,
+        },
+      ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: {
         intersect: false,
-        mode: 'index'
+        mode: 'index',
       },
       plugins: {
         legend: {
-          display: false
+          display: false,
         },
         tooltip: {
+          backgroundColor: 'rgba(14, 19, 31, 0.95)',
+          titleColor: '#F3F6FA',
+          bodyColor: '#8E99AF',
+          borderColor: 'rgba(0, 242, 182, 0.25)',
+          borderWidth: 1,
+          padding: 8,
+          cornerRadius: 10,
+          boxPadding: 4,
           callbacks: {
-            label: function (context: any) {
+            label(context: any) {
               const value = context.parsed.y
-              return `${context.dataset.label}: ${formatBytes(value)}/s`
-            }
-          }
-        }
+              return ` ${context.dataset.label}: ${formatBytes(value)}/s`
+            },
+          },
+        },
       },
       scales: {
         x: {
           display: true,
           grid: {
-            display: false
+            display: false,
           },
           ticks: {
-            maxTicksLimit: 3,
+            maxTicksLimit: 4,
+            color: 'rgba(142, 153, 175, 0.65)',
             font: {
-              size: 8
-            }
-          }
+              family: 'ET Mono, monospace',
+              size: 9,
+            },
+          },
         },
         y: {
           display: true,
           beginAtZero: true,
           min: 0,
           grid: {
-            color: 'rgba(139, 147, 167, 0.22)'
+            color: 'rgba(255, 255, 255, 0.05)',
           },
           ticks: {
-            callback: function (value: any) {
+            maxTicksLimit: 4,
+            color: 'rgba(142, 153, 175, 0.65)',
+            callback(value: any) {
               return formatBytes(value as number)
             },
             font: {
-              size: 8
+              family: 'ET Mono, monospace',
+              size: 9,
             },
           },
-        }
+        },
       },
       animation: {
-        duration: 10
-      }
-    }
+        duration: 0,
+      },
+    },
   })
 }
 
-// 监听props变化
 watch([() => props.uploadRate, () => props.downloadRate], () => {
   updateData()
 }, { immediate: true })
 
 onMounted(async () => {
-  // add initial point
-  const now = new Date();
+  const now = new Date()
   for (let i = 0; i < maxDataPoints; i++) {
-    let date = new Date(now.getTime() - (maxDataPoints - i) * 2000)
+    const date = new Date(now.getTime() - (maxDataPoints - i) * 2000)
     const timeStr = date.toLocaleTimeString(navigator.language, {
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     })
     uploadHistory.push(0)
     downloadHistory.push(0)
@@ -261,8 +314,9 @@ onMounted(async () => {
   initChart()
   updateData()
 
-  // 启动定时器，每2秒更新一次图表
   updateTimer = window.setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden)
+      return
     updateData()
   }, 2000)
 })
@@ -270,9 +324,11 @@ onMounted(async () => {
 onUnmounted(() => {
   if (chart) {
     chart.destroy()
+    chart = null
   }
   if (updateTimer) {
     clearInterval(updateTimer)
+    updateTimer = null
   }
 })
 </script>
@@ -280,15 +336,58 @@ onUnmounted(() => {
 <style scoped>
 .network-chart {
   background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0.5rem 0.25rem;
-  box-shadow: none;
+  padding: 0.25rem 0.25rem 0;
 }
-.chart-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
+
+.et-rate-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--et-radius-xs);
+  background: var(--et-surface-2);
+  border: 1px solid var(--et-border-hairline);
+}
+
+.et-rate-pill.is-tx {
+  border-left: 2px solid var(--et-accent);
+}
+.et-rate-pill.is-tx .et-rate-icon {
+  color: var(--et-accent);
+}
+
+.et-rate-pill.is-rx {
+  border-left: 2px solid var(--et-cyan);
+}
+.et-rate-pill.is-rx .et-rate-icon {
+  color: var(--et-cyan);
+}
+
+.et-rate-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--et-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.et-rate-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.et-peak-pill {
+  font-size: 0.7rem;
+  background: var(--et-surface-2);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--et-border-hairline);
+}
+
+.et-canvas-container {
+  position: relative;
+  width: 100%;
 }
 </style>

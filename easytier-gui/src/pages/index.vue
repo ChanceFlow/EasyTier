@@ -681,6 +681,23 @@ async function exitApp(): Promise<void> {
               </v-icon>
               <span class="truncate">{{ t('status.disconnected') }}</span>
             </div>
+
+            <v-btn
+              icon="mdi-theme-light-dark"
+              variant="text"
+              size="small"
+              class="et-nav-btn"
+              :aria-label="t('status.appearance')"
+              @click="toggleTheme"
+            />
+            <v-btn
+              icon="mdi-translate"
+              variant="text"
+              size="small"
+              class="et-nav-btn"
+              :aria-label="t('exchange_language')"
+              @click="I18nUtils.loadLanguageAsync(locale === 'en' ? 'cn' : 'en')"
+            />
           </template>
           <v-btn
             icon="mdi-cog-outline"
