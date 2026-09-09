@@ -49,3 +49,7 @@ easytier-gui/src-tauri/*.sys
 
 # contrib
 go.sum
+
+# release artifacts
+release-artifacts/
+
