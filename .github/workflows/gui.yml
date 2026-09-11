@@ -36,6 +36,7 @@ jobs:
       # Release builds must run even if they only change release metadata.
       should_skip: >-
         ${{
+          github.event_name != 'workflow_dispatch' &&
           (
             steps.skip_check.outputs.should_skip == 'true' ||
             (

@@ -40,9 +40,21 @@ jobs:
         run: |
           set -euo pipefail
           V=$(git describe --tags --abbrev=0 HEAD)
+          # Newest successful run of a workflow on main that actually carries
+          # artifacts. fkirc/skip-duplicate-actions makes a fully skipped run
+          # conclude "success" with zero artifacts, and handing such a run to
+          # release.yml fails with "no artifacts found".
           latest() {
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$1/runs?branch=main&status=completed&per_page=5" \
-              --jq '.workflow_runs[] | select(.conclusion=="success") | "\(.id) \(.head_sha)"' | head -1
+            local wf="$1" id sha count
+            for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?branch=main&status=completed&per_page=10" \
+                          --jq '.workflow_runs[] | select(.conclusion=="success") | .id'); do
+              count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" --jq '.total_count')
+              if [ "${count:-0}" -gt 0 ]; then
+                sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq '.head_sha')
+                echo "$id $sha"
+                return 0
+              fi
+            done
           }
           C=$(latest core.yml); G=$(latest gui.yml); M=$(latest mobile.yml)
           if [ -z "$C" ] || [ -z "$G" ] || [ -z "$M" ]; then echo "trio incomplete yet"; exit 0; fi
