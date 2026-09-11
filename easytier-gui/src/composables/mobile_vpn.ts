@@ -660,7 +660,7 @@ async function tickIoNotification() {
     // exactly as before — the hero stats below may track a non-VPN instance.
     if (!vpnInstanceId) {
       if (ioNotifyWasActive) {
-        await update_notification(0, 0)
+        await update_notification(0, 0, false)
         ioNotifyWasActive = false
       }
     }
@@ -744,7 +744,8 @@ async function tickIoNotification() {
     }
 
     if (vpnInstanceId) {
-      await update_notification(rxRate, txRate)
+      // connected=true: keep ↑/↓ visible even when this sample is idle.
+      await update_notification(rxRate, txRate, true)
     }
   }
   catch (e) {

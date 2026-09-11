@@ -53,9 +53,10 @@ export async function get_vpn_status(): Promise<VpnStatusResponse | null> {
 }
 
 // Update the ongoing notification with live tunnel throughput (bytes/sec).
-// When both rates are 0 the notification falls back to the idle text.
-export async function update_notification(rxRate: number, txRate: number): Promise<InvokeResponse | null> {
-  return await invoke<InvokeResponse>('plugin:vpnservice|update_notification', { rxRate, txRate })
+// `connected` keeps the ↑/↓ fields visible on an idle-but-connected tunnel;
+// pass false to fall back to the idle text (e.g. when the tunnel dropped).
+export async function update_notification(rxRate: number, txRate: number, connected = true): Promise<InvokeResponse | null> {
+  return await invoke<InvokeResponse>('plugin:vpnservice|update_notification', { rxRate, txRate, connected })
 }
 
 // Sync the native system bars (status bar / navigation bar) with the app theme.

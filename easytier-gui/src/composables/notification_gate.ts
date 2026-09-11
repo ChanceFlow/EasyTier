@@ -24,7 +24,7 @@ export async function checkNotificationGate(): Promise<void> {
     if (!notificationsBlocked.value) {
       // allowed but possibly never shown (service posted before the grant,
       // or its start path hiccuped): re-post the idle keepalive note now
-      await update_notification(0, 0).catch(() => {})
+      await update_notification(0, 0, false).catch(() => {})
     }
   }
   catch {

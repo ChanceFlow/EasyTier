@@ -41,6 +41,13 @@ class PingArgs {
 class UpdateNotificationArgs {
     var rxRate: Double? = null
     var txRate: Double? = null
+    /**
+     * Explicit tunnel state. When true the notification always renders the
+     * ↑/↓ rate fields, including at 0 B/s, so an idle-but-connected tunnel
+     * still shows upload/download. Legacy callers that only pass rates keep
+     * working: non-zero traffic implies an active tunnel.
+     */
+    var connected: Boolean? = null
 }
 
 @InvokeArg
@@ -197,7 +204,9 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
 
         val rx = (args.rxRate ?: 0.0).coerceAtLeast(0.0)
         val tx = (args.txRate ?: 0.0).coerceAtLeast(0.0)
-        val active = rx > 0.0 || tx > 0.0
+        // Prefer the explicit tunnel state so a connected-but-idle tunnel keeps
+        // showing ↑ 0 B/s · ↓ 0 B/s instead of collapsing to the idle sentence.
+        val active = args.connected ?: (rx > 0.0 || tx > 0.0)
 
         lastRxRate = rx
         lastTxRate = tx
@@ -434,13 +443,19 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
 
     private fun formatRate(bytesPerSec: Double): String {
         val units = arrayOf("B/s", "KB/s", "MB/s", "GB/s")
+        if (!bytesPerSec.isFinite() || bytesPerSec <= 0.0) {
+            return "0 ${units[0]}"
+        }
         var v = bytesPerSec
         var i = 0
-        while (v >= 1024.0 && i < units.size - 1) {
-            v /= 1024.0
+        // Decimal (1000) units, matching MeshHero.fmtRate so the notification and
+        // the in-app hero never disagree about the same sample.
+        while (v >= 1000.0 && i < units.size - 1) {
+            v /= 1000.0
             i++
         }
-        return if (i == 0) "%d %s".format(v.toLong(), units[i]) else "%.1f %s".format(v, units[i])
+        val num = if (v >= 100) "%.0f".format(v) else "%.1f".format(v)
+        return "$num ${units[i]}"
     }
 
     companion object {

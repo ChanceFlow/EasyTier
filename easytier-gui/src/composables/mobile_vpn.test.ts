@@ -328,8 +328,24 @@ describe('mobileStats hero data layer', () => {
     setTraffic('A', 3000, 3000)
     await vi.advanceTimersByTimeAsync(2000)
 
-    expect(mocks.updateNotification).toHaveBeenLastCalledWith(1000, 500)
+    expect(mocks.updateNotification).toHaveBeenLastCalledWith(1000, 500, true)
     expect(vpn.mobileStats.rxRate).toBe(1000)
+  })
+
+  it('keeps the upload/download fields on an idle-but-connected tunnel', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+    setTraffic('A', 0, 0)
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(2000)
+
+    // connected=true must be reported even at 0 B/s so the notification does
+    // not collapse to the idle sentence while the tunnel is still up.
+    expect(vpn.mobileStats.connected).toBe(true)
+    expect(mocks.updateNotification).toHaveBeenLastCalledWith(0, 0, true)
   })
 
   it('flags a denied VPN permission for the hero empty state', async () => {
