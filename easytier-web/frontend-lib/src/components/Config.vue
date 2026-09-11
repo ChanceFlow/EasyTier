@@ -56,6 +56,13 @@ const protos: { [proto: string]: number } = {
   srv: 0,
 }
 
+// Listener addresses are dialled by clients, so server-side-only schemes
+// (http/https/txt/srv service discovery) make no sense as listeners (#1967).
+const listenerExcludedProtos = new Set(['http', 'https', 'txt', 'srv'])
+const listenerProtos: { [proto: string]: number } = Object.fromEntries(
+  Object.entries(protos).filter(([proto]) => !listenerExcludedProtos.has(proto)),
+)
+
 const inetItems = ref<string[]>([''])
 const exitNodesItems = ref<string[]>([''])
 const whitelistItems = ref<string[]>([''])
@@ -709,7 +716,7 @@ watch(
             <!-- Listener URLs -->
             <div class="config-field">
               <label for="listener_urls" class="config-label mb-1 d-block">{{ t('listener_urls') }}</label>
-              <UrlListInput id="listener_urls" v-model="curNetwork.listener_urls" :protos="protos" :add-label="t('add_listener_url')" placeholder="0.0.0.0" />
+              <UrlListInput id="listener_urls" v-model="curNetwork.listener_urls" :protos="listenerProtos" :add-label="t('add_listener_url')" placeholder="0.0.0.0" />
             </div>
 
             <!-- Dev name -->

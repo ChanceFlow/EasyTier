@@ -59,7 +59,20 @@ class StartVpnArgs {
 
 @TauriPlugin
 class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
+    companion object {
+        @Volatile
+        private var tileActionCallback: (String) -> Boolean = { false }
+
+        fun dispatchTileAction(action: String): Boolean = tileActionCallback(action)
+    }
+
     private val implementation = Example()
+    private val tileActionHandler: (String) -> Boolean = { action ->
+        val data = JSObject()
+        data.put("action", action)
+        trigger("vpn_tile_action", data)
+        true
+    }
 
     private val watchdogHandler = Handler(Looper.getMainLooper())
     private var lastRxRate: Double = 0.0
@@ -78,6 +91,14 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
             println("vpn: triggerCallback $event $data")
             trigger(event, data)
         }
+        tileActionCallback = tileActionHandler
+    }
+
+    override fun onDestroy() {
+        if (tileActionCallback === tileActionHandler) {
+            tileActionCallback = { false }
+        }
+        super.onDestroy()
     }
 
     @Command
@@ -131,7 +152,11 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
                 intent.putExtra(TauriVpnService.DISALLOWED_APPLICATIONS, args.disallowedApplications)
                 intent.putExtra(TauriVpnService.MTU, args.mtu)
 
-                activity.startService(intent)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    activity.startForegroundService(intent)
+                } else {
+                    activity.startService(intent)
+                }
             }
             invoke.resolve(ret)
         }
@@ -424,5 +449,10 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         private const val OLD_NOTIFY_CHANNEL_ID = "easytier_channel"
         private const val NOTIFY_ID = 1355
         private const val WATCHDOG_TIMEOUT_MS = 15000L
+    }
+    fun consumeVpnTileAction(invoke: Invoke) {
+        val ret = JSObject()
+        ret.put("action", EasyTierVpnTileService.consumePendingAction(activity))
+        invoke.resolve(ret)
     }
 }

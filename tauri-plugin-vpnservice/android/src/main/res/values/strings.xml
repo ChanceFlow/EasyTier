@@ -5,4 +5,5 @@
     <string name="notification_text_idle">Network idle · Tunnel active</string>
     <string name="notification_text_background">Running in background · Tunnel active</string>
     <string name="notification_action_open">Open</string>
+    <string name="vpn_tile_label">EasyTier VPN</string>
 </resources>

@@ -5,4 +5,5 @@
     <string name="notification_text_idle">网络空闲 · 隧道守护中</string>
     <string name="notification_text_background">后台运行中 · 隧道保持</string>
     <string name="notification_action_open">打开</string>
+    <string name="vpn_tile_label">EasyTier VPN</string>
 </resources>

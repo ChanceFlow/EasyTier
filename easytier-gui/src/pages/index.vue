@@ -14,11 +14,20 @@ import { getEasytierVersion, getServiceStatus, saveNetworkConfig } from '~/compo
 import { loadLastNetworkInstanceId, saveLastNetworkInstanceId } from '~/composables/config'
 import { usePhoneText } from '~/composables/hero_text'
 import { createHeroTransition } from '~/composables/hero_transition'
-import { initMobileVpnService, mobileStats, setMobileStatsInstanceId, startMobileIoNotification, syncMobileVpnService } from '~/composables/mobile_vpn'
+import {
+  consumePendingMobileVpnTileAction,
+  initMobileVpnService,
+  mobileStats,
+  setMobileStatsInstanceId,
+  setMobileVpnTileActionHandler,
+  startMobileIoNotification,
+  syncMobileVpnService,
+} from '~/composables/mobile_vpn'
 import { loadMode, type Mode, saveMode, type WebClientConfig } from '~/composables/mode'
 import { checkNotificationGate, notificationsBlocked, openNotificationSettings } from '~/composables/notification_gate'
 import { initSysBarSync } from '~/composables/sysbar'
 import { useTray } from '~/composables/tray'
+import { executeVpnTileAction } from '~/composables/mobile_vpn_tile'
 import { GUIRemoteClient } from '~/modules/api'
 
 const { t, locale } = useI18n()
@@ -87,7 +96,7 @@ const snackbarMessage = ref('')
 const snackbarColor = ref('success')
 const snackbarTimeout = ref(3000)
 
-function toast(message: string, severity: 'success' | 'error' | 'info' = 'success', life?: number) {
+function toast(message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success', life?: number) {
   snackbarMessage.value = message
   snackbarColor.value = severity
   // honor the caller's lifetime; errors get extra time by default so long
@@ -307,7 +316,10 @@ onMounted(async () => {
   await initWithMode(currentMode.value)
 
   if (type() === 'android') {
+    setMobileVpnTileActionHandler(handleMobileVpnTileAction)
+    cleanupFns.push(() => setMobileVpnTileActionHandler())
     try {
+      await consumePendingMobileVpnTileAction()
       await syncMobileVpnService()
     }
     catch (e: any) {
@@ -317,6 +329,32 @@ onMounted(async () => {
 })
 
 useTray(true)
+
+async function handleMobileVpnTileAction(action: 'start' | 'stop') {
+  try {
+    const result = await executeVpnTileAction(action, remoteClient.value, {
+      lastInstanceId: loadLastNetworkInstanceId(),
+      syncVpnService: syncMobileVpnService,
+    })
+
+    if (!result.instanceId) {
+      toast(`${t('vpn_tile_no_network')}: ${t('vpn_tile_no_network_description')}`, 'warning', 5000)
+      return
+    }
+
+    instanceId.value = result.instanceId
+    saveLastNetworkInstanceId(result.instanceId)
+    toast(
+      t(action === 'start' ? 'vpn_tile_started' : 'vpn_tile_stopped'),
+      action === 'start' ? 'success' : 'info',
+      3000,
+    )
+  }
+  catch (error) {
+    console.error('VPN tile action failed', action, error)
+    toast(`${t('error')}: ${t('vpn_tile_action_failed', { error: String(error) })}`, 'error', 8000)
+  }
+}
 
 watch(instanceId, (newVal) => {
   if (newVal) {

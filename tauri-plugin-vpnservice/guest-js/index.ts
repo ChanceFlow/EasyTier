@@ -28,6 +28,12 @@ export interface VpnStatusResponse {
   dns?: string;
 }
 
+export type VpnTileAction = 'start' | 'stop';
+
+export interface VpnTileActionResponse {
+  action?: VpnTileAction;
+}
+
 export async function prepare_vpn(): Promise<InvokeResponse | null> {
   return await invoke<InvokeResponse>('plugin:vpnservice|prepare_vpn', {})
 }
@@ -73,4 +79,8 @@ export async function notification_status(): Promise<NotificationStatusResponse 
 // Open this app's notification settings screen (fallback: app details page).
 export async function open_notification_settings(): Promise<InvokeResponse | null> {
   return await invoke<InvokeResponse>('plugin:vpnservice|open_notification_settings', {})
+}
+
+export async function consume_vpn_tile_action(): Promise<VpnTileActionResponse> {
+  return await invoke<VpnTileActionResponse>('plugin:vpnservice|consume_vpn_tile_action', {})
 }

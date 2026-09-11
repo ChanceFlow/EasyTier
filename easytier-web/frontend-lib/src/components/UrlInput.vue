@@ -19,12 +19,19 @@ const url = defineModel<string>({ required: true })
 const editing = ref(false)
 const hostFocused = ref(false)
 
-const parseUrl = (val: string | null | undefined): { proto: string; host: string; port: number | null } => {
+type ParsedUrlValue = {
+    proto: string
+    host: string
+    port: number | null
+    path: string
+}
+
+const parseUrl = (val: string | null | undefined): ParsedUrlValue => {
     const getValidPort = (portStr: string, proto: string) => {
         const p = parseInt(portStr)
         return isNaN(p) ? (props.protos[proto] ?? 11010) : p
     }
-    const parseByPattern = (input: string) => {
+    const parseByPattern = (input: string): ParsedUrlValue | null => {
         const trimmed = input.trim()
         if (!trimmed) {
             return null
@@ -32,7 +39,9 @@ const parseUrl = (val: string | null | undefined): { proto: string; host: string
         const match = trimmed.match(/^(\w+):\/\/(.*)$/)
         const proto = match ? match[1] : 'tcp'
         const rest = match ? match[2] : trimmed
-        const authority = rest.split(/[/?#]/)[0]
+        const pathStart = rest.search(/[/?#]/)
+        const authority = pathStart >= 0 ? rest.slice(0, pathStart) : rest
+        const path = pathStart >= 0 ? rest.slice(pathStart) : ''
         if (!authority) {
             return null
         }
@@ -44,7 +53,7 @@ const parseUrl = (val: string | null | undefined): { proto: string; host: string
                 const remain = hostAndMaybePort.slice(ipv6End + 1)
                 // null = no explicit port in URL; do not fabricate a default
                 const port: number | null = remain.startsWith(':') ? getValidPort(remain.slice(1), proto) : null
-                return { proto, host, port }
+                return { proto, host, port, path }
             }
         }
         const portMatch = hostAndMaybePort.match(/^(.*):(\d+)$/)
@@ -52,26 +61,41 @@ const parseUrl = (val: string | null | undefined): { proto: string; host: string
         // null = no explicit port in URL; buildUrlValue will omit the port entirely,
         // preserving the protocol's implied standard port (e.g. 443 for wss://).
         const port: number | null = portMatch ? parseInt(portMatch[2]) : null
-        return { proto, host, port }
+        return { proto, host, port, path }
     }
 
     if (!val) {
-        return { proto: 'tcp', host: '', port: props.protos['tcp'] ?? 11010 }
+        return { proto: 'tcp', host: '', port: props.protos['tcp'] ?? 11010, path: '' }
     }
     const parsedByPattern = parseByPattern(val)
     if (parsedByPattern) {
         return parsedByPattern
     }
-    return { proto: 'tcp', host: '', port: null }
+    return { proto: 'tcp', host: '', port: null, path: '' }
 }
 
 const internalValue = ref(parseUrl(url.value))
 const defaultHost = '0.0.0.0'
 
-const buildUrlValue = (value: { proto: string, host: string, port: number | null }, forceDefaultHost = false) => {
+// Only schemes that actually carry a path after the authority can edit one.
+const supportsPath = computed(() => {
+    const proto = internalValue.value.proto
+    return proto === 'ws' || proto === 'wss' || proto === 'http' || proto === 'https'
+})
+
+const normalizePath = (path: string) => {
+    const trimmed = (path ?? '').trim()
+    if (!trimmed) {
+        return ''
+    }
+    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+}
+
+const buildUrlValue = (value: ParsedUrlValue, forceDefaultHost = false) => {
     const proto = value.proto || 'tcp'
     const rawHost = (value.host ?? '').trim()
     const host = rawHost || (forceDefaultHost ? defaultHost : '')
+    const path = supportsPath.value ? normalizePath(value.path) : ''
     if (!host) {
         return null
     }
@@ -79,9 +103,9 @@ const buildUrlValue = (value: { proto: string, host: string, port: number | null
     // original URL had no explicit port (port === null) – avoids overwriting an
     // implicit standard port (e.g. 443 for wss) with an EasyTier default (11012).
     if (props.protos[proto] === 0 || value.port === null) {
-        return `${proto}://${host}`
+        return `${proto}://${host}${path}`
     }
-    return `${proto}://${host}:${value.port}`
+    return `${proto}://${host}:${value.port}${path}`
 }
 
 const syncUrlFromInternal = (forceDefaultHost = false) => {
@@ -120,7 +144,8 @@ watch(() => url.value, (newVal) => {
     const sameHost = parsed.host === internalHost || (!internalHost.trim() && parsed.host === defaultHost)
     if (parsed.proto !== internalValue.value.proto ||
         !sameHost ||
-        parsed.port !== internalValue.value.port) {
+        parsed.port !== internalValue.value.port ||
+        parsed.path !== internalValue.value.path) {
         internalValue.value = parsed
     }
 })
@@ -187,6 +212,18 @@ const onProtoChange = (newProto: string | null) => {
                     @update:model-value="internalValue.port = $event === '' ? null : Number($event)"
                 />
             </template>
+            <template v-if="supportsPath">
+                <v-text-field
+                    :model-value="internalValue.path"
+                    placeholder="/mypath"
+                    hide-details
+                    density="compact"
+                    variant="outlined"
+                    class="url-path-field"
+                    @update:model-value="internalValue.path = $event"
+                />
+            </template>
+            <!-- Rendered in both responsive branches; keep action slot content free of side effects and duplicate IDs. -->
             <slot name="actions"></slot>
         </div>
 
@@ -244,6 +281,18 @@ const onProtoChange = (newProto: string | null) => {
                             min="1"
                             max="65535"
                             @update:model-value="internalValue.port = $event === '' ? null : Number($event)"
+                        />
+                    </div>
+                    <div v-if="supportsPath" class="d-flex flex-column ga-2">
+                        <label :for="`${uid}-path`" class="text-body-2">{{ t('path') }}</label>
+                        <v-text-field
+                            :id="`${uid}-path`"
+                            :model-value="internalValue.path"
+                            placeholder="/mypath"
+                            hide-details
+                            density="compact"
+                            variant="outlined"
+                            @update:model-value="internalValue.path = $event"
                         />
                     </div>
                 </v-card-text>
@@ -307,5 +356,8 @@ const onProtoChange = (newProto: string | null) => {
 }
 .url-proto-select :deep(.v-field__input) {
     min-height: 40px;
+}
+.url-path-field {
+    min-width: 0;
 }
 </style>
