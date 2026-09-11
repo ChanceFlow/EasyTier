@@ -29,6 +29,9 @@ class TauriVpnService : VpnService() {
         const val DISALLOWED_APPLICATIONS = "DISALLOWED_APPLICATIONS"
         const val MTU = "MTU"
 
+        /** Action for the notification "Disconnect" button. */
+        const val ACTION_STOP_VPN = "com.kkrainbow.easytier.action.STOP_VPN"
+
         private const val NOTIFICATION_CHANNEL_ID = "easytier_vpn_channel"
         private const val NOTIFICATION_ID = 1356
     }
@@ -37,6 +40,18 @@ class TauriVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         println("vpn on start command ${intent?.getExtras()} $intent")
+
+        // Notification "Disconnect" action: tear the tunnel down without
+        // bringing the app forward. Mirrors onRevoke() so `self` is cleared
+        // before onDestroy and the JS stop callback fires exactly once.
+        if (intent?.action == ACTION_STOP_VPN) {
+            disconnect()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            self = null
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         startVpnForegroundService()
         var args = intent?.getExtras()
         ipv4Addr = args?.getString(IPV4_ADDR)

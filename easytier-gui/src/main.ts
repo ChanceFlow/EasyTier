@@ -5,6 +5,7 @@ import EasyTierFrontendLib, { I18nUtils } from 'easytier-frontend-lib';
 import { createRouter, createWebHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import App from '~/App.vue';
+import { installBackGuard } from '~/composables/back_guard';
 
 import 'easytier-frontend-lib/style.css';
 import '~/styles.css';
@@ -34,6 +35,10 @@ if (import.meta.env.PROD) {
 }
 
 async function main() {
+  // Android hardware back: close an open overlay before the native shell
+  // backgrounds the task (see back_guard.ts).
+  installBackGuard()
+
   await I18nUtils.loadLanguageAsync(localStorage.getItem('lang') || 'en')
 
   const app = createApp(App)

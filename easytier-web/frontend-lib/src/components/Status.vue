@@ -18,10 +18,18 @@ const props = withDefaults(defineProps<{
   refreshing?: boolean,
   /** 宿主未传入 curNetworkInst(首刷未回)时显示骨架。 */
   loading?: boolean,
+  /** 移动端 Hero 是唯一控制入口:为 true 时 orb 只读,不渲染可交互按钮。 */
+  hidePowerToggle?: boolean,
+  /** 权威运行态(VPN 感知,来自 Hero)。缺省(undefined)时回退到 RPC running,桌面行为不变。 */
+  networkRunning?: boolean,
 }>(), {
   activeTab: 'all',
   refreshing: false,
   loading: false,
+  hidePowerToggle: false,
+  // 必须显式写 undefined:Boolean prop 若没有 default,Vue 会在缺省时把它转成
+  // false,从而吞掉 RPC running 状态;显式 undefined 才能让 ?? 回退生效。
+  networkRunning: undefined,
 })
 
 defineEmits(['switch-tab', 'start-network', 'stop-network', 'toggle-network'])
@@ -565,6 +573,10 @@ const isRunning = computed(() => {
   return props.curNetworkInst?.running ?? false
 })
 
+// 显示态:移动端 Hero 传入的 VPN 感知状态优先;未传入时保持原有 RPC running 语义。
+// 这样高级控制台不会和 Hero 显示互相矛盾的状态。
+const displayRunning = computed(() => props.networkRunning ?? isRunning.value)
+
 const myHostname = computed(() => {
   return props.curNetworkInst?.detail?.my_node_info?.hostname || 'easytier-node'
 })
@@ -669,30 +681,48 @@ const myHostname = computed(() => {
       <div v-if="showHome" class="home-tab-content">
         <div class="et-hero">
           <div class="et-hero-mesh" aria-hidden="true" />
+          <!-- 默认(桌面 / 测试):可交互电源球,emit / aria 与之前完全一致 -->
           <button
+            v-if="!hidePowerToggle"
             type="button"
             class="et-power-orb"
-            :class="{ 'is-on': isRunning }"
-            :aria-pressed="isRunning"
-            :aria-label="isRunning ? t('status.disconnect') : t('status.connect')"
+            :class="{ 'is-on': displayRunning }"
+            :aria-pressed="displayRunning"
+            :aria-label="displayRunning ? t('status.disconnect') : t('status.connect')"
             @click="vibrate(12); $emit('toggle-network')"
           >
             <span class="et-orb-ring r1" />
             <span class="et-orb-ring r2" />
             <div class="et-orb-center">
-              <v-icon size="40">{{ isRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+              <v-icon size="40">{{ displayRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
             </div>
           </button>
 
-          <div class="et-hero-status-pill mt-3" :class="isRunning ? 'is-on' : 'is-off'" role="status" aria-live="polite">
-            <div class="et-ping-dot is-pulse" :class="isRunning ? 'is-green' : 'is-amber'" />
-            <span class="font-weight-bold">{{ isRunning ? t('status.connected') : t('status.disconnected') }}</span>
+          <!-- 移动端 Hero 唯一控制:同样的视觉占位,但只读(非 button、不可聚焦、
+               无 click/aria-pressed;状态语义由下方 role="status" 药丸承载)。 -->
+          <div
+            v-else
+            class="et-power-orb is-readonly"
+            :class="{ 'is-on': displayRunning }"
+            aria-hidden="true"
+          >
+            <span class="et-orb-ring r1" />
+            <span class="et-orb-ring r2" />
+            <div class="et-orb-center">
+              <v-icon size="40">{{ displayRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+            </div>
+          </div>
+
+          <div class="et-hero-status-pill mt-3" :class="displayRunning ? 'is-on' : 'is-off'" role="status" aria-live="polite">
+            <div class="et-ping-dot is-pulse" :class="displayRunning ? 'is-green' : 'is-amber'" />
+            <span class="font-weight-bold">{{ displayRunning ? t('status.connected') : t('status.disconnected') }}</span>
           </div>
           <div class="et-hero-meta mono">
             {{ myHostname }} · <span :key="otherPeerCount" class="et-num et-tick font-weight-bold">{{ otherPeerCount }}</span> {{ t('status.devices_unit') }}
           </div>
           <div class="et-hero-hint">
-            {{ isRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}
+            <template v-if="hidePowerToggle">{{ t('status.controls_on_overview', 'Connect or disconnect from the overview above') }}</template>
+            <template v-else>{{ displayRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}</template>
           </div>
         </div>
 
@@ -1146,6 +1176,15 @@ button.et-row {
 
 .et-power-orb:active {
   transform: scale(0.94);
+}
+
+/* 只读镜像(移动端 Hero 唯一控制):不是控件,所以不给手型光标与按压缩放。 */
+.et-power-orb.is-readonly {
+  cursor: default;
+}
+
+.et-power-orb.is-readonly:active {
+  transform: none;
 }
 
 @keyframes et-orb {

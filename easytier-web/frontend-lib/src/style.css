@@ -540,15 +540,21 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 }
 
 /* Light theme only: the translucent badge tint lifts the effective background
- * luminance, so the token colours no longer reach 4.5:1 as badge text (the
- * worst case is the tint composited over --et-surface-2 #EBF0F7). Dark theme
- * keeps the brighter token text from the base rules above. Values are the
- * lightest hue-preserving cuts that clear 4.5:1 on both --et-surface #FFFFFF
- * and --et-surface-2 #EBF0F7, with a ~0.1 ratio safety margin. */
-.v-theme--m3Light .et-badge--amber { color: #98480A; }
-.v-theme--m3Light .et-badge--coral { color: #B5193A; }
-.v-theme--m3Light .et-badge--teal { color: #01704D; }
-.v-theme--m3Light .et-badge--cyan { color: #0367A1; }
+ * luminance, so the token colours no longer reach 4.5:1 as badge text. The
+ * worst case is the tint composited over --et-surface-3 #DCE4F0 (the badge on
+ * darker grouped surfaces), followed by --et-surface-2 #EBF0F7 and
+ * --et-surface #FFFFFF. Dark theme keeps the brighter token text from the base
+ * rules above. Values are the lightest hue-preserving cuts that clear 4.5:1 on
+ * the tinted background over all three surfaces, with a ~0.2 ratio safety
+ * margin:
+ *   amber #8B4209  5.92 / 5.22 / 4.71
+ *   coral #A51735  5.97 / 5.25 / 4.73
+ *   teal  #016747  5.92 / 5.20 / 4.71
+ *   cyan  #035E93  5.95 / 5.26 / 4.73   (surface / surface-2 / surface-3) */
+.v-theme--m3Light .et-badge--amber { color: #8B4209; }
+.v-theme--m3Light .et-badge--coral { color: #A51735; }
+.v-theme--m3Light .et-badge--teal { color: #016747; }
+.v-theme--m3Light .et-badge--cyan { color: #035E93; }
 
 .et-ping-dot {
   width: 7px;

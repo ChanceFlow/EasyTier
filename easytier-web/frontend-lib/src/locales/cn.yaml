@@ -285,6 +285,7 @@ status:
   disconnect: 断开
   tap_to_connect: 点按圆环连接组网
   tap_to_disconnect: 点按圆环断开组网
+  controls_on_overview: 请在上方总览中连接或断开
   virtual_ip: 虚拟 IP
   tun_interface: TUN 网卡
   network_identity: 网络身份

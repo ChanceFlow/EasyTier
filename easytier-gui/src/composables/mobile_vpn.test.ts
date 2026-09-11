@@ -89,6 +89,10 @@ async function loadVpnModule() {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  // vi.useFakeTimers() is a no-op once fake timers are installed, so the IO
+  // ticker / reconcile timers left pending by a previous test would keep firing
+  // and pollute this test's shared mock call counts. Drop them up front.
+  vi.clearAllTimers()
   vi.resetModules()
   mocks.listeners.clear()
   mocks.configs.clear()
@@ -252,6 +256,32 @@ function setTraffic(instanceId: string, rx: number, tx: number, ipv4 = '10.9.9.9
   })
 }
 
+// Patch `document.hidden` to true and return a restore function. Works both
+// under happy-dom (patches the real document instance) and under the default
+// node environment (creates a minimal global document stub and removes it
+// again). The composable reads `document.hidden` and `document.addEventListener`
+// defensively, so a stub without addEventListener simply skips the listener.
+function makeDocumentHidden() {
+  const hadDocument = typeof document !== 'undefined'
+  const globalRef = globalThis as unknown as { document?: Document }
+  const createdDocument = !hadDocument
+  if (createdDocument)
+    globalRef.document = {} as Document
+
+  const target = globalRef.document as Document
+  const originalOwn = Object.getOwnPropertyDescriptor(target, 'hidden')
+  Object.defineProperty(target, 'hidden', { configurable: true, get: () => true })
+
+  return () => {
+    if (originalOwn)
+      Object.defineProperty(target, 'hidden', originalOwn)
+    else
+      Reflect.deleteProperty(target, 'hidden')
+    if (createdDocument)
+      Reflect.deleteProperty(globalRef, 'document')
+  }
+}
+
 describe('mobileStats hero data layer', () => {
   it('publishes rates, counts and a rolling history without touching the notification', async () => {
     mocks.configs.set('S', { network_name: 'demo-net', routes: [] })
@@ -330,6 +360,65 @@ describe('mobileStats hero data layer', () => {
 
     expect(mocks.updateNotification).toHaveBeenLastCalledWith(1000, 500, true)
     expect(vpn.mobileStats.rxRate).toBe(1000)
+  })
+
+  it('skips collectNetworkInfo and preserves the hero state while hidden without a VPN owner', async () => {
+    setTraffic('S', 1000, 2000)
+    const vpn = await loadVpnModule()
+
+    vpn.setMobileStatsInstanceId('S')
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mocks.collectNetworkInfo).toHaveBeenCalledTimes(1)
+    expect(vpn.mobileStats.connected).toBe(true)
+
+    const restoreDocument = makeDocumentHidden()
+    try {
+      mocks.collectNetworkInfo.mockClear()
+      // hidden cadence is 5s: ticks at 4s/9s are skipped without any RPC
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(mocks.collectNetworkInfo).not.toHaveBeenCalled()
+      // last known hero state is kept (not zeroed) so it renders instantly on return
+      expect(vpn.mobileStats.connected).toBe(true)
+      expect(vpn.mobileStats.virtualIp).toBe('10.9.9.9')
+      expect(vpn.mobileStats.peerCount).toBe(1)
+    }
+    finally {
+      restoreDocument()
+    }
+  })
+
+  it('keeps updating the ongoing notification on the slow hidden cadence while the VPN owns the tunnel', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+    expect(mocks.startVpn).toHaveBeenCalledTimes(1)
+
+    setTraffic('A', 1000, 2000)
+    const restoreDocument = makeDocumentHidden()
+    try {
+      vpn.startMobileIoNotification()
+      // first hidden tick at 5s establishes the counter baseline
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(mocks.updateNotification).toHaveBeenLastCalledWith(0, 0, true)
+
+      setTraffic('A', 3000, 3000)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(mocks.updateNotification).toHaveBeenLastCalledWith(400, 200, true)
+
+      // the 5s hidden cadence must stay well inside the native 15s watchdog
+      mocks.updateNotification.mockClear()
+      await vi.advanceTimersByTimeAsync(14_000)
+      expect(mocks.updateNotification.mock.calls.length).toBeGreaterThanOrEqual(2)
+      // still the live-throughput payload (connected=true), never the idle one
+      expect(mocks.updateNotification).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), true)
+    }
+    finally {
+      restoreDocument()
+    }
   })
 
   it('keeps the upload/download fields on an idle-but-connected tunnel', async () => {

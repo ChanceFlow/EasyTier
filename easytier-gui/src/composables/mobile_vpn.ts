@@ -590,9 +590,19 @@ export async function syncMobileVpnService() {
 
 // ---- ongoing notification: live tunnel throughput (WireGuard-style) ----
 const IO_NOTIFY_INTERVAL_MS = 2000
+// While the page is hidden the hero cannot be seen, but the Android ongoing
+// notification must stay fresh. Back off to 5s, which stays comfortably below
+// the native watchdog tolerance (VpnServicePlugin.WATCHDOG_TIMEOUT_MS = 15000)
+// so the notification never collapses to its static "running in background"
+// line while a VPN instance still owns the tunnel.
+const IO_NOTIFY_HIDDEN_INTERVAL_MS = 5000
 const IO_STATS_DISCOVERY_TTL_MS = 10_000
 const MOBILE_STATS_HISTORY_MS = 60_000
-let ioNotifyTimer: ReturnType<typeof setInterval> | null = null
+let ioNotifyTimer: ReturnType<typeof setTimeout> | null = null
+// guards the self-rescheduling setTimeout chain so startMobileIoNotification()
+// stays idempotent even during the (synchronous) window between a tick firing
+// and the next one being scheduled
+let ioNotifyLoopActive = false
 let ioNotifyLast = { inst: '', rx: 0, tx: 0, at: 0 }
 let ioNotifyWasActive = false
 // the instance the hero UI is showing; falls back to auto-discovery while
@@ -651,6 +661,28 @@ async function resolveStatsInstanceId(): Promise<string> {
 
 async function tickIoNotification() {
   const vpnInstanceId = activeVpnInstanceId
+
+  // Page hidden and no VPN-owned tunnel: nobody can see the hero, and the
+  // ongoing notification is not ours to refresh, so bail out *before* any RPC
+  // (resolveStatsInstanceId / collectNetworkInfo). A backgrounded phone must
+  // not keep polling for stats no one can look at. The hero keeps its last
+  // known state on purpose — it is not reset to zero — so it renders instantly
+  // when the user comes back and the next tick refreshes it.
+  if (!vpnInstanceId && isIoNotifyPageHidden()) {
+    if (ioNotifyWasActive) {
+      // the tunnel dropped while hidden: still reset the ongoing notification
+      // to its idle line so it does not keep showing stale throughput
+      ioNotifyWasActive = false
+      try {
+        await update_notification(0, 0, false)
+      }
+      catch (e) {
+        console.debug('io notification idle update skipped', e)
+      }
+    }
+    return
+  }
+
   let statsInstanceIdResolved = ''
   try {
     statsInstanceIdResolved = await resolveStatsInstanceId()
@@ -754,7 +786,60 @@ async function tickIoNotification() {
   }
 }
 
+function isIoNotifyPageHidden() {
+  return typeof document !== 'undefined' && document.hidden === true
+}
+
+// The tick cadence follows page visibility: 2s in the foreground, 5s while
+// hidden. The delay is chosen per tick from a self-rescheduling setTimeout
+// chain (instead of a fixed setInterval) so visibility changes take effect on
+// the next tick without tearing the ticker down.
+function ioNotifyIntervalMs() {
+  return isIoNotifyPageHidden() ? IO_NOTIFY_HIDDEN_INTERVAL_MS : IO_NOTIFY_INTERVAL_MS
+}
+
+function clearIoNotifyTimer() {
+  if (ioNotifyTimer) {
+    clearTimeout(ioNotifyTimer)
+    ioNotifyTimer = null
+  }
+}
+
+function scheduleIoNotificationTick(delayMs: number) {
+  if (!ioNotifyLoopActive)
+    return
+  clearIoNotifyTimer()
+  ioNotifyTimer = setTimeout(() => { void runIoNotificationTick() }, delayMs)
+}
+
+async function runIoNotificationTick() {
+  ioNotifyTimer = null
+  try {
+    await tickIoNotification()
+  }
+  finally {
+    // reschedule after every tick, even the ones that bailed out early, so the
+    // chain keeps running and can pick up a visibility change
+    scheduleIoNotificationTick(ioNotifyIntervalMs())
+  }
+}
+
+// Re-arm the next tick as soon as visibility flips back to visible so returning
+// to the app does not have to wait out the slow hidden cadence. Going hidden
+// needs no special handling: the next tick reschedules itself at the slow
+// cadence from its own finally.
+function onIoNotifyVisibilityChange() {
+  if (!ioNotifyLoopActive)
+    return
+  if (!isIoNotifyPageHidden())
+    scheduleIoNotificationTick(IO_NOTIFY_INTERVAL_MS)
+}
+
 export function startMobileIoNotification() {
-  if (ioNotifyTimer) return
-  ioNotifyTimer = setInterval(() => { void tickIoNotification() }, IO_NOTIFY_INTERVAL_MS)
+  if (ioNotifyLoopActive) return
+  ioNotifyLoopActive = true
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', onIoNotifyVisibilityChange)
+  }
+  scheduleIoNotificationTick(ioNotifyIntervalMs())
 }

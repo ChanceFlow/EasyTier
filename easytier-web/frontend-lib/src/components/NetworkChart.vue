@@ -188,7 +188,6 @@ const FALLBACK_COLORS = {
   textSecondary: '#8E99AF',
   text: '#F3F6FA',
   surface: '#0E131F',
-  borderHairline: 'rgba(255, 255, 255, 0.08)',
 } as const
 
 interface ChartPalette {
@@ -257,19 +256,27 @@ function toRgba(color: string, alpha: number): string {
   return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${alpha})`
 }
 
+// Chart-local grid tint. `--et-border-hairline` composites to only ~1.13:1
+// (light) / ~1.22:1 (dark) against `--et-surface`, at which point the chart
+// reads as having no scale at all. Deriving the grid from
+// `--et-text-secondary` at a low alpha keeps it subtle but clearly
+// perceptible:
+//   light: #5B6578 @ 0.32 over #FFFFFF -> ~1.58:1
+//   dark:  #8E99AF @ 0.32 over #0E131F -> ~1.73:1
+const GRID_ALPHA = 0.32
+
 function readPalette(): ChartPalette {
   const accent = readCssVar('--et-accent', FALLBACK_COLORS.accent)
   const info = readCssVar('--et-info', FALLBACK_COLORS.info)
   const textSecondary = readCssVar('--et-text-secondary', FALLBACK_COLORS.textSecondary)
   const text = readCssVar('--et-text', FALLBACK_COLORS.text)
   const surface = readCssVar('--et-surface', FALLBACK_COLORS.surface)
-  const borderHairline = readCssVar('--et-border-hairline', FALLBACK_COLORS.borderHairline)
 
   return {
     accent,
     info,
     textSecondary,
-    grid: borderHairline,
+    grid: toRgba(textSecondary, GRID_ALPHA),
     tooltipBg: toRgba(surface, 0.95),
     tooltipTitle: text,
     tooltipBody: textSecondary,
@@ -364,7 +371,7 @@ function initChart() {
         x: {
           display: true,
           grid: {
-            display: false,
+            color: palette.grid,
           },
           ticks: {
             maxTicksLimit: 4,

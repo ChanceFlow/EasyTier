@@ -285,6 +285,7 @@ status:
   disconnect: Disconnect
   tap_to_connect: Tap the ring to connect
   tap_to_disconnect: Tap the ring to disconnect
+  controls_on_overview: Connect or disconnect from the overview above
   virtual_ip: Virtual IP
   tun_interface: TUN Interface
   network_identity: Network Identity

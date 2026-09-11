@@ -965,6 +965,8 @@ function exitApp(): void {
                     v-model:instance-id="instanceId"
                     :api="remoteClient"
                     :pause-auto-refresh="isModeSaving"
+                    :connected-override="mobileStats.ready ? mobileStats.connected : undefined"
+                    :hide-power-toggle="true"
                   />
                   <div v-else class="et-empty d-flex flex-column align-center justify-center">
                     <v-icon size="56" class="mb-4" color="medium-emphasis">

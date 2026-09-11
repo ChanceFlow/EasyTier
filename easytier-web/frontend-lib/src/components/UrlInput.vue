@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDisplay } from 'vuetify'
 import { v4 as uuidv4 } from 'uuid'
@@ -18,6 +18,30 @@ const uid = uuidv4()
 const url = defineModel<string>({ required: true })
 const editing = ref(false)
 const hostFocused = ref(false)
+
+// The CSS `@container (min-width: 400px)` query swaps the two rows, but
+// `display: none` keeps both in the DOM. An external `label[for=props.id]`
+// would therefore resolve to the first match — the hidden full-width input on
+// a phone. Mirror the same threshold in JS and hand `props.id` to whichever
+// row is actually visible, so the id is unique in the DOM.
+const COMPACT_MAX_WIDTH = 400
+const rootEl = ref<HTMLElement | null>(null)
+const compactLayout = ref(false)
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+    if (!rootEl.value || typeof ResizeObserver === 'undefined') return
+    resizeObserver = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? 0
+        compactLayout.value = width < COMPACT_MAX_WIDTH
+    })
+    resizeObserver.observe(rootEl.value)
+})
+
+onBeforeUnmount(() => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+})
 
 type ParsedUrlValue = {
     proto: string
@@ -171,7 +195,7 @@ const onProtoChange = (newProto: string | null) => {
 </script>
 
 <template>
-    <div class="url-input-container w-100">
+    <div ref="rootEl" class="url-input-container w-100">
         <!-- Full width view (>= 400px) -->
         <div class="url-input-full">
             <v-combobox
@@ -185,7 +209,7 @@ const onProtoChange = (newProto: string | null) => {
                 style="max-width: 8rem"
             />
             <v-text-field
-                :id="props.id"
+                :id="compactLayout ? undefined : props.id"
                 :model-value="internalValue.host"
                 :placeholder="placeholder || '0.0.0.0'"
                 hide-details
@@ -230,7 +254,16 @@ const onProtoChange = (newProto: string | null) => {
         <!-- Compact view (mobile) -->
         <div class="url-input-compact">
             <div class="d-flex align-center justify-space-between w-100 url-compact-row">
-                <span class="truncate text-mono url-compact-text">{{ url }}</span>
+                <!-- Real focusable control: an external `label[for=props.id]` targets
+                     this instead of the hidden full-width input on a phone. -->
+                <button
+                    type="button"
+                    :id="compactLayout ? props.id : undefined"
+                    class="url-compact-trigger"
+                    @click="editing = true"
+                >
+                    <span class="truncate text-mono url-compact-text">{{ url }}</span>
+                </button>
                 <div class="d-flex align-center shrink-0">
                     <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="t('web.common.edit')" @click="editing = true" />
                     <slot name="actions"></slot>
@@ -345,7 +378,26 @@ const onProtoChange = (newProto: string | null) => {
     min-height: 44px;
     background: var(--et-surface);
 }
+.url-compact-trigger {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    cursor: pointer;
+}
 .url-compact-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: 0.85rem;
     color: var(--v-theme-onSurface);
 }

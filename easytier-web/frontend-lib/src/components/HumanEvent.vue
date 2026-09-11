@@ -10,14 +10,35 @@ const props = defineProps<{
 }>()
 const { t } = useI18n()
 
+// The payload's own key, before an unrecognised event is mapped onto the
+// 'Unknown' placeholder used for the i18n title.
+const rawEventKey = computed(() => Object.keys(props.event)[0])
+
 const eventKey = computed(() => {
-  const key = Object.keys(props.event)[0]
-  return Object.keys(EventType).includes(key) ? key : 'Unknown'
+  return Object.keys(EventType).includes(rawEventKey.value) ? rawEventKey.value : 'Unknown'
 })
 
-const eventValue = computed(() => {
-  const value = props.event[eventKey.value]
-  return typeof value === 'object' ? value : value
+// Read the payload from the event's actual key: for known events that is the
+// same value as before, and for unknown events it surfaces the real payload
+// instead of the always-undefined `props.event['Unknown']`.
+const eventValue = computed(() => props.event[rawEventKey.value])
+
+// Unknown payloads are frequently objects/arrays; render a stable, readable
+// string instead of `[object Object]`, falling back to String() for values
+// JSON.stringify cannot serialize (e.g. circular references).
+const unknownEventText = computed(() => {
+  const value = eventValue.value
+  if (value === null || value === undefined) {
+    return ''
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
 })
 </script>
 
@@ -30,7 +51,7 @@ const eventValue = computed(() => {
       </div>
       <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
     </div>
-    <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+    <pre v-else class="text-mono text-caption">{{ unknownEventText }}</pre>
   </div>
 </template>
 

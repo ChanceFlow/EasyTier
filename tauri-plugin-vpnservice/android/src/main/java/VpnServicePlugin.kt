@@ -229,6 +229,7 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         }
 
         val actionText = resolveString(ctx, "notification_action_open", "打开")
+        val disconnectText = resolveString(ctx, "notification_action_disconnect", "断开")
 
         val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
             .setContentTitle(title)
@@ -245,6 +246,13 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
                     resolveSmallIcon(ctx),
                     actionText,
                     openAppIntent(ctx)
+                )
+            )
+            .addAction(
+                NotificationCompat.Action(
+                    resolveSmallIcon(ctx),
+                    disconnectText,
+                    stopVpnIntent(ctx)
                 )
             )
             .build()
@@ -279,6 +287,7 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
             }
 
             val actionText = resolveString(ctx, "notification_action_open", "打开")
+            val disconnectText = resolveString(ctx, "notification_action_disconnect", "断开")
 
             val notification = NotificationCompat.Builder(ctx, NOTIFY_CHANNEL_ID)
                 .setContentTitle(title)
@@ -295,6 +304,13 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
                         resolveSmallIcon(ctx),
                         actionText,
                         openAppIntent(ctx)
+                    )
+                )
+                .addAction(
+                    NotificationCompat.Action(
+                        resolveSmallIcon(ctx),
+                        disconnectText,
+                        stopVpnIntent(ctx)
                     )
                 )
                 .build()
@@ -365,6 +381,18 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or (
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         return PendingIntent.getActivity(ctx, 0, launch, piFlags)
+    }
+
+    /**
+     * PendingIntent that asks TauriVpnService to tear the tunnel down straight
+     * from the notification shade, without opening the app.
+     */
+    private fun stopVpnIntent(ctx: Context): PendingIntent {
+        val intent = Intent(ctx, TauriVpnService::class.java)
+            .setAction(TauriVpnService.ACTION_STOP_VPN)
+        val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or (
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        return PendingIntent.getService(ctx, 1, intent, piFlags)
     }
 
     /**

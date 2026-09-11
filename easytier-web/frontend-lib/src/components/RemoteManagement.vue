@@ -12,11 +12,20 @@ import { useTimeAgo } from '@vueuse/core';
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     api: Api.RemoteClient;
     newConfigGenerator?: () => NetworkTypes.NetworkConfig;
     pauseAutoRefresh?: boolean;
-}>();
+    /** 移动端 Hero 的权威连接态(VPN 感知):传入时覆盖 Status 的 RPC running。 */
+    connectedOverride?: boolean;
+    /** 移动端:Status 的电源球只读,只作为 Hero 的镜像。 */
+    hidePowerToggle?: boolean;
+}>(), {
+    // 必须显式 undefined:Boolean prop 若没有 default,Vue 会在缺省时转成 false,
+    // 转发给 Status 后会吞掉 RPC running 状态,桌面/测试行为就会变。
+    connectedOverride: undefined,
+    hidePowerToggle: false,
+});
 
 const instanceId = defineModel('instanceId', {
     type: String as () => string | undefined,
@@ -184,6 +193,11 @@ watch(mobileTab, async (newTab) => {
 const networkSheetOpen = ref(false);
 
 const heroIsRunning = computed(() => {
+    // 移动端:已提供 Hero 的权威隧道态时,顶部网络卡片镜像它,而不是 RPC running
+    // (运行中的进程 ≠ 隧道真的通)。缺省(undefined)时保持原有 RPC 语义,桌面不变。
+    if (props.connectedOverride !== undefined && selectedInstanceId.value) {
+        return props.connectedOverride
+    }
     return !!selectedInstanceId.value && isRunning(selectedInstanceId.value.uuid);
 });
 
@@ -807,6 +821,8 @@ const activityEvents = computed(() => {
                     :cur-network-inst="curNetworkInfo"
                     :api="api"
                     :active-tab="mobileTab"
+                    :network-running="connectedOverride"
+                    :hide-power-toggle="hidePowerToggle"
                     @start-network="startNetwork"
                     @stop-network="stopNetwork"
                     @toggle-network="toggleCurrentNetwork"

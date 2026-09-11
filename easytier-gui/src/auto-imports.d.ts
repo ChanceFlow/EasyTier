@@ -43,6 +43,7 @@ declare global {
   const initSysBarSync: typeof import('./composables/sysbar')['initSysBarSync']
   const initWebClient: typeof import('./composables/backend')['initWebClient']
   const inject: typeof import('vue')['inject']
+  const installBackGuard: typeof import('./composables/back_guard')['installBackGuard']
   const isClientRunning: typeof import('./composables/backend')['isClientRunning']
   const isProxy: typeof import('vue')['isProxy']
   const isReactive: typeof import('vue')['isReactive']
@@ -186,6 +187,7 @@ declare module 'vue' {
     readonly initSysBarSync: UnwrapRef<typeof import('./composables/sysbar')['initSysBarSync']>
     readonly initWebClient: UnwrapRef<typeof import('./composables/backend')['initWebClient']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
+    readonly installBackGuard: UnwrapRef<typeof import('./composables/back_guard')['installBackGuard']>
     readonly isClientRunning: UnwrapRef<typeof import('./composables/backend')['isClientRunning']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
