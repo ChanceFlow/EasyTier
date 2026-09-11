@@ -23,11 +23,11 @@ import {
   startMobileIoNotification,
   syncMobileVpnService,
 } from '~/composables/mobile_vpn'
+import { executeVpnTileAction } from '~/composables/mobile_vpn_tile'
 import { loadMode, type Mode, saveMode, type WebClientConfig } from '~/composables/mode'
 import { checkNotificationGate, notificationsBlocked, openNotificationSettings } from '~/composables/notification_gate'
 import { initSysBarSync } from '~/composables/sysbar'
 import { useTray } from '~/composables/tray'
-import { executeVpnTileAction } from '~/composables/mobile_vpn_tile'
 import { GUIRemoteClient } from '~/modules/api'
 
 const { t, locale } = useI18n()
