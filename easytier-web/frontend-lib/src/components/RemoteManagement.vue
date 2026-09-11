@@ -47,6 +47,8 @@ function showToast(message: string, color: 'success' | 'error' | 'info' = 'succe
 const configFile = ref<HTMLInputElement | null>(null);
 
 const curNetworkInfo = ref<NetworkTypes.NetworkInstance | null>(null);
+// 记录 curNetworkInfo 当前对应的实例 id:仅当选中实例真的变化时才清空,静默轮询不清,避免骨架闪烁
+const infoLoadedInstanceId = ref<string | null>(null);
 
 const showConfigEditDialog = ref(false);
 const isEditingNetwork = ref(false);
@@ -141,7 +143,15 @@ const selectedInstanceId = computed({
     }
 });
 watch(selectedInstanceId, async (newVal, oldVal) => {
-    if (newVal?.uuid !== oldVal?.uuid && (networkIsDisabled.value || isEditingNetwork.value)) {
+    const instanceChanged = newVal?.uuid !== oldVal?.uuid;
+    if (instanceChanged) {
+        // 切换了网络:立刻丢弃上一个网络的 hostname / 虚拟 IP / 对端列表,让界面回落到骨架
+        curNetworkInfo.value = null;
+        infoLoadedInstanceId.value = null;
+    }
+    // 新建/编辑流程会先清空选择,此时 newVal 为空:不能走 loadCurrentNetworkConfig(),
+    // 否则它第一行就把 newNetwork() 刚赋值的默认配置清成 undefined。
+    if (instanceChanged && newVal && (networkIsDisabled.value || isEditingNetwork.value)) {
         await loadCurrentNetworkConfig();
     } else {
         await loadCurrentNetworkInfo();
@@ -380,25 +390,38 @@ const cancelEditNetwork = () => {
 const loadNetworkInstanceIds = async () => {
     listInstanceIdResponse.value = await props.api.list_network_instance_ids();
     initialLoadDone.value = true;
-    if (!instanceId.value && listInstanceIdResponse.value?.running_inst_ids?.length) {
+    // 正在新建/编辑时不要自动选中运行中的实例,否则 1s 轮询会把用户刚打开的表单顶掉。
+    if (!instanceId.value && !isEditingNetwork.value && listInstanceIdResponse.value?.running_inst_ids?.length) {
         instanceId.value = Utils.UuidToStr(listInstanceIdResponse.value.running_inst_ids[0]);
     }
 }
 
 const loadCurrentNetworkInfo = async () => {
-    if (!selectedInstanceId.value) {
+    const targetInstanceId = selectedInstanceId.value?.uuid;
+    if (!targetInstanceId) {
         curNetworkInfo.value = null;
+        infoLoadedInstanceId.value = null;
         return;
     }
 
+    // 只有选中实例真的变了才清空(渲染骨架);1s 静默轮询不清,避免骨架闪烁
+    if (infoLoadedInstanceId.value !== targetInstanceId) {
+        curNetworkInfo.value = null;
+    }
+
     try {
-        const info = await props.api.get_network_info(selectedInstanceId.value.uuid);
+        const info = await props.api.get_network_info(targetInstanceId);
+        // 响应返回时用户可能已切到别的网络,丢弃过期结果
+        if (selectedInstanceId.value?.uuid !== targetInstanceId) {
+            return;
+        }
         curNetworkInfo.value = {
-            instance_id: selectedInstanceId.value.uuid,
-            running: isRunning(selectedInstanceId.value.uuid),
+            instance_id: targetInstanceId,
+            running: isRunning(targetInstanceId),
             error_msg: "",
             detail: info as any,
         };
+        infoLoadedInstanceId.value = targetInstanceId;
     } catch (e) {
         console.debug(e);
     }
@@ -411,8 +434,19 @@ const generateConfig = async (config: NetworkTypes.NetworkConfig): Promise<strin
 
 const syncTomlConfig = async (tomlConfig: string) => {
     try {
-        const parsed = await props.api.parse_config(tomlConfig);
-        currentNetworkConfig.value = ((parsed as any)?.config ? (parsed as any).config : parsed) as any;
+        const parsed = await props.api.parse_config(tomlConfig) as any;
+        // 解析失败时后端会回 error 而不是 config,此时必须给出明确反馈
+        if (parsed?.error) {
+            showToast(String(parsed.error), 'error');
+            return;
+        }
+        const parsedConfig = (parsed?.config ? parsed.config : parsed) as any;
+        // 空内容 / 解析不出配置对象时给出明确反馈,而不是静默什么都不做
+        if (!parsedConfig || typeof parsedConfig !== 'object' || Object.keys(parsedConfig).length === 0) {
+            showToast(t('web.device_management.import_config_invalid', 'The selected file does not contain a valid config'), 'error');
+            return;
+        }
+        currentNetworkConfig.value = parsedConfig;
         showConfigEditDialog.value = false;
         showToast(t('web.common.success') || 'Configuration imported', 'success');
     } catch (e) {
@@ -432,8 +466,14 @@ const exportConfig = async () => {
         const a = document.createElement('a');
         a.href = url;
         a.download = `${cfg.network_name || 'easytier'}.toml`;
+        a.style.display = 'none';
+        // 必须先挂到 DOM 再 click,否则部分浏览器(含 Android WebView)会取消下载
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        // 延迟释放:同一 tick 释放可能打断下载
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        showToast(t('web.device_management.export_config_success', 'Config exported'), 'success');
     } catch (e) {
         console.error('Export failed', e);
         showToast(String(e), 'error');
@@ -485,20 +525,25 @@ const configActions = computed<ConfigActionItem[]>(() => [
 ])
 
 const handleFileUpload = async (e: Event) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    await syncTomlConfig(text);
+    const input = e.target as HTMLInputElement;
+    try {
+        const file = input.files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        await syncTomlConfig(text);
+    } catch (err) {
+        console.error('Failed to read config file', err);
+        showToast(String(err), 'error');
+    } finally {
+        // 清空 value,否则再次选择同一个文件不会触发 change
+        input.value = '';
+    }
 }
 
-// 菜单引用和菜单项
+// 更多操作面板(锚定底部 sheet,不再用裸坐标 v-menu)
 const actionMenuOpen = ref(false)
-const menuX = ref(0)
-const menuY = ref(0)
 
-function openActionMenu(e: Event) {
-    menuX.value = (e as MouseEvent).clientX
-    menuY.value = (e as MouseEvent).clientY
+function openActionMenu() {
     actionMenuOpen.value = true
 }
 
@@ -531,10 +576,19 @@ let periodFunc = new Utils.PeriodicTask(async () => {
     if (props.pauseAutoRefresh) {
         return;
     }
-    // 只有首刷完成后的静默刷新才降透明度,避免每 2s 闪骨架
+    // 页面不可见(切后台/锁屏)时不轮询:省电,也避免无意义的 RPC
+    if (typeof document !== 'undefined' && document.hidden) {
+        return;
+    }
+    // 静默刷新:只更新顶部细线指示,不清骨架、不拦截点击
     isRefreshing.value = true;
     try {
-        await Promise.all([loadNetworkInstanceIds(), loadCurrentNetworkInfo()]);
+        const tasks: Array<Promise<unknown>> = [loadNetworkInstanceIds()];
+        // 正在编辑表单时不要用静默刷新覆盖当前网络数据
+        if (!isEditingNetwork.value) {
+            tasks.push(loadCurrentNetworkInfo());
+        }
+        await Promise.all(tasks);
     } catch (e) {
         console.debug(e);
     } finally {
@@ -564,7 +618,20 @@ const activityEvents = computed(() => {
 
 <template>
     <div class="device-management" :class="{ 'has-tab-bar': needShowNetworkStatus }">
-        <input type="file" @change="handleFileUpload" class="d-none" accept="application/toml" ref="configFile" />
+        <input
+            type="file"
+            @change="handleFileUpload"
+            class="d-none"
+            accept=".toml,application/toml,text/plain,application/octet-stream,text/x-toml"
+            ref="configFile"
+        />
+
+        <!-- 静默刷新指示:顶部 2px 细线,pointer-events:none,绝不拦截任何点击 -->
+        <div
+            class="et-refresh-bar"
+            :class="{ 'is-active': isRefreshing && mobileTab !== 'config' }"
+            aria-hidden="true"
+        />
 
         <!-- ================= 1. Top Network Switcher Profile Card ================= -->
         <div class="et-network-chip et-press-row d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
@@ -611,12 +678,18 @@ const activityEvents = computed(() => {
         <!-- Network Switcher Bottom Sheet (iOS Action Sheet) -->
         <v-bottom-sheet v-model="networkSheetOpen" scrollable>
             <v-card rounded="t-xl" class="et-network-sheet">
-                <div class="sheet-grabber" @click="networkSheetOpen = false" />
+                <!-- 抓条:视觉仍是一根小药丸,外层容器提供 >=44px 的触摸区域 -->
+                <div class="et-sheet-grabber-hit" @click="networkSheetOpen = false">
+                    <div class="sheet-grabber" />
+                </div>
                 <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
                     <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.network') }}</span>
-                    <v-btn color="primary" variant="flat" size="small" rounded="pill" :prepend-icon="'mdi-plus'" @click="sheetCreateNew">
-                        {{ t('web.device_management.create_new') }}
-                    </v-btn>
+                    <div class="d-flex align-center ga-1">
+                        <v-btn color="primary" variant="flat" size="small" rounded="pill" :prepend-icon="'mdi-plus'" @click="sheetCreateNew">
+                            {{ t('web.device_management.create_new') }}
+                        </v-btn>
+                        <v-btn icon="mdi-close" variant="text" size="small" :aria-label="t('close')" @click="networkSheetOpen = false" />
+                    </div>
                 </v-card-title>
                 <v-card-text class="pa-2">
                     <!-- 实例列表首刷未回:骨架 -->
@@ -658,23 +731,34 @@ const activityEvents = computed(() => {
             </v-card>
         </v-bottom-sheet>
 
-        <!-- More actions menu -->
-        <v-menu v-model="actionMenuOpen" :position-x="menuX" :position-y="menuY" location="bottom end">
-            <v-list density="comfortable" min-width="180" rounded="xl" class="et-menu-list">
-                <v-list-item v-if="currentNetworkControl.editable.value" @click="runActionMenu('edit')">
-                    <v-list-item-title>{{ t('web.device_management.edit_network') }}</v-list-item-title>
-                    <template #prepend><v-icon size="20">mdi-pencil</v-icon></template>
-                </v-list-item>
-                <v-list-item @click="runActionMenu('export')">
-                    <v-list-item-title>{{ t('web.device_management.export_config') }}</v-list-item-title>
-                    <template #prepend><v-icon size="20">mdi-download</v-icon></template>
-                </v-list-item>
-                <v-list-item v-if="currentNetworkControl.deletable.value" @click="runActionMenu('delete')">
-                    <v-list-item-title class="text-error">{{ t('web.device_management.delete_network') }}</v-list-item-title>
-                    <template #prepend><v-icon color="error" size="20">mdi-trash-can-outline</v-icon></template>
-                </v-list-item>
-            </v-list>
-        </v-menu>
+        <!-- More actions:锚定底部动作面板,整行 >=48px(移动端比裸坐标菜单更可用) -->
+        <v-bottom-sheet v-model="actionMenuOpen">
+            <v-card rounded="t-xl" class="et-network-sheet">
+                <div class="et-sheet-grabber-hit" @click="actionMenuOpen = false">
+                    <div class="sheet-grabber" />
+                </div>
+                <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
+                    <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.more_actions') }}</span>
+                    <v-btn icon="mdi-close" variant="text" size="small" :aria-label="t('close')" @click="actionMenuOpen = false" />
+                </v-card-title>
+                <v-card-text class="pa-2">
+                    <v-list density="comfortable" rounded="xl" class="et-menu-list">
+                        <v-list-item v-if="currentNetworkControl.editable.value" class="et-sheet-action" @click="runActionMenu('edit')">
+                            <template #prepend><v-icon size="20">mdi-pencil</v-icon></template>
+                            <v-list-item-title>{{ t('web.device_management.edit_network') }}</v-list-item-title>
+                        </v-list-item>
+                        <v-list-item class="et-sheet-action" @click="runActionMenu('export')">
+                            <template #prepend><v-icon size="20">mdi-download</v-icon></template>
+                            <v-list-item-title>{{ t('web.device_management.export_config') }}</v-list-item-title>
+                        </v-list-item>
+                        <v-list-item v-if="currentNetworkControl.deletable.value" class="et-sheet-action" @click="runActionMenu('delete')">
+                            <template #prepend><v-icon color="error" size="20">mdi-trash-can-outline</v-icon></template>
+                            <v-list-item-title class="text-error">{{ t('web.device_management.delete_network') }}</v-list-item-title>
+                        </v-list-item>
+                    </v-list>
+                </v-card-text>
+            </v-card>
+        </v-bottom-sheet>
 
         <!-- ================= 2. Main Content Area ================= -->
         <div class="network-content">
@@ -685,7 +769,7 @@ const activityEvents = computed(() => {
                         <v-icon color="primary" size="22">mdi-tune-variant</v-icon>
                         <h2 class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.edit_network') }}</h2>
                     </div>
-                    <v-btn icon="mdi-close" size="small" variant="text" @click="cancelEditNetwork" />
+                    <v-btn icon="mdi-close" size="small" variant="text" :aria-label="t('web.device_management.cancel_edit')" @click="cancelEditNetwork" />
                 </div>
 
                 <div class="et-action-grid et-group mb-3" role="toolbar">
@@ -712,11 +796,10 @@ const activityEvents = computed(() => {
                 />
             </div>
 
-            <!-- Mode B: Active Network Dashboard & Tabs -->
+            <!-- Mode B: Active Network Dashboard & Tabs (刷新不再降低透明度/屏蔽点击) -->
             <div
                 v-else-if="needShowNetworkStatus"
                 class="network-status-container"
-                :class="{ 'is-refreshing': isRefreshing && mobileTab !== 'config' }"
             >
                 <!-- Status component (handles Home with prominent start/stop, Devices, etc.) -->
                 <Status
@@ -943,10 +1026,58 @@ const activityEvents = computed(() => {
     padding: 0.15rem 0;
 }
 
-/* 静默刷新中:内容层轻降透明度并屏蔽误触,骨架不重新出现 */
-.is-refreshing {
-    opacity: 0.66;
+/* 静默刷新指示:顶部 2px 细线。pointer-events:none,绝不拦截点击,也不降低内容透明度。 */
+.et-refresh-bar {
+    position: absolute;
+    top: 0;
+    left: 0.75rem;
+    right: 0.75rem;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--et-accent);
+    opacity: 0;
+    overflow: hidden;
     pointer-events: none;
+    z-index: 4;
+    transition: opacity 120ms ease-out;
+}
+
+/* 延迟 180ms 出现:极快的轮询不会造成闪烁 */
+.et-refresh-bar.is-active {
+    opacity: 0.9;
+    transition-delay: 180ms;
+}
+
+.et-refresh-bar.is-active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+    transform: translateX(-100%);
+}
+
+@keyframes et-refresh-sweep {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+}
+
+/* 底部面板抓条:视觉仍是一根小药丸,外层容器提供 >=44px 高的触摸区域 */
+.et-sheet-grabber-hit {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1rem;
+    cursor: pointer;
+}
+
+.et-sheet-grabber-hit :deep(.sheet-grabber) {
+    margin: 0;
+}
+
+/* 底部动作面板:整行 >=48px,符合移动端最小触摸目标 */
+.et-sheet-action {
+    min-height: 48px !important;
 }
 
 /* 空态 */
@@ -996,8 +1127,8 @@ const activityEvents = computed(() => {
         transform: scale(0.985);
     }
 
-    .is-refreshing {
-        transition: opacity 150ms ease-out;
+    .et-refresh-bar.is-active::after {
+        animation: et-refresh-sweep 900ms linear infinite;
     }
 
     /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */

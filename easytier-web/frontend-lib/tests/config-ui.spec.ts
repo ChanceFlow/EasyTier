@@ -56,7 +56,11 @@ const CONFIG_UI_BOOLEAN_FIELDS = [
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, values?: unknown[]) => values ? `${key}:${values.join(',')}` : key,
+    // Mirror the vue-i18n composer overloads: the second argument is either a
+    // default message (string) or an interpolation list (array). Keys are left
+    // unresolved in these tests, so a string default still resolves to the key.
+    t: (key: string, values?: unknown) =>
+      Array.isArray(values) ? `${key}:${values.join(',')}` : key,
   }),
 }))
 
@@ -436,14 +440,16 @@ describe('Config.vue network config projection', () => {
     expect(secondClient.name).toBe('phone-b')
   })
 
-  it('keeps VPN Portal ACL group menus attached inside the config container', async () => {
+  it('renders VPN Portal ACL group menus at body level so they are not clipped by the config container', async () => {
     const { wrapper } = mountConfig()
     await expandAllPanels(wrapper)
 
     const groupsSelect = wrapper.findAllComponents({ name: 'VSelect' })
       .find((select) => String(select.props('id')).includes('vpn_portal_client_groups'))
     expect(groupsSelect).toBeTruthy()
-    expect(groupsSelect!.props('menuProps')?.attach).toBe('.config-root')
+    // Deliberately NOT attached to '.config-root': that container is `overflow-y: auto`,
+    // so an attached menu gets clipped on small screens. The menu must teleport to body.
+    expect(groupsSelect!.props('menuProps')?.attach).toBeUndefined()
   })
 
   it('keeps uint64 input editable without losing large values', async () => {

@@ -2,14 +2,19 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDisplay } from 'vuetify'
+import { v4 as uuidv4 } from 'uuid'
 
 const props = defineProps<{
     placeholder?: string
     protos: { [proto: string]: number }
+    /** 外部 label 的 for 目标:绑定到主机名输入框 */
+    id?: string
 }>()
 
 const { t } = useI18n()
 const { smAndDown } = useDisplay()
+// 每个实例独立的对话框控件 id,避免同一页面多个 UrlInput 冲突
+const uid = uuidv4()
 const url = defineModel<string>({ required: true })
 const editing = ref(false)
 const hostFocused = ref(false)
@@ -155,6 +160,7 @@ const onProtoChange = (newProto: string | null) => {
                 style="max-width: 8rem"
             />
             <v-text-field
+                :id="props.id"
                 :model-value="internalValue.host"
                 :placeholder="placeholder || '0.0.0.0'"
                 hide-details
@@ -200,8 +206,9 @@ const onProtoChange = (newProto: string | null) => {
             <v-card :title="placeholder" rounded="xl" class="et-dialog-sheet">
                 <v-card-text class="d-flex flex-column ga-4 pt-4">
                     <div class="d-flex flex-column ga-2">
-                        <label class="text-body-2">{{ t('tunnel_proto') }}</label>
+                        <label :for="`${uid}-proto`" class="text-body-2">{{ t('tunnel_proto') }}</label>
                         <v-combobox
+                            :id="`${uid}-proto`"
                             :model-value="internalValue.proto"
                             :items="protoOptions"
                             @update:model-value="onProtoChange"
@@ -211,8 +218,9 @@ const onProtoChange = (newProto: string | null) => {
                         />
                     </div>
                     <div class="d-flex flex-column ga-2">
-                        <label class="text-body-2">{{ t('web.common.address') || 'Address' }}</label>
+                        <label :for="`${uid}-host`" class="text-body-2">{{ t('web.common.address') || 'Address' }}</label>
                         <v-text-field
+                            :id="`${uid}-host`"
                             :model-value="internalValue.host"
                             :placeholder="placeholder || '0.0.0.0'"
                             hide-details
@@ -224,8 +232,9 @@ const onProtoChange = (newProto: string | null) => {
                         />
                     </div>
                     <div v-if="!isNoPortProto" class="d-flex flex-column ga-2">
-                        <label class="text-body-2">{{ t('port') }}</label>
+                        <label :for="`${uid}-port`" class="text-body-2">{{ t('port') }}</label>
                         <v-text-field
+                            :id="`${uid}-port`"
                             :model-value="internalValue.port"
                             :placeholder="String(protos[internalValue.proto] ?? 11010)"
                             hide-details

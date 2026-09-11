@@ -32,6 +32,7 @@ vpn_portal_client_virtual_ip_placeholder: "Example: 10.126.126.10/24"
 vpn_portal_client_groups: ACL Groups
 vpn_portal_client_groups_placeholder: Select ACL groups
 vpn_portal_remove_client: Remove Client
+vpn_portal_remove_client_confirm: Remove this VPN portal client?
 dev_name: TUN interface name
 advanced_settings: Advanced Settings
 basic_settings: Basic Settings
@@ -42,6 +43,7 @@ rpc_portal_whitelists: RPC Whitelist
 config_network: Config Network
 running: Running
 error_msg: Error Message
+error: Error
 detail: Detail
 add_new_network: New Network
 add_peer_url: Add Peer
@@ -77,6 +79,8 @@ enable_auto_launch: Enable Launch on Reboot
 hide_dock_icon: Hide Dock Icon
 show_dock_icon: Show Dock Icon
 exit: Exit
+exit_confirm_title: Exit EasyTier
+exit_confirm_message: A running mesh may stay connected after EasyTier quits. Exit now?
 use_latency_first: Latency First Mode
 show_node_details: Show Node Details
 hide_node_details: Hide Node Details
@@ -91,6 +95,9 @@ config_file: Config File
 close: Close
 save: Save
 config_saved: Configuration saved
+config_file_generating: Generating...
+config_file_generate_failed: Failed to generate config
+config_file_save_failed: Failed to save config
 my_node_info: My Node Info
 peer_count: Connected
 upload: Upload
@@ -226,6 +233,7 @@ exit_nodes: Exit Nodes
 exit_nodes_help: Exit nodes to forward all traffic to, a virtual ipv4 address, priority is determined by the order of the list
 
 port_forwards: Port Forward
+port_forwards_remove_confirm: Delete this port forward rule?
 port_forwards_help: "forward local port to remote port in virtual network. e.g.: udp://0.0.0.0:12345/10.126.126.1:23456, means forward local udp port 12345 to 10.126.126.1:23456 in the virtual network. can specify multiple."
 port_forwards_bind_addr: "Bind address, e.g.: 0.0.0.0"
 port_forwards_dst_addr: "Destination address, e.g.: 10.126.126.1"
@@ -315,6 +323,18 @@ flags_group:
   p2p: Peer Connectivity
   stack: Interface & Stack
   security: Security & Privacy
+
+preset:
+  section_title: Network optimization presets
+  section_hint: One-tap tuning of protocol and routing features
+  gaming_name: Low latency / Gaming
+  gaming_desc: Latency first · Multi-thread · Force direct
+  compat_name: Max traversal / Roaming
+  compat_desc: KCP + QUIC proxy · Wide-area relay
+  secure_name: Strict security / Private
+  secure_desc: Strict P2P · Private mode · Strong encryption
+  default_name: Standard balanced
+  default_desc: Recommended · Balances power and performance
 
 port_forwards_bind_port: Bind Port
 port_forwards_dst_port: Destination Port
@@ -428,7 +448,9 @@ web:
   device_management:
     edit_network: Edit Network
     export_config: Export Config
+    export_config_success: Config exported
     delete_network: Delete Network
+    delete_network_confirm: Delete this network? This cannot be undone.
     network: Network
     select_network: Select Network
     create_network: Create Network
@@ -438,6 +460,7 @@ web:
     save_config: Save
     config_saved: Config Saved
     import_config: Import
+    import_config_invalid: The selected file does not contain a valid config
     create_new: Create New Network
     network_status: Network Status
     loading_network_status: Loading Network Status
@@ -478,6 +501,10 @@ web:
     enable: Enable
     disable: Disable
     address: Address
+    help: Help
+    move_up: Move up
+    move_down: Move down
+    more_actions: More actions
 
   settings:
     title: Settings
@@ -549,6 +576,9 @@ acl:
   forward: Forward
   rules: Rules
   add_rule: Add Rule
+  add_chain: Add Chain
+  chain_fallback_name: Chain
+  drag_to_reorder: Drag to reorder
   edit_rule: Edit Rule
   rule:
     name: Rule Name

@@ -227,8 +227,8 @@ watch(skeleton, (isSkel) => {
 
     <!-- ========================= empty / error states ======================== -->
     <div v-else-if="notFound || permissionState || failedState || stoppedState" class="et-hero-card" :class="[!revealedOnce && 'et-reveal']" style="--et-reveal-delay: 0ms">
-      <div class="et-hero-empty">
-        <div class="et-hero-empty-orb" :class="statusTone" role="button" tabindex="0" :aria-label="actionLabel" @click="onAction">
+      <div class="et-hero-empty" role="status" aria-live="polite">
+        <div class="et-hero-empty-orb" :class="statusTone" aria-hidden="true">
           <v-icon v-if="notFound" size="32">
             mdi-server-network-off
           </v-icon>
@@ -252,7 +252,7 @@ watch(skeleton, (isSkel) => {
         <div class="text-h6 et-hero-empty-title text-center font-weight-bold">
           {{ title }}
         </div>
-        <div class="et-hero-empty-sub text-center">
+        <div class="et-hero-empty-sub text-center" :class="{ 'et-selectable': failedState }">
           {{ subtitle }}
         </div>
       </div>
@@ -282,19 +282,21 @@ watch(skeleton, (isSkel) => {
           <div class="et-hero-name truncate">
             {{ mobileStats.networkName || 'EasyTier' }}
           </div>
-          <div
+          <button
+            type="button"
             class="et-hero-ip mono d-flex align-center ga-1"
-            :class="{ 'is-live': running }"
-            :style="{ cursor: running && mobileStats.virtualIp ? 'pointer' : 'default' }"
-            @click.stop="running && copyIp()"
+            :class="{ 'is-live': running, 'is-copyable': running && !!mobileStats.virtualIp }"
+            :aria-label="t('status.copy_ip')"
+            :disabled="!running || !mobileStats.virtualIp"
+            @click.stop="copyIp()"
           >
             <span>{{ mobileStats.virtualIp || '—.—.—.—' }}</span>
             <v-icon v-if="running && mobileStats.virtualIp" size="14" :color="ipCopied ? 'success' : 'medium-emphasis'">
               {{ ipCopied ? 'mdi-check' : 'mdi-content-copy' }}
             </v-icon>
-          </div>
+          </button>
         </div>
-        <div class="et-hero-state et-status-pill" :class="statusTone">
+        <div class="et-hero-state et-status-pill" :class="statusTone" role="status" aria-live="polite">
           <template v-if="isConnecting || isDisconnecting">
             <v-progress-circular indeterminate size="12" width="2" color="warning" />
             <span>{{ isConnecting ? pt('hero.connecting_pill', '建立中…', 'Connecting…') : pt('hero.disconnecting_pill', '断开中…', 'Disconnecting…') }}</span>
@@ -509,6 +511,24 @@ watch(skeleton, (isSkel) => {
   font-size: 0.86rem;
   color: var(--et-text-secondary);
   margin-top: 2px;
+  /* real button: reset the UA chrome and keep a >=44px touch target */
+  min-height: var(--et-touch);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
+.et-hero-ip.is-copyable {
+  cursor: pointer;
+}
+
+.et-hero-ip:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 .et-hero-ip.is-live {
@@ -665,19 +685,7 @@ watch(skeleton, (isSkel) => {
   border: 2px solid var(--et-border-hairline);
   color: var(--et-text-secondary);
   box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
-}
-
-.et-hero-empty-orb:hover {
-  transform: scale(1.04);
-  border-color: var(--et-accent);
-  box-shadow: 0 0 28px var(--et-glow);
-}
-
-.et-hero-empty-orb:active {
-  transform: scale(0.95);
 }
 
 .et-hero-empty-orb.is-on {

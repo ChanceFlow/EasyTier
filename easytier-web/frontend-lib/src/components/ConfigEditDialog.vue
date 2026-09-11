@@ -41,23 +41,35 @@ const visible = defineModel('visible', {
     type: Boolean,
     default: false,
 })
+const tomlConfig = ref<string>('')
+const tomlConfigRows = ref<number>(1)
+const errorMessage = ref<string>('')
+// 生成中的状态:生成完成前禁止保存,避免写入空配置
+const generating = ref(false)
+
+async function generateConfigText(config: NetworkConfig) {
+    generating.value = true
+    errorMessage.value = ''
+    tomlConfig.value = ''
+    try {
+        tomlConfig.value = await props.generateConfig(config)
+    } catch (e) {
+        errorMessage.value = t('config_file_generate_failed', 'Failed to generate config') + ': ' + (e instanceof Error ? e.message : String(e))
+    } finally {
+        generating.value = false
+    }
+}
+
 watch([visible, curNetwork], async ([newVisible, newCurNetwork]) => {
     if (!newVisible) {
-        tomlConfig.value = '';
+        tomlConfig.value = ''
         return;
     }
     if (!newCurNetwork) {
         tomlConfig.value = '';
         return;
     }
-    const config = newCurNetwork;
-    try {
-        errorMessage.value = '';
-        tomlConfig.value = await props.generateConfig(config);
-    } catch (e) {
-        errorMessage.value = 'Failed to generate config: ' + (e instanceof Error ? e.message : String(e));
-        tomlConfig.value = '';
-    }
+    await generateConfigText(newCurNetwork);
 })
 onMounted(async () => {
     if (!visible.value) {
@@ -67,29 +79,19 @@ onMounted(async () => {
         tomlConfig.value = '';
         return;
     }
-    const config = curNetwork.value;
-    try {
-        tomlConfig.value = await props.generateConfig(config);
-        errorMessage.value = '';
-    } catch (e) {
-        errorMessage.value = 'Failed to generate config: ' + (e instanceof Error ? e.message : String(e));
-        tomlConfig.value = '';
-    }
+    await generateConfigText(curNetwork.value);
 });
 
 const handleConfigSave = async () => {
     if (props.readonly) return;
+    if (generating.value || !tomlConfig.value) return;
     try {
         await props.saveConfig(tomlConfig.value);
         visible.value = false;
     } catch (e) {
-        errorMessage.value = 'Failed to save config: ' + (e instanceof Error ? e.message : String(e));
+        errorMessage.value = t('config_file_save_failed', 'Failed to save config') + ': ' + (e instanceof Error ? e.message : String(e));
     }
 };
-
-const tomlConfig = ref<string>('')
-const tomlConfigRows = ref<number>(1);
-const errorMessage = ref<string>('');
 
 watch(tomlConfig, (newValue) => {
     tomlConfigRows.value = newValue.split('\n').length;
@@ -106,6 +108,10 @@ watch(tomlConfig, (newValue) => {
                         {{ errorMessage }}
                     </pre>
                 </Transition>
+                <div v-if="generating" class="d-flex align-center ga-2 mb-2 text-caption text-medium-emphasis" role="status">
+                    <v-progress-circular indeterminate size="16" width="2" />
+                    <span>{{ t('config_file_generating', 'Generating…') }}</span>
+                </div>
                 <v-textarea
                     v-model="tomlConfig"
                     :rows="tomlConfigRows"
@@ -118,7 +124,7 @@ watch(tomlConfig, (newValue) => {
             </v-card-text>
             <v-divider />
             <v-card-actions class="justify-end">
-                <v-btn v-if="!props.readonly" variant="flat" color="primary" rounded="pill" @click="handleConfigSave(); vibrate(10)">{{ t('save') }}</v-btn>
+                <v-btn v-if="!props.readonly" variant="flat" color="primary" rounded="pill" :loading="generating" :disabled="generating || !tomlConfig" @click="handleConfigSave(); vibrate(10)">{{ t('save') }}</v-btn>
                 <v-btn variant="text" rounded="pill" @click="visible = false">{{ t('close') }}</v-btn>
             </v-card-actions>
         </v-card>

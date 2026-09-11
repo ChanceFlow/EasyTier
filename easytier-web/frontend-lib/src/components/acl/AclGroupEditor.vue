@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useDisplay } from 'vuetify';
+import { v4 as uuidv4 } from 'uuid';
 import { GroupIdentity, GroupInfo, ensureGroupInfo } from '../../types/network';
 
 const props = defineProps<{
@@ -11,6 +13,9 @@ const group = defineModel<GroupInfo>({ required: true })
 const emit = defineEmits(['rename-group'])
 
 const { t } = useI18n()
+// 移动端(小屏)弹窗全屏展示
+const { smAndDown } = useDisplay()
+const uid = uuidv4()
 
 const editingGroup = ref<GroupIdentity | null>(null)
 const editingGroupIndex = ref(-1)
@@ -106,8 +111,8 @@ function saveGroup() {
             </td>
             <td class="text-end">
               <div class="d-flex justify-end ga-1">
-                <v-btn icon="mdi-pencil" variant="text" size="small" rounded @click="editGroup(index)" />
-                <v-btn icon="mdi-delete" color="error" variant="text" size="small" rounded @click="deleteGroup(index)" />
+                <v-btn icon="mdi-pencil" variant="text" size="small" rounded :aria-label="t('web.common.edit')" @click="editGroup(index)" />
+                <v-btn icon="mdi-delete" color="error" variant="text" size="small" rounded :aria-label="t('web.common.delete')" @click="deleteGroup(index)" />
               </div>
             </td>
           </tr>
@@ -116,8 +121,9 @@ function saveGroup() {
     </div>
 
     <div class="d-flex flex-column ga-2">
-      <label class="font-weight-bold text-h6">{{ t('acl.group.members') }}</label>
+      <label :for="`${uid}-members`" class="font-weight-bold text-h6">{{ t('acl.group.members') }}</label>
       <v-select
+        :id="`${uid}-members`"
         v-model="members"
         :items="props.groupNames"
         multiple
@@ -132,17 +138,18 @@ function saveGroup() {
     </div>
 
     <!-- Group Identity Dialog -->
-    <v-dialog v-model="showGroupDialog" max-width="400px">
+    <v-dialog v-model="showGroupDialog" max-width="400px" :fullscreen="smAndDown" scrollable>
       <v-card :title="t('acl.groups')">
         <v-card-text>
           <div v-if="editingGroup" class="d-flex flex-column ga-4 pt-2">
             <div class="d-flex flex-column ga-2">
-              <label class="font-weight-bold">{{ t('acl.group.name') }}</label>
-              <v-text-field v-model="editingGroup.group_name" variant="outlined" hide-details />
+              <label :for="`${uid}-group-name`" class="font-weight-bold">{{ t('acl.group.name') }}</label>
+              <v-text-field :id="`${uid}-group-name`" v-model="editingGroup.group_name" variant="outlined" hide-details />
             </div>
             <div class="d-flex flex-column ga-2">
-              <label class="font-weight-bold">{{ t('acl.group.secret') }}</label>
+              <label :for="`${uid}-group-secret`" class="font-weight-bold">{{ t('acl.group.secret') }}</label>
               <v-text-field
+                :id="`${uid}-group-secret`"
                 v-model="editingGroup.group_secret"
                 variant="outlined"
                 hide-details

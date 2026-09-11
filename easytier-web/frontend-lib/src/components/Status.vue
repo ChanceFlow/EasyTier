@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{
   curNetworkInst: NetworkInstance | null,
   api: RemoteClient,
   activeTab?: string,
-  /** 外层轮询在途时为 true:内容层加 .is-refreshing(降透明度),不重画骨架。 */
+  /** 已弃用:宿主从未传入,组件不再绑定任何 class(旧 .is-refreshing 会拦截点击)。保留仅为兼容。 */
   refreshing?: boolean,
   /** 宿主未传入 curNetworkInst(首刷未回)时显示骨架。 */
   loading?: boolean,
@@ -666,7 +666,7 @@ const myHostname = computed(() => {
     </div>
 
     <template v-else>
-      <div v-if="showHome" class="home-tab-content" :class="{ 'is-refreshing': refreshing }">
+      <div v-if="showHome" class="home-tab-content">
         <div class="et-hero">
           <div class="et-hero-mesh" aria-hidden="true" />
           <button
@@ -684,7 +684,7 @@ const myHostname = computed(() => {
             </div>
           </button>
 
-          <div class="et-hero-status-pill mt-3" :class="isRunning ? 'is-on' : 'is-off'">
+          <div class="et-hero-status-pill mt-3" :class="isRunning ? 'is-on' : 'is-off'" role="status" aria-live="polite">
             <div class="et-ping-dot is-pulse" :class="isRunning ? 'is-green' : 'is-amber'" />
             <span class="font-weight-bold">{{ isRunning ? t('status.connected') : t('status.disconnected') }}</span>
           </div>
@@ -764,31 +764,31 @@ const myHostname = computed(() => {
         <div class="et-section">
           <div class="et-section-label">{{ t('status.features') }}</div>
           <div class="et-group">
-            <div class="et-row et-row-pressable et-press-row" @click="showVpnPortalConfig">
+            <div class="et-row">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: #7c5cbf;">
                   <v-icon size="18" color="white">mdi-vpn</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ t('status.vpn_portal') }}</span>
               </div>
-              <v-btn variant="text" size="small" color="primary" rounded="pill" @click.stop="showVpnPortalConfig">
+              <v-btn variant="text" size="small" color="primary" rounded="pill" @click="showVpnPortalConfig">
                 {{ t('show_vpn_portal_config') }}
               </v-btn>
             </div>
 
-            <div class="et-row et-row-pressable et-press-row" @click="showEventLogs">
+            <div class="et-row">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: var(--et-warning);">
                   <v-icon size="18" color="white">mdi-pulse</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ t('event_log') }}</span>
               </div>
-              <v-btn variant="text" size="small" color="primary" rounded="pill" @click.stop="showEventLogs">
+              <v-btn variant="text" size="small" color="primary" rounded="pill" @click="showEventLogs">
                 {{ t('show_event_log') }}
               </v-btn>
             </div>
 
-            <div class="et-row et-row-pressable et-press-row" @click="showNodeDetails = !showNodeDetails">
+            <button type="button" class="et-row et-row-pressable et-press-row" :aria-expanded="showNodeDetails" @click="showNodeDetails = !showNodeDetails">
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: var(--et-info);">
                   <v-icon size="18" color="white">mdi-information-outline</v-icon>
@@ -796,7 +796,7 @@ const myHostname = computed(() => {
                 <span class="text-body-2 font-weight-medium">{{ showNodeDetails ? t('hide_node_details') : t('show_node_details') }}</span>
               </div>
               <v-icon size="20" color="medium-emphasis">{{ showNodeDetails ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-            </div>
+            </button>
           </div>
 
           <v-expand-transition>
@@ -812,7 +812,7 @@ const myHostname = computed(() => {
         </div>
       </div>
 
-      <div v-if="showDevices" class="devices-tab-content" :class="{ 'is-refreshing': refreshing }">
+      <div v-if="showDevices" class="devices-tab-content">
         <div class="et-search mb-3">
           <v-text-field
             v-model="peerSearch"
@@ -828,17 +828,17 @@ const myHostname = computed(() => {
           />
         </div>
 
-        <div class="et-filter-scroll mb-3" role="tablist">
-          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'all' }" @click="peerFilter = 'all'">
+        <div class="et-filter-scroll mb-3">
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'all' }" :aria-pressed="peerFilter === 'all'" @click="peerFilter = 'all'">
             {{ t('status.filter_all') }} {{ peerRouteInfos.length }}
           </button>
-          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'direct' }" @click="peerFilter = 'direct'">
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'direct' }" :aria-pressed="peerFilter === 'direct'" @click="peerFilter = 'direct'">
             {{ t('status.filter_direct') }}
           </button>
-          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'relay' }" @click="peerFilter = 'relay'">
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'relay' }" :aria-pressed="peerFilter === 'relay'" @click="peerFilter = 'relay'">
             {{ t('status.filter_relay') }}
           </button>
-          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'server' }" @click="peerFilter = 'server'">
+          <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'server' }" :aria-pressed="peerFilter === 'server'" @click="peerFilter = 'server'">
             {{ t('status.filter_server') }}
           </button>
         </div>
@@ -849,9 +849,10 @@ const myHostname = computed(() => {
           </div>
           <div class="et-group">
             <TransitionGroup tag="div" name="et-list-fade" class="et-list-wrap">
-              <div
+              <button
                 v-for="(info, i) in filteredPeers"
                 :key="peerKey(info, i)"
+                type="button"
                 class="et-device-cell et-row-pressable et-press-row"
                 @click="inspectPeer(info)"
               >
@@ -864,7 +865,7 @@ const myHostname = computed(() => {
                   </div>
                   <div class="min-w-0">
                     <div class="d-flex align-center ga-1">
-                      <span class="device-name truncate font-weight-bold">{{ info.route.hostname }}</span>
+                      <span class="device-name truncate font-weight-bold et-selectable">{{ info.route.hostname }}</span>
                       <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal" class="rounded-pill">{{ t('status.server') }}</v-chip>
                       <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal" class="rounded-pill">{{ t('status.relay') }}</v-chip>
                     </div>
@@ -886,7 +887,7 @@ const myHostname = computed(() => {
                   </div>
                   <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
                 </div>
-              </div>
+              </button>
             </TransitionGroup>
 
             <!-- 统一空态:图标 + 引导 + 条件性主操作(清除筛选) -->
@@ -920,7 +921,9 @@ const myHostname = computed(() => {
 
     <v-bottom-sheet v-model="peerSheetOpen" scrollable>
       <v-card rounded="t-xl" class="et-sheet">
-        <div class="sheet-grabber" @click="peerSheetOpen = false" />
+        <div class="sheet-grabber-hit" @click="peerSheetOpen = false">
+          <div class="sheet-grabber" />
+        </div>
         <v-card-title class="d-flex align-center ga-3 pt-2">
           <div class="device-squircle is-direct">
             <v-icon size="20" color="white">{{ peerDeviceIcon(selectedPeer) }}</v-icon>
@@ -929,6 +932,14 @@ const myHostname = computed(() => {
             <div class="text-subtitle-1 font-weight-bold truncate">{{ selectedPeer?.route?.hostname }}</div>
             <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(selectedPeer) }}</div>
           </div>
+          <v-spacer />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            :aria-label="t('close')"
+            @click="peerSheetOpen = false"
+          />
         </v-card-title>
         <v-card-text class="pa-4 pt-0">
           <div class="et-section mb-3">
@@ -994,6 +1005,48 @@ const myHostname = computed(() => {
   width: 100%;
 }
 
+/* Rows rendered as a native <button> need UA chrome stripped while keeping the
+ * global .et-row layout and .et-row-pressable feedback. */
+button.et-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Non-colour selection cue for the filter pills (aria-pressed also carries the
+ * state for assistive tech). */
+.et-filter.is-on::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+/* VBottomSheet has no swipe-to-dismiss: enlarge the grabber hit area to >=44px
+ * while keeping the 40x4.5px visual bar unchanged. */
+.sheet-grabber-hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--et-touch);
+  margin-top: 0.15rem;
+  cursor: pointer;
+}
+
+.sheet-grabber-hit .sheet-grabber {
+  margin: 0;
+}
+
 .et-hero {
   position: relative;
   display: flex;
@@ -1009,7 +1062,9 @@ const myHostname = computed(() => {
   background:
     radial-gradient(circle at 50% 40%, var(--et-accent-dim), transparent 58%),
     repeating-radial-gradient(circle at 50% 42%, transparent 0 18px, rgba(30, 200, 163, 0.05) 19px 20px);
-  pointer-events: none;
+  /* Keep the decorative mesh on a lower layer than the z-index:1 hero content
+   * so it never swallows taps. */
+  z-index: 0;
   mask-image: linear-gradient(to bottom, #000 40%, transparent);
 }
 
@@ -1032,7 +1087,6 @@ const myHostname = computed(() => {
 .et-orb-ring {
   position: absolute;
   border-radius: 50%;
-  pointer-events: none;
 }
 
 .et-orb-ring.r1 {
@@ -1178,10 +1232,18 @@ const myHostname = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   padding: 0.8rem 1rem;
   min-height: 56px;
   cursor: pointer;
+  border: 0;
   border-bottom: 1px solid var(--et-border-hairline);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .et-device-cell:last-child { border-bottom: none; }
@@ -1277,12 +1339,6 @@ const myHostname = computed(() => {
   padding: 0.25rem 0.25rem 1rem;
 }
 
-/* ---------- 静默刷新 ---------- */
-.is-refreshing {
-  opacity: 0.66;
-  pointer-events: none;
-}
-
 /* ---------- 空态 ---------- */
 .et-empty {
   display: flex;
@@ -1337,10 +1393,6 @@ const myHostname = computed(() => {
 
   .et-power-orb {
     transition: transform 140ms ease-out;
-  }
-
-  .is-refreshing {
-    transition: opacity 150ms ease-out;
   }
 
   /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */

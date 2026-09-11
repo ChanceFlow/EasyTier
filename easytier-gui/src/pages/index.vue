@@ -85,10 +85,14 @@ const configServerConnected = ref(false)
 const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
+const snackbarTimeout = ref(3000)
 
-function toast(message: string, severity: 'success' | 'error' | 'info' = 'success', _life = 3000) {
+function toast(message: string, severity: 'success' | 'error' | 'info' = 'success', life?: number) {
   snackbarMessage.value = message
   snackbarColor.value = severity
+  // honor the caller's lifetime; errors get extra time by default so long
+  // messages can be read (the snackbar also offers a manual close button)
+  snackbarTimeout.value = life ?? (severity === 'error' ? 8000 : 3000)
   snackbar.value = true
 }
 
@@ -651,8 +655,16 @@ function visibleSettingsItems(): SettingsSheetItem[] {
   return settingsSheetItems.value.filter((item: SettingsSheetItem) => item.visible !== false)
 }
 
-async function exitApp(): Promise<void> {
-  await exit(1)
+function exitApp(): void {
+  // never quit on a single tap: the mesh may keep running in the background,
+  // so require an explicit confirmation (Esc / back-out simply cancels).
+  requireConfirm(
+    t('exit_confirm_message', 'A running mesh may stay connected after EasyTier quits. Exit now?'),
+    t('exit_confirm_title', 'Exit EasyTier'),
+    () => {
+      void exit(1)
+    },
+  )
 }
 </script>
 
@@ -979,8 +991,26 @@ async function exitApp(): Promise<void> {
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="2500" :location="mobileUI ? 'bottom' : 'top'" rounded="pill">
-      {{ snackbarMessage }}
+    <v-snackbar
+      v-model="snackbar"
+      :color="snackbarColor"
+      :timeout="snackbarTimeout"
+      :location="mobileUI ? 'bottom' : 'top'"
+      :content-class="mobileUI ? 'et-snackbar-above-tabbar' : undefined"
+      rounded="pill"
+    >
+      <div class="et-snackbar-text">
+        {{ snackbarMessage }}
+      </div>
+      <template #actions>
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          size="small"
+          :aria-label="t('close')"
+          @click="snackbar = false"
+        />
+      </template>
     </v-snackbar>
   </div>
 </template>
@@ -994,6 +1024,12 @@ async function exitApp(): Promise<void> {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* long error toasts wrap instead of being clipped inside the rounded snackbar */
+.et-snackbar-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* the collapsed "advanced console" disclosure under the phone hero */

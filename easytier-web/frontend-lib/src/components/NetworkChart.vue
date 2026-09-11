@@ -53,8 +53,10 @@ import {
 } from 'chart.js'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTheme } from 'vuetify'
 
 const { t } = useI18n()
+const theme = useTheme()
 
 // Register Chart.js components
 ChartJS.register(
@@ -169,6 +171,113 @@ function updateData() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Theme-aware canvas palette
+//
+// Canvas colors cannot use CSS variables directly, so we read the `--et-*`
+// design tokens from the DOM at runtime. Reading from the chart's own canvas
+// (which inherits the tokens from `.v-application`) is what actually follows
+// the light/dark switch: Vuetify puts the theme class on `.v-application`, not
+// on `<html>`, so `document.documentElement` would always report the dark
+// `:root` values. The element lookup keeps a `documentElement` fallback for
+// SSR / non-browser hosts.
+// ---------------------------------------------------------------------------
+const FALLBACK_COLORS = {
+  accent: '#00F2B6',
+  info: '#00B4D8',
+  textSecondary: '#8E99AF',
+  text: '#F3F6FA',
+  surface: '#0E131F',
+  borderHairline: 'rgba(255, 255, 255, 0.08)',
+} as const
+
+interface ChartPalette {
+  accent: string
+  info: string
+  textSecondary: string
+  grid: string
+  tooltipBg: string
+  tooltipTitle: string
+  tooltipBody: string
+  tooltipBorder: string
+  pointBorder: string
+}
+
+function readCssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined' || typeof document === 'undefined')
+    return fallback
+
+  const el = chartCanvas.value ?? document.documentElement
+  const value = el ? getComputedStyle(el).getPropertyValue(name).trim() : ''
+  return value || fallback
+}
+
+// Parse #rgb/#rgba/#rrggbb/#rrggbbaa (and best-effort rgb()/rgba()) to rgb.
+// `color-mix()` and anything unrecognized is passed through unchanged.
+function parseColorToRgb(color: string): { r: number, g: number, b: number } | null {
+  const input = (color || '').trim()
+  if (!input)
+    return null
+
+  const hex = input.match(/^#([0-9a-f]{3,8})$/i)
+  if (hex) {
+    let h = hex[1]
+    if (h.length === 3 || h.length === 4)
+      h = h.split('').map(c => c + c).join('')
+    if (h.length < 6)
+      return null
+    return {
+      r: Number.parseInt(h.slice(0, 2), 16),
+      g: Number.parseInt(h.slice(2, 4), 16),
+      b: Number.parseInt(h.slice(4, 6), 16),
+    }
+  }
+
+  const rgb = input.match(/^rgba?\(([^)]+)\)$/i)
+  if (rgb) {
+    const parts = rgb[1].split(/[\s,/]+/).filter(Boolean)
+    if (parts.length < 3)
+      return null
+    return {
+      r: Math.round(Number.parseFloat(parts[0])),
+      g: Math.round(Number.parseFloat(parts[1])),
+      b: Math.round(Number.parseFloat(parts[2])),
+    }
+  }
+
+  return null
+}
+
+// Convert a theme token to an rgba() string with the requested alpha so the
+// Chart.js gradient stops / fills can be derived from the active theme.
+function toRgba(color: string, alpha: number): string {
+  const parsed = parseColorToRgb(color)
+  if (!parsed)
+    return color || `rgba(0, 0, 0, ${alpha})`
+  return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${alpha})`
+}
+
+function readPalette(): ChartPalette {
+  const accent = readCssVar('--et-accent', FALLBACK_COLORS.accent)
+  const info = readCssVar('--et-info', FALLBACK_COLORS.info)
+  const textSecondary = readCssVar('--et-text-secondary', FALLBACK_COLORS.textSecondary)
+  const text = readCssVar('--et-text', FALLBACK_COLORS.text)
+  const surface = readCssVar('--et-surface', FALLBACK_COLORS.surface)
+  const borderHairline = readCssVar('--et-border-hairline', FALLBACK_COLORS.borderHairline)
+
+  return {
+    accent,
+    info,
+    textSecondary,
+    grid: borderHairline,
+    tooltipBg: toRgba(surface, 0.95),
+    tooltipTitle: text,
+    tooltipBody: textSecondary,
+    tooltipBorder: toRgba(accent, 0.28),
+    pointBorder: surface,
+  }
+}
+
 function initChart() {
   if (!chartCanvas.value)
     return
@@ -177,14 +286,16 @@ function initChart() {
   if (!ctx)
     return
 
-  // Beautiful cyber gradient fills
+  const palette = readPalette()
+
+  // Theme-derived gradient fills
   const txGrad = ctx.createLinearGradient(0, 0, 0, 140)
-  txGrad.addColorStop(0, 'rgba(0, 242, 182, 0.28)')
-  txGrad.addColorStop(1, 'rgba(0, 242, 182, 0.01)')
+  txGrad.addColorStop(0, toRgba(palette.accent, 0.28))
+  txGrad.addColorStop(1, toRgba(palette.accent, 0.01))
 
   const rxGrad = ctx.createLinearGradient(0, 0, 0, 140)
-  rxGrad.addColorStop(0, 'rgba(0, 180, 216, 0.24)')
-  rxGrad.addColorStop(1, 'rgba(0, 180, 216, 0.01)')
+  rxGrad.addColorStop(0, toRgba(palette.info, 0.24))
+  rxGrad.addColorStop(1, toRgba(palette.info, 0.01))
 
   chart = new ChartJS(ctx, {
     type: 'line',
@@ -194,29 +305,29 @@ function initChart() {
         {
           label: t('upload'),
           data: uploadHistory,
-          borderColor: '#00F2B6',
+          borderColor: palette.accent,
           backgroundColor: txGrad,
           borderWidth: 2,
           fill: true,
           tension: 0.35,
           pointRadius: 0,
           pointHoverRadius: 5,
-          pointHoverBackgroundColor: '#00F2B6',
-          pointHoverBorderColor: '#080A0F',
+          pointHoverBackgroundColor: palette.accent,
+          pointHoverBorderColor: palette.pointBorder,
           pointHoverBorderWidth: 2,
         },
         {
           label: t('download'),
           data: downloadHistory,
-          borderColor: '#00B4D8',
+          borderColor: palette.info,
           backgroundColor: rxGrad,
           borderWidth: 2,
           fill: true,
           tension: 0.35,
           pointRadius: 0,
           pointHoverRadius: 5,
-          pointHoverBackgroundColor: '#00B4D8',
-          pointHoverBorderColor: '#080A0F',
+          pointHoverBackgroundColor: palette.info,
+          pointHoverBorderColor: palette.pointBorder,
           pointHoverBorderWidth: 2,
         },
       ],
@@ -233,10 +344,10 @@ function initChart() {
           display: false,
         },
         tooltip: {
-          backgroundColor: 'rgba(14, 19, 31, 0.95)',
-          titleColor: '#F3F6FA',
-          bodyColor: '#8E99AF',
-          borderColor: 'rgba(0, 242, 182, 0.25)',
+          backgroundColor: palette.tooltipBg,
+          titleColor: palette.tooltipTitle,
+          bodyColor: palette.tooltipBody,
+          borderColor: palette.tooltipBorder,
           borderWidth: 1,
           padding: 8,
           cornerRadius: 10,
@@ -257,7 +368,7 @@ function initChart() {
           },
           ticks: {
             maxTicksLimit: 4,
-            color: 'rgba(142, 153, 175, 0.65)',
+            color: palette.textSecondary,
             font: {
               family: 'ET Mono, monospace',
               size: 9,
@@ -269,11 +380,11 @@ function initChart() {
           beginAtZero: true,
           min: 0,
           grid: {
-            color: 'rgba(255, 255, 255, 0.05)',
+            color: palette.grid,
           },
           ticks: {
             maxTicksLimit: 4,
-            color: 'rgba(142, 153, 175, 0.65)',
+            color: palette.textSecondary,
             callback(value: any) {
               return formatBytes(value as number)
             },
@@ -291,9 +402,29 @@ function initChart() {
   })
 }
 
+// React to live theme switches: colors are read from the DOM at chart
+// creation, so the chart is rebuilt once the new theme class has been applied.
+function rebuildChart() {
+  if (chart) {
+    chart.destroy()
+    chart = null
+  }
+  initChart()
+}
+
+watch(() => theme.name.value, async () => {
+  if (!chart)
+    return
+  await nextTick()
+  rebuildChart()
+})
+
+// NOTE: no `immediate: true` here — the single initial data push happens in
+// `onMounted` after the history buffers are seeded, otherwise the chart would
+// receive two samples for the same mount.
 watch([() => props.uploadRate, () => props.downloadRate], () => {
   updateData()
-}, { immediate: true })
+})
 
 onMounted(async () => {
   const now = new Date()

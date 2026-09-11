@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { v4 as uuidv4 } from 'uuid'
 import { AclAction, AclChain, AclChainType, AclProtocol, AclRule, ensureAclChain, ensureAclRuleLists } from '../../types/network'
 import AclRuleDialog from './AclRuleDialog.vue'
 
@@ -11,6 +12,8 @@ const props = defineProps<{
 const chain = defineModel<AclChain>({ required: true })
 
 const { t } = useI18n()
+// 每个链编辑器实例独立 id 前缀,避免多链并存时 label/for 冲突
+const uid = uuidv4()
 
 function rules() {
   return ensureAclChain(chain.value).rules
@@ -114,6 +117,23 @@ function onDragOver(index: number) {
   dragOverIndex.value = index
 }
 
+/**
+ * 移动规则并重写优先级(桌面拖拽与移动端按钮共用,避免逻辑分叉)。
+ * 数组顺序即优先级:越靠前优先级越高。
+ */
+function moveRule(from: number, to: number) {
+  const chainRules = rules()
+  if (from < 0 || to < 0 || from >= chainRules.length || to >= chainRules.length || from === to) {
+    return
+  }
+  const [moved] = chainRules.splice(from, 1)
+  chainRules.splice(to, 0, moved)
+  // Update priorities based on new order (higher priority at top)
+  chainRules.forEach((rule, index) => {
+    rule.priority = chainRules.length - index - 1
+  })
+}
+
 function onDrop() {
   const from = dragIndex.value
   const to = dragOverIndex.value
@@ -121,14 +141,16 @@ function onDrop() {
     resetDrag()
     return
   }
-  const chainRules = rules()
-  const [moved] = chainRules.splice(from, 1)
-  chainRules.splice(to, 0, moved)
-  // Update priorities based on new order (higher priority at top)
-  chainRules.forEach((rule, index) => {
-    rule.priority = chainRules.length - index - 1
-  })
+  moveRule(from, to)
   resetDrag()
+}
+
+function moveRuleUp(index: number) {
+  moveRule(index, index - 1)
+}
+
+function moveRuleDown(index: number) {
+  moveRule(index, index + 1)
 }
 
 function resetDrag() {
@@ -142,22 +164,23 @@ function resetDrag() {
     <!-- Chain Metadata Section -->
     <div class="acl-meta-grid">
       <div class="d-flex flex-column ga-2">
-        <label class="font-weight-bold text-body-2">{{ t('acl.chain.name') }}</label>
-        <v-text-field v-model="chain.name" variant="outlined" density="compact" hide-details />
+        <label :for="`${uid}-chain-name`" class="font-weight-bold text-body-2">{{ t('acl.chain.name') }}</label>
+        <v-text-field :id="`${uid}-chain-name`" v-model="chain.name" variant="outlined" density="compact" hide-details />
       </div>
       <div class="d-flex flex-column ga-2">
-        <label class="font-weight-bold text-body-2">{{ t('acl.rule.description') }}</label>
-        <v-text-field v-model="chain.description" variant="outlined" density="compact" hide-details />
+        <label :for="`${uid}-chain-desc`" class="font-weight-bold text-body-2">{{ t('acl.rule.description') }}</label>
+        <v-text-field :id="`${uid}-chain-desc`" v-model="chain.description" variant="outlined" density="compact" hide-details />
       </div>
 
       <div class="d-flex align-center flex-wrap ga-6 acl-meta-row">
         <div class="d-flex align-center ga-2">
-          <label class="font-weight-bold text-body-2">{{ t('acl.rule.enabled') }}</label>
-          <v-switch v-model="chain.enabled" color="primary" hide-details />
+          <label :for="`${uid}-chain-enabled`" class="font-weight-bold text-body-2">{{ t('acl.rule.enabled') }}</label>
+          <v-switch :id="`${uid}-chain-enabled`" v-model="chain.enabled" color="primary" hide-details />
         </div>
         <div class="d-flex align-center ga-2">
-          <label class="font-weight-bold text-body-2">{{ t('acl.chain.type') }}</label>
+          <label :for="`${uid}-chain-type`" class="font-weight-bold text-body-2">{{ t('acl.chain.type') }}</label>
           <v-select
+            :id="`${uid}-chain-type`"
             :model-value="chain.chain_type"
             :items="chainTypeOptions"
             :item-title="opt => typeof opt.label === 'function' ? opt.label() : opt.label"
@@ -170,8 +193,14 @@ function resetDrag() {
           />
         </div>
         <div class="d-flex align-center ga-2 ml-auto">
-          <label class="font-weight-bold text-body-2">{{ t('acl.default_action') }}</label>
-          <v-btn-toggle v-model="chain.default_action" density="comfortable" divided>
+          <label :id="`${uid}-default-action-label`" class="font-weight-bold text-body-2">{{ t('acl.default_action') }}</label>
+          <v-btn-toggle
+            v-model="chain.default_action"
+            density="comfortable"
+            divided
+            role="group"
+            :aria-labelledby="`${uid}-default-action-label`"
+          >
             <v-btn v-for="opt in actionOptions" :key="opt.value" :value="opt.value">
               {{ typeof opt.label === 'function' ? opt.label() : opt.label }}
             </v-btn>
@@ -194,7 +223,7 @@ function resetDrag() {
           <th>{{ t('acl.rule.name') }}</th>
           <th>{{ t('acl.match') }}</th>
           <th>{{ t('acl.rule.action') }}</th>
-          <th class="text-end" style="width: 6rem">{{ t('web.common.edit') }}</th>
+          <th class="text-end" style="width: 9rem">{{ t('web.common.edit') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -209,8 +238,9 @@ function resetDrag() {
           @drop.prevent="onDrop"
           @dragend="resetDrag"
         >
-          <td class="acl-drag-handle" title="drag to reorder">
-            <v-icon size="small">mdi-drag-horizontal-variant</v-icon>
+          <td class="acl-drag-handle" :title="t('acl.drag_to_reorder', 'Drag to reorder')">
+            <span class="acl-mobile-index">{{ index + 1 }}</span>
+            <v-icon size="small" class="acl-drag-icon" aria-hidden="true">mdi-drag-horizontal-variant</v-icon>
           </td>
           <td>
             <v-icon size="small" :color="rule.enabled ? 'success' : 'error'">
@@ -253,8 +283,26 @@ function resetDrag() {
           </td>
           <td class="text-end">
             <div class="d-flex justify-end ga-1">
-              <v-btn icon="mdi-pencil" variant="text" size="small" rounded @click="editRule(index)" />
-              <v-btn icon="mdi-delete" color="error" variant="text" size="small" rounded @click="deleteRule(index)" />
+              <v-btn
+                icon="mdi-arrow-up"
+                variant="text"
+                size="small"
+                rounded
+                :disabled="index === 0"
+                :aria-label="t('web.common.move_up')"
+                @click="moveRuleUp(index)"
+              />
+              <v-btn
+                icon="mdi-arrow-down"
+                variant="text"
+                size="small"
+                rounded
+                :disabled="index === rules().length - 1"
+                :aria-label="t('web.common.move_down')"
+                @click="moveRuleDown(index)"
+              />
+              <v-btn icon="mdi-pencil" variant="text" size="small" rounded :aria-label="t('web.common.edit')" @click="editRule(index)" />
+              <v-btn icon="mdi-delete" color="error" variant="text" size="small" rounded :aria-label="t('web.common.delete')" @click="deleteRule(index)" />
             </div>
           </td>
         </tr>
@@ -309,6 +357,22 @@ function resetDrag() {
 .acl-drag-handle {
   cursor: grab;
   color: var(--v-theme-onSurfaceVariant);
+}
+.acl-mobile-index {
+  display: none;
+  font-variant-numeric: tabular-nums;
+}
+/* 触屏设备没有 HTML5 拖拽:隐藏拖拽手柄,改显示序号,并用行内上下移按钮排序 */
+@media (max-width: 599px) {
+  .acl-drag-icon {
+    display: none;
+  }
+  .acl-mobile-index {
+    display: inline;
+  }
+  .acl-drag-handle {
+    cursor: default;
+  }
 }
 .acl-proto-badge {
   padding: 2px 8px;

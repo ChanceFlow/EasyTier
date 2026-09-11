@@ -12,14 +12,20 @@ const PAGES = 3
 
 const SWIPE_MIN_DX = 48
 let swipeStartX = 0
+let swipeStartY = 0
 
 function onTouchStart(e: TouchEvent) {
-  swipeStartX = e.touches[0]?.clientX ?? 0
+  const touch = e.touches[0]
+  swipeStartX = touch?.clientX ?? 0
+  swipeStartY = touch?.clientY ?? 0
 }
 
 function onTouchEnd(e: TouchEvent) {
-  const dx = (e.changedTouches[0]?.clientX ?? 0) - swipeStartX
-  if (Math.abs(dx) < SWIPE_MIN_DX)
+  const touch = e.changedTouches[0]
+  const dx = (touch?.clientX ?? 0) - swipeStartX
+  const dy = (touch?.clientY ?? 0) - swipeStartY
+  // a mostly-vertical drag is a scroll, never a page change
+  if (Math.abs(dx) <= SWIPE_MIN_DX || Math.abs(dx) <= Math.abs(dy))
     return
   if (dx < 0 && page.value < PAGES - 1)
     page.value += 1
@@ -94,7 +100,9 @@ const p3Steps = computed(() => [
     <v-card class="et-onboard">
       <div class="et-onboard-top">
         <v-spacer />
-        <v-btn v-if="page < PAGES - 1" variant="text" rounded="pill" size="small" @click="finish">
+        <!-- the dialog is persistent, so this is the guaranteed way out on
+             every page (the last page keeps its primary CTA as well) -->
+        <v-btn variant="text" rounded="pill" size="small" :aria-label="headings[0]" @click="finish">
           {{ headings[0] }}
         </v-btn>
       </div>
@@ -215,6 +223,7 @@ const p3Steps = computed(() => [
   flex: 1;
   min-height: 0;
   display: flex;
+  overflow: hidden;
 }
 
 .et-onboard-window {
@@ -222,15 +231,27 @@ const p3Steps = computed(() => [
   width: 100%;
 }
 
+.et-onboard-window :deep(.v-window__container),
+.et-onboard-window :deep(.v-window-item) {
+  height: 100%;
+}
+
 .et-onboard-page {
   height: 100%;
+  min-height: 0;
   max-width: 480px;
   margin: 0 auto;
-  padding: 12px 28px 24px;
+  padding: 16px 28px 28px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* safe: falls back to flex-start when the content overflows, so large
+     system fonts / landscape stay scrollable instead of clipping the top */
+  justify-content: safe center;
   gap: 10px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 @media (min-width: 720px) {

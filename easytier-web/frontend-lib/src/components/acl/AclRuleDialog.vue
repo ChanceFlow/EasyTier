@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useDisplay } from 'vuetify';
+import { v4 as uuidv4 } from 'uuid';
 import { AclAction, AclProtocol, AclRule, ensureAclRuleLists } from '../../types/network';
 
 const props = defineProps<{
@@ -13,6 +15,9 @@ const emit = defineEmits(['update:visible', 'save'])
 const rule = defineModel<AclRule>('rule', { required: true })
 
 const { t } = useI18n()
+// 移动端(小屏)弹窗全屏展示
+const { smAndDown } = useDisplay()
+const uid = uuidv4()
 
 const protocolOptions = [
   { label: () => t('acl.any'), value: AclProtocol.Any },
@@ -46,37 +51,37 @@ function save() {
 </script>
 
 <template>
-  <v-dialog :model-value="visible" @update:model-value="emit('update:visible', $event)" max-width="600px">
+  <v-dialog :model-value="visible" @update:model-value="emit('update:visible', $event)" max-width="600px" :fullscreen="smAndDown" scrollable>
     <v-card :title="t('acl.edit_rule')">
       <v-card-text class="d-flex flex-column ga-4">
         <div class="d-flex ga-4 align-center">
           <div class="d-flex flex-column ga-2 flex-grow-1">
-            <label class="font-weight-bold">{{ t('acl.rule.name') }}</label>
-            <v-text-field v-model="rule.name" variant="outlined" hide-details />
+            <label :for="`${uid}-rule-name`" class="font-weight-bold">{{ t('acl.rule.name') }}</label>
+            <v-text-field :id="`${uid}-rule-name`" v-model="rule.name" variant="outlined" hide-details />
           </div>
           <div class="d-flex flex-column ga-2">
-            <label class="font-weight-bold">{{ t('acl.rule.enabled') }}</label>
-            <v-switch v-model="rule.enabled" color="primary" hide-details />
+            <label :for="`${uid}-rule-enabled`" class="font-weight-bold">{{ t('acl.rule.enabled') }}</label>
+            <v-switch :id="`${uid}-rule-enabled`" v-model="rule.enabled" color="primary" hide-details />
           </div>
         </div>
 
         <div class="d-flex flex-column ga-2">
-          <label class="font-weight-bold">{{ t('acl.rule.description') }}</label>
-          <v-text-field v-model="rule.description" variant="outlined" hide-details />
+          <label :for="`${uid}-rule-description`" class="font-weight-bold">{{ t('acl.rule.description') }}</label>
+          <v-text-field :id="`${uid}-rule-description`" v-model="rule.description" variant="outlined" hide-details />
         </div>
 
         <div class="d-flex ga-4 flex-wrap">
           <div class="d-flex flex-column ga-2 flex-grow-1">
-            <label class="font-weight-bold">{{ t('acl.rule.action') }}</label>
-            <v-btn-toggle v-model="rule.action" density="comfortable" divided class="align-self-start">
+            <label :id="`${uid}-rule-action-label`" class="font-weight-bold">{{ t('acl.rule.action') }}</label>
+            <v-btn-toggle v-model="rule.action" density="comfortable" divided class="align-self-start" role="group" :aria-labelledby="`${uid}-rule-action-label`">
               <v-btn v-for="opt in actionOptions" :key="opt.value" :value="opt.value">
                 {{ typeof opt.label === 'function' ? opt.label() : opt.label }}
               </v-btn>
             </v-btn-toggle>
           </div>
           <div class="d-flex flex-column ga-2 flex-grow-1">
-            <label class="font-weight-bold">{{ t('acl.rule.protocol') }}</label>
-            <v-btn-toggle v-model="rule.protocol" density="comfortable" divided class="align-self-start">
+            <label :id="`${uid}-rule-protocol-label`" class="font-weight-bold">{{ t('acl.rule.protocol') }}</label>
+            <v-btn-toggle v-model="rule.protocol" density="comfortable" divided class="align-self-start" role="group" :aria-labelledby="`${uid}-rule-protocol-label`">
               <v-btn v-for="opt in protocolOptions" :key="opt.value" :value="opt.value">
                 {{ typeof opt.label === 'function' ? opt.label() : opt.label }}
               </v-btn>
@@ -90,8 +95,9 @@ function save() {
             <template #text>
               <div class="d-flex flex-column ga-4">
                 <div class="d-flex flex-column ga-2">
-                  <label class="font-weight-bold">{{ t('acl.rule.src_ips') }}</label>
+                  <label :for="`${uid}-rule-src-ips`" class="font-weight-bold">{{ t('acl.rule.src_ips') }}</label>
                   <v-combobox
+                    :id="`${uid}-rule-src-ips`"
                     v-model="rule.source_ips"
                     multiple
                     chips
@@ -103,8 +109,9 @@ function save() {
                   />
                 </div>
                 <div class="d-flex flex-column ga-2">
-                  <label class="font-weight-bold">{{ t('acl.rule.dst_ips') }}</label>
+                  <label :for="`${uid}-rule-dst-ips`" class="font-weight-bold">{{ t('acl.rule.dst_ips') }}</label>
                   <v-combobox
+                    :id="`${uid}-rule-dst-ips`"
                     v-model="rule.destination_ips"
                     multiple
                     chips
@@ -118,8 +125,9 @@ function save() {
 
                 <div v-if="showPorts" class="d-flex ga-4 flex-wrap">
                   <div class="d-flex flex-column ga-2 flex-grow-1">
-                    <label class="font-weight-bold">{{ t('acl.rule.src_ports') }}</label>
+                    <label :for="`${uid}-rule-src-ports`" class="font-weight-bold">{{ t('acl.rule.src_ports') }}</label>
                     <v-combobox
+                      :id="`${uid}-rule-src-ports`"
                       v-model="rule.source_ports"
                       multiple
                       chips
@@ -131,8 +139,9 @@ function save() {
                     />
                   </div>
                   <div class="d-flex flex-column ga-2 flex-grow-1">
-                    <label class="font-weight-bold">{{ t('acl.rule.dst_ports') }}</label>
+                    <label :for="`${uid}-rule-dst-ports`" class="font-weight-bold">{{ t('acl.rule.dst_ports') }}</label>
                     <v-combobox
+                      :id="`${uid}-rule-dst-ports`"
                       v-model="rule.ports"
                       multiple
                       chips
@@ -155,14 +164,15 @@ function save() {
             <template #text>
               <div class="d-flex flex-column ga-4">
                 <div class="d-flex align-center ga-2">
-                  <v-checkbox v-model="rule.stateful" color="primary" hide-details class="mt-0" />
-                  <label class="font-weight-bold">{{ t('acl.rule.stateful') }}</label>
+                  <v-checkbox :id="`${uid}-rule-stateful`" v-model="rule.stateful" color="primary" hide-details class="mt-0" />
+                  <label :for="`${uid}-rule-stateful`" class="font-weight-bold">{{ t('acl.rule.stateful') }}</label>
                 </div>
 
                 <div class="d-flex ga-4 flex-wrap">
                   <div class="d-flex flex-column ga-2 flex-grow-1">
-                    <label class="font-weight-bold">{{ t('acl.rule.rate_limit') }}</label>
+                    <label :for="`${uid}-rule-rate-limit`" class="font-weight-bold">{{ t('acl.rule.rate_limit') }}</label>
                     <v-text-field
+                      :id="`${uid}-rule-rate-limit`"
                       :model-value="rule.rate_limit"
                       type="number"
                       variant="outlined"
@@ -173,8 +183,9 @@ function save() {
                     />
                   </div>
                   <div class="d-flex flex-column ga-2 flex-grow-1">
-                    <label class="font-weight-bold">{{ t('acl.rule.burst_limit') }}</label>
+                    <label :for="`${uid}-rule-burst-limit`" class="font-weight-bold">{{ t('acl.rule.burst_limit') }}</label>
                     <v-text-field
+                      :id="`${uid}-rule-burst-limit`"
                       :model-value="rule.burst_limit"
                       type="number"
                       variant="outlined"
@@ -187,8 +198,9 @@ function save() {
                 </div>
 
                 <div class="d-flex flex-column ga-2">
-                  <label class="font-weight-bold">{{ t('acl.rule.src_groups') }}</label>
+                  <label :for="`${uid}-rule-src-groups`" class="font-weight-bold">{{ t('acl.rule.src_groups') }}</label>
                   <v-select
+                    :id="`${uid}-rule-src-groups`"
                     v-model="rule.source_groups"
                     :items="props.groupNames"
                     multiple
@@ -201,8 +213,9 @@ function save() {
                   />
                 </div>
                 <div class="d-flex flex-column ga-2">
-                  <label class="font-weight-bold">{{ t('acl.rule.dst_groups') }}</label>
+                  <label :for="`${uid}-rule-dst-groups`" class="font-weight-bold">{{ t('acl.rule.dst_groups') }}</label>
                   <v-select
+                    :id="`${uid}-rule-dst-groups`"
                     v-model="rule.destination_groups"
                     :items="props.groupNames"
                     multiple

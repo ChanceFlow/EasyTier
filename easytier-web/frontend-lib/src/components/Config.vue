@@ -242,6 +242,38 @@ function removeVpnPortalClient(index: number) {
   vpnPortalConfig.value.clients.splice(index, 1)
 }
 
+// 局部确认弹窗(移动端可用,避免破坏性操作直接生效)
+const confirmDialog = ref(false)
+const confirmMessage = ref('')
+const confirmAction = ref<() => void>(() => {})
+
+function requireConfirm(message: string, action: () => void) {
+  confirmMessage.value = message
+  confirmAction.value = action
+  confirmDialog.value = true
+}
+
+function runConfirm() {
+  const action = confirmAction.value
+  confirmDialog.value = false
+  confirmAction.value = () => {}
+  action()
+}
+
+function confirmRemoveVpnPortalClient(index: number) {
+  requireConfirm(
+    t('vpn_portal_remove_client_confirm', 'Remove this VPN portal client?'),
+    () => removeVpnPortalClient(index),
+  )
+}
+
+function confirmRemovePortForward(index: number) {
+  requireConfirm(
+    t('port_forwards_remove_confirm', 'Delete this port forward rule?'),
+    () => removeRow(index, curNetwork.value.port_forwards),
+  )
+}
+
 const showNetworkSecret = ref(false)
 const showVpnKey = ref(false)
 const basicPanel = ref<number | undefined>(0)
@@ -320,9 +352,9 @@ watch(
       <div class="d-flex align-center justify-space-between mb-2">
         <div class="d-flex align-center ga-2">
           <v-icon color="primary" size="18">mdi-tune-vertical-variant</v-icon>
-          <span class="text-caption font-weight-bold text-uppercase tracking-wider">网络优化预设</span>
+          <span class="text-caption font-weight-bold text-uppercase tracking-wider">{{ t('preset.section_title', 'Network optimization presets') }}</span>
         </div>
-        <span class="text-caption text-medium-emphasis">一键优化协议与路由特性</span>
+        <span class="text-caption text-medium-emphasis">{{ t('preset.section_hint', 'One-tap tuning of protocol and routing features') }}</span>
       </div>
 
       <div class="et-presets-grid">
@@ -334,8 +366,8 @@ watch(
         >
           <v-icon size="18">mdi-gamepad-variant-outline</v-icon>
           <div class="d-flex flex-column text-start min-w-0">
-            <span class="et-preset-name font-weight-bold">低延迟 / 游戏</span>
-            <span class="et-preset-desc truncate">延迟优先 · 多线程 · 强制直连</span>
+            <span class="et-preset-name font-weight-bold">{{ t('preset.gaming_name', 'Low latency / Gaming') }}</span>
+            <span class="et-preset-desc truncate">{{ t('preset.gaming_desc', 'Latency first · Multi-thread · Force direct') }}</span>
           </div>
         </button>
 
@@ -347,8 +379,8 @@ watch(
         >
           <v-icon size="18">mdi-swap-horizontal</v-icon>
           <div class="d-flex flex-column text-start min-w-0">
-            <span class="et-preset-name font-weight-bold">极限穿透 / 漫游</span>
-            <span class="et-preset-desc truncate">KCP + QUIC 代理 · 广域中继</span>
+            <span class="et-preset-name font-weight-bold">{{ t('preset.compat_name', 'Max traversal / Roaming') }}</span>
+            <span class="et-preset-desc truncate">{{ t('preset.compat_desc', 'KCP + QUIC proxy · Wide-area relay') }}</span>
           </div>
         </button>
 
@@ -360,8 +392,8 @@ watch(
         >
           <v-icon size="18">mdi-shield-lock-outline</v-icon>
           <div class="d-flex flex-column text-start min-w-0">
-            <span class="et-preset-name font-weight-bold">严格安全 / 私网</span>
-            <span class="et-preset-desc truncate">严格 P2P · 私有模式 · 强加密</span>
+            <span class="et-preset-name font-weight-bold">{{ t('preset.secure_name', 'Strict security / Private') }}</span>
+            <span class="et-preset-desc truncate">{{ t('preset.secure_desc', 'Strict P2P · Private mode · Strong encryption') }}</span>
           </div>
         </button>
 
@@ -373,8 +405,8 @@ watch(
         >
           <v-icon size="18">mdi-tune</v-icon>
           <div class="d-flex flex-column text-start min-w-0">
-            <span class="et-preset-name font-weight-bold">标准均衡模式</span>
-            <span class="et-preset-desc truncate">推荐配置 · 平衡功耗与性能</span>
+            <span class="et-preset-name font-weight-bold">{{ t('preset.default_name', 'Standard balanced') }}</span>
+            <span class="et-preset-desc truncate">{{ t('preset.default_desc', 'Recommended · Balances power and performance') }}</span>
           </div>
         </button>
       </div>
@@ -466,11 +498,22 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center mb-1">
                 <label for="initial_nodes" class="config-label">{{ t('initial_nodes') }}</label>
-                <v-tooltip :text="t('initial_nodes_help')" location="top">
-                  <template #activator="{ props: tooltipProps }">
-                    <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                <v-menu location="top" :close-on-content-click="true">
+                  <template #activator="{ props: helpProps }">
+                    <v-btn
+                      v-bind="helpProps"
+                      icon="mdi-help-circle-outline"
+                      size="x-small"
+                      variant="text"
+                      density="comfortable"
+                      class="ml-1 text-medium-emphasis"
+                      :aria-label="t('web.common.help', 'Help')"
+                    />
                   </template>
-                </v-tooltip>
+                  <v-card max-width="320" class="pa-3">
+                    <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('initial_nodes_help') }}</p>
+                  </v-card>
+                </v-menu>
               </div>
               <UrlListInput
                 id="initial_nodes"
@@ -557,7 +600,7 @@ watch(
               <div class="d-flex align-center justify-space-between mb-2">
                 <div class="d-flex align-center ga-2">
                   <v-icon color="primary" size="18">mdi-vpn</v-icon>
-                  <label class="config-label font-weight-bold">{{ t('vpn_portal_label') }}</label>
+                  <label for="vpn_portal_enabled" class="config-label font-weight-bold">{{ t('vpn_portal_label') }}</label>
                 </div>
                 <v-switch id="vpn_portal_enabled" @update:model-value="vibrate(8)" v-model="vpnPortalEnabled" color="primary" hide-details inset density="compact" />
               </div>
@@ -645,7 +688,7 @@ watch(
                         variant="outlined"
                         density="compact"
                         hide-details
-                        :menu-props="{ attach: '.config-root', maxHeight: 240 }"
+                        :menu-props="{ maxHeight: 240 }"
                         :placeholder="t('vpn_portal_client_groups_placeholder')"
                       />
                     </div>
@@ -656,7 +699,7 @@ watch(
                       size="small"
                       class="align-self-center"
                       :aria-label="t('vpn_portal_remove_client')"
-                      @click="removeVpnPortalClient(index)"
+                      @click="confirmRemoveVpnPortalClient(index)"
                     />
                   </div>
                 </div>
@@ -666,7 +709,7 @@ watch(
             <!-- Listener URLs -->
             <div class="config-field">
               <label for="listener_urls" class="config-label mb-1 d-block">{{ t('listener_urls') }}</label>
-              <UrlListInput v-model="curNetwork.listener_urls" :protos="protos" :add-label="t('add_listener_url')" placeholder="0.0.0.0" />
+              <UrlListInput id="listener_urls" v-model="curNetwork.listener_urls" :protos="protos" :add-label="t('add_listener_url')" placeholder="0.0.0.0" />
             </div>
 
             <!-- Dev name -->
@@ -686,11 +729,22 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center mb-1">
                 <label for="mtu" class="config-label">{{ t('mtu') }}</label>
-                <v-tooltip :text="t('mtu_help')" location="top">
-                  <template #activator="{ props: tooltipProps }">
-                    <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                <v-menu location="top" :close-on-content-click="true">
+                  <template #activator="{ props: helpProps }">
+                    <v-btn
+                      v-bind="helpProps"
+                      icon="mdi-help-circle-outline"
+                      size="x-small"
+                      variant="text"
+                      density="comfortable"
+                      class="ml-1 text-medium-emphasis"
+                      :aria-label="t('web.common.help', 'Help')"
+                    />
                   </template>
-                </v-tooltip>
+                  <v-card max-width="320" class="pa-3">
+                    <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('mtu_help') }}</p>
+                  </v-card>
+                </v-menu>
               </div>
               <v-text-field
                 id="mtu"
@@ -710,11 +764,22 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center mb-1">
                 <label for="instance_recv_bps_limit" class="config-label">{{ t('instance_recv_bps_limit') }}</label>
-                <v-tooltip :text="t('instance_recv_bps_limit_help')" location="top">
-                  <template #activator="{ props: tooltipProps }">
-                    <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                <v-menu location="top" :close-on-content-click="true">
+                  <template #activator="{ props: helpProps }">
+                    <v-btn
+                      v-bind="helpProps"
+                      icon="mdi-help-circle-outline"
+                      size="x-small"
+                      variant="text"
+                      density="comfortable"
+                      class="ml-1 text-medium-emphasis"
+                      :aria-label="t('web.common.help', 'Help')"
+                    />
                   </template>
-                </v-tooltip>
+                  <v-card max-width="320" class="pa-3">
+                    <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('instance_recv_bps_limit_help') }}</p>
+                  </v-card>
+                </v-menu>
               </div>
               <v-text-field
                 id="instance_recv_bps_limit"
@@ -734,13 +799,24 @@ watch(
               <div class="d-flex align-center justify-space-between mb-1">
                 <div class="d-flex align-center">
                   <label for="relay_network_whitelist" class="config-label">{{ t('relay_network_whitelist') }}</label>
-                  <v-tooltip :text="t('relay_network_whitelist_help')" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                  <v-menu location="top" :close-on-content-click="true">
+                    <template #activator="{ props: helpProps }">
+                      <v-btn
+                        v-bind="helpProps"
+                        icon="mdi-help-circle-outline"
+                        size="x-small"
+                        variant="text"
+                        density="comfortable"
+                        class="ml-1 text-medium-emphasis"
+                        :aria-label="t('web.common.help', 'Help')"
+                      />
                     </template>
-                  </v-tooltip>
+                    <v-card max-width="320" class="pa-3">
+                      <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('relay_network_whitelist_help') }}</p>
+                    </v-card>
+                  </v-menu>
                 </div>
-                <v-switch id="enable_relay_network_whitelist" @update:model-value="vibrate(8)" v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_relay_network_whitelist" :aria-label="t('relay_network_whitelist')" @update:model-value="vibrate(8)" v-model="curNetwork.enable_relay_network_whitelist" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_relay_network_whitelist" class="mt-2">
                 <v-combobox
@@ -763,13 +839,24 @@ watch(
               <div class="d-flex align-center justify-space-between mb-1">
                 <div class="d-flex align-center">
                   <label for="routes" class="config-label">{{ t('manual_routes') }}</label>
-                  <v-tooltip :text="t('manual_routes_help')" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                  <v-menu location="top" :close-on-content-click="true">
+                    <template #activator="{ props: helpProps }">
+                      <v-btn
+                        v-bind="helpProps"
+                        icon="mdi-help-circle-outline"
+                        size="x-small"
+                        variant="text"
+                        density="comfortable"
+                        class="ml-1 text-medium-emphasis"
+                        :aria-label="t('web.common.help', 'Help')"
+                      />
                     </template>
-                  </v-tooltip>
+                    <v-card max-width="320" class="pa-3">
+                      <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('manual_routes_help') }}</p>
+                    </v-card>
+                  </v-menu>
                 </div>
-                <v-switch id="enable_manual_routes" @update:model-value="vibrate(8)" v-model="curNetwork.enable_manual_routes" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_manual_routes" :aria-label="t('manual_routes')" @update:model-value="vibrate(8)" v-model="curNetwork.enable_manual_routes" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_manual_routes" class="mt-2">
                 <v-combobox
@@ -792,13 +879,24 @@ watch(
               <div class="d-flex align-center justify-space-between mb-1">
                 <div class="d-flex align-center">
                   <label for="socks5_port" class="config-label">{{ t('socks5') }}</label>
-                  <v-tooltip :text="t('socks5_help')" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                  <v-menu location="top" :close-on-content-click="true">
+                    <template #activator="{ props: helpProps }">
+                      <v-btn
+                        v-bind="helpProps"
+                        icon="mdi-help-circle-outline"
+                        size="x-small"
+                        variant="text"
+                        density="comfortable"
+                        class="ml-1 text-medium-emphasis"
+                        :aria-label="t('web.common.help', 'Help')"
+                      />
                     </template>
-                  </v-tooltip>
+                    <v-card max-width="320" class="pa-3">
+                      <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('socks5_help') }}</p>
+                    </v-card>
+                  </v-menu>
                 </div>
-                <v-switch id="enable_socks5" @update:model-value="vibrate(8)" v-model="curNetwork.enable_socks5" color="primary" hide-details inset density="compact" />
+                <v-switch id="enable_socks5" :aria-label="t('socks5')" @update:model-value="vibrate(8)" v-model="curNetwork.enable_socks5" color="primary" hide-details inset density="compact" />
               </div>
               <div v-if="curNetwork.enable_socks5" class="mt-2">
                 <v-text-field
@@ -819,11 +917,22 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center mb-1">
                 <label for="exit_nodes" class="config-label">{{ t('exit_nodes') }}</label>
-                <v-tooltip :text="t('exit_nodes_help')" location="top">
-                  <template #activator="{ props: tooltipProps }">
-                    <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                <v-menu location="top" :close-on-content-click="true">
+                  <template #activator="{ props: helpProps }">
+                    <v-btn
+                      v-bind="helpProps"
+                      icon="mdi-help-circle-outline"
+                      size="x-small"
+                      variant="text"
+                      density="comfortable"
+                      class="ml-1 text-medium-emphasis"
+                      :aria-label="t('web.common.help', 'Help')"
+                    />
                   </template>
-                </v-tooltip>
+                  <v-card max-width="320" class="pa-3">
+                    <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('exit_nodes_help') }}</p>
+                  </v-card>
+                </v-menu>
               </div>
               <v-combobox
                 id="exit_nodes"
@@ -843,13 +952,24 @@ watch(
             <div class="config-field">
               <div class="d-flex align-center mb-1">
                 <label for="mapped_listeners" class="config-label">{{ t('mapped_listeners') }}</label>
-                <v-tooltip :text="t('mapped_listeners_help')" location="top">
-                  <template #activator="{ props: tooltipProps }">
-                    <v-icon v-bind="tooltipProps" size="small" class="ml-1 text-medium-emphasis">mdi-help-circle-outline</v-icon>
+                <v-menu location="top" :close-on-content-click="true">
+                  <template #activator="{ props: helpProps }">
+                    <v-btn
+                      v-bind="helpProps"
+                      icon="mdi-help-circle-outline"
+                      size="x-small"
+                      variant="text"
+                      density="comfortable"
+                      class="ml-1 text-medium-emphasis"
+                      :aria-label="t('web.common.help', 'Help')"
+                    />
                   </template>
-                </v-tooltip>
+                  <v-card max-width="320" class="pa-3">
+                    <p class="text-body-2 ma-0 text-pre-line" tabindex="0" role="note">{{ t('mapped_listeners_help') }}</p>
+                  </v-card>
+                </v-menu>
               </div>
-              <UrlListInput v-model="curNetwork.mapped_listeners" :protos="protos" :add-label="t('add_mapped_listener')" />
+              <UrlListInput id="mapped_listeners" v-model="curNetwork.mapped_listeners" :protos="protos" :add-label="t('add_mapped_listener')" />
             </div>
           </div>
         </template>
@@ -900,14 +1020,14 @@ watch(
                       @update:model-value="row.dst_port = $event === '' ? 1 : Number($event)"
                     />
                   </div>
-                  <v-btn icon="mdi-delete" color="error" variant="text" size="small" @click="removeRow(index, curNetwork.port_forwards)" />
+                  <v-btn icon="mdi-delete" color="error" variant="text" size="small" :aria-label="t('web.common.delete')" @click="confirmRemovePortForward(index)" />
                 </div>
                 <!-- Small screen view -->
                 <div v-else class="pf-row-compact d-flex align-center justify-space-between pa-2 rounded-lg">
-                  <span class="text-mono text-body-2 font-weight-medium">{{ row.proto }}://{{ row.bind_ip }}:{{ row.bind_port }} → {{ row.dst_ip }}:{{ row.dst_port }}</span>
-                  <div class="d-flex ga-1">
-                    <v-btn icon="mdi-pencil" size="small" variant="text" @click="openPortForwardEditor(index)" />
-                    <v-btn icon="mdi-delete" size="small" variant="text" color="error" @click="removeRow(index, curNetwork.port_forwards)" />
+                  <span class="text-mono text-body-2 font-weight-medium min-w-0 truncate">{{ row.proto }}://{{ row.bind_ip }}:{{ row.bind_port }} → {{ row.dst_ip }}:{{ row.dst_port }}</span>
+                  <div class="d-flex ga-1 shrink-0">
+                    <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="t('web.common.edit')" @click="openPortForwardEditor(index)" />
+                    <v-btn icon="mdi-delete" size="small" variant="text" color="error" :aria-label="t('web.common.delete')" @click="confirmRemovePortForward(index)" />
                   </div>
                 </div>
               </div>
@@ -956,26 +1076,26 @@ watch(
         <v-card-text v-if="editingPortForwardData">
           <div class="d-flex flex-column ga-3">
             <div>
-              <label class="config-label text-caption mb-1 d-block">{{ t('tunnel_proto') }}</label>
-              <v-btn-toggle v-model="editingPortForwardData.proto" density="compact" divided class="w-100">
+              <label id="pf_edit_proto_label" class="config-label text-caption mb-1 d-block">{{ t('tunnel_proto') }}</label>
+              <v-btn-toggle v-model="editingPortForwardData.proto" density="compact" divided class="w-100" aria-labelledby="pf_edit_proto_label">
                 <v-btn v-for="opt in portForwardProtocolOptions" :key="opt" :value="opt" class="flex-grow-1">{{ opt }}</v-btn>
               </v-btn-toggle>
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_bind_addr') }}</label>
-              <v-text-field v-model="editingPortForwardData.bind_ip" variant="outlined" density="compact" hide-details />
+              <label for="pf_edit_bind_ip" class="config-label text-caption mb-1 d-block">{{ t('port_forwards_bind_addr') }}</label>
+              <v-text-field id="pf_edit_bind_ip" v-model="editingPortForwardData.bind_ip" variant="outlined" density="compact" hide-details />
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_bind_port') }}</label>
-              <v-text-field v-model="editingPortForwardData.bind_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
+              <label for="pf_edit_bind_port" class="config-label text-caption mb-1 d-block">{{ t('port_forwards_bind_port') }}</label>
+              <v-text-field id="pf_edit_bind_port" v-model="editingPortForwardData.bind_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_dst_addr') }}</label>
-              <v-text-field v-model="editingPortForwardData.dst_ip" variant="outlined" density="compact" hide-details />
+              <label for="pf_edit_dst_ip" class="config-label text-caption mb-1 d-block">{{ t('port_forwards_dst_addr') }}</label>
+              <v-text-field id="pf_edit_dst_ip" v-model="editingPortForwardData.dst_ip" variant="outlined" density="compact" hide-details />
             </div>
             <div>
-              <label class="config-label text-caption mb-1 d-block">{{ t('port_forwards_dst_port') }}</label>
-              <v-text-field v-model="editingPortForwardData.dst_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
+              <label for="pf_edit_dst_port" class="config-label text-caption mb-1 d-block">{{ t('port_forwards_dst_port') }}</label>
+              <v-text-field id="pf_edit_dst_port" v-model="editingPortForwardData.dst_port" type="number" min="1" max="65535" variant="outlined" density="compact" hide-details />
             </div>
           </div>
         </v-card-text>
@@ -983,6 +1103,18 @@ watch(
           <v-spacer />
           <v-btn variant="text" rounded="pill" @click="editingPortForward = false">{{ t('web.common.cancel') }}</v-btn>
           <v-btn color="primary" variant="flat" rounded="pill" @click="savePortForward">{{ t('web.common.save') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Local confirm dialog (destructive actions, phone friendly) -->
+    <v-dialog v-model="confirmDialog" max-width="420px" transition="dialog-bottom-transition">
+      <v-card :title="t('web.common.confirm')" rounded="xl" class="ios-dialog-sheet">
+        <v-card-text>{{ confirmMessage }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" @click="confirmDialog = false">{{ t('web.common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" rounded="pill" @click="runConfirm">{{ t('web.common.confirm') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1210,7 +1342,7 @@ watch(
   line-height: 1.2;
 }
 .et-preset-desc {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   color: var(--et-text-tertiary);
   margin-top: 2px;
 }

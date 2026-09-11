@@ -111,6 +111,13 @@
   background: var(--et-surface) !important;
 }
 
+/* Phone snackbar: the bottom tab bar (advanced console) is fixed over the
+   viewport, so lift a bottom-anchored snackbar above it. Applied through
+   `content-class` on mobile only. */
+.et-snackbar-above-tabbar {
+  margin-bottom: calc(54px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .et-pulse-dot { animation: none; }
 }

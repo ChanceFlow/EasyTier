@@ -130,7 +130,7 @@
   --et-border-hairline: rgba(255, 255, 255, 0.08);
   --et-text: #F3F6FA;
   --et-text-secondary: #8E99AF;
-  --et-text-tertiary: #5D6880;
+  --et-text-tertiary: #7E8AA0;
   --et-accent: #00F2B6;
   --et-accent-dim: rgba(0, 242, 182, 0.14);
   --et-danger: #FF4D6D;
@@ -180,13 +180,13 @@
   --et-border-hairline: rgba(15, 23, 42, 0.06);
   --et-text: #0F1720;
   --et-text-secondary: #5B6578;
-  --et-text-tertiary: #8B93A4;
+  --et-text-tertiary: #646C7E;
   --et-accent: #00875A;
   --et-accent-dim: rgba(0, 135, 90, 0.12);
   --et-danger: #E11D48;
-  --et-warning: #D97706;
-  --et-info: #0284C7;
-  --et-cyan: #0284C7;
+  --et-warning: #B45309;
+  --et-info: #0369A1;
+  --et-cyan: #0369A1;
   --et-cyan-dim: rgba(2, 132, 199, 0.12);
   --et-green: #00875A;
   --et-glow: rgba(0, 135, 90, 0.22);
@@ -243,12 +243,39 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 }
 
 .v-btn:not(.v-btn--icon).v-btn--size-default,
-.v-btn:not(.v-btn--icon).v-btn--size-large {
+.v-btn:not(.v-btn--icon).v-btn--size-large,
+.v-btn:not(.v-btn--icon).v-btn--size-small {
+  min-height: var(--et-touch);
+}
+
+/* Icon-only buttons: `min-*` wins over Vuetify's explicit width/height, so the
+ * hit target is >=44px regardless of `size` (x-small/small/default). The
+ * doubled class raises specificity above Vuetify's own `.v-btn--icon
+ * { min-width: 0 }`, which is emitted after this stylesheet. */
+.v-btn.v-btn--icon {
+  min-width: var(--et-touch);
   min-height: var(--et-touch);
 }
 
 .v-list-item {
   min-height: var(--et-touch);
+}
+
+/* WCAG 2.5.8: Vuetify caps .v-chip__close at 18x18. Expand the hit area to
+ * 28x28 with an out-of-flow pseudo-element so the glyph and the (fixed-height)
+ * chip are visually unchanged. */
+.v-chip__close {
+  position: relative;
+}
+
+.v-chip__close::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
 }
 
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -351,7 +378,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 
 .et-tab-item span,
 .ios-tab-item span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: var(--fw-medium);
   margin-top: 2px;
 }
@@ -398,7 +425,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   gap: 0.3rem;
   white-space: normal;
   text-align: center;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: var(--fw-semibold);
   line-height: 1.2;
 }
@@ -501,16 +528,27 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 }
 
 .et-badge--amber {
-  background: rgba(255, 183, 3, 0.15);
+  background: color-mix(in srgb, var(--et-warning) 15%, transparent);
   color: var(--et-warning);
-  border: 1px solid rgba(255, 183, 3, 0.3);
+  border: 1px solid color-mix(in srgb, var(--et-warning) 30%, transparent);
 }
 
 .et-badge--coral {
-  background: rgba(255, 77, 109, 0.15);
+  background: color-mix(in srgb, var(--et-danger) 15%, transparent);
   color: var(--et-danger);
-  border: 1px solid rgba(255, 77, 109, 0.3);
+  border: 1px solid color-mix(in srgb, var(--et-danger) 30%, transparent);
 }
+
+/* Light theme only: the translucent badge tint lifts the effective background
+ * luminance, so the token colours no longer reach 4.5:1 as badge text (the
+ * worst case is the tint composited over --et-surface-2 #EBF0F7). Dark theme
+ * keeps the brighter token text from the base rules above. Values are the
+ * lightest hue-preserving cuts that clear 4.5:1 on both --et-surface #FFFFFF
+ * and --et-surface-2 #EBF0F7, with a ~0.1 ratio safety margin. */
+.v-theme--m3Light .et-badge--amber { color: #98480A; }
+.v-theme--m3Light .et-badge--coral { color: #B5193A; }
+.v-theme--m3Light .et-badge--teal { color: #01704D; }
+.v-theme--m3Light .et-badge--cyan { color: #0367A1; }
 
 .et-ping-dot {
   width: 7px;

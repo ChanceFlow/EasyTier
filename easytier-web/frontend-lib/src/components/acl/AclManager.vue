@@ -22,12 +22,13 @@ function openMenu(e: Event) {
 }
 
 function addChain(type: AclChainType) {
-  let defaultName = ''
+  let baseName = ''
   switch (type) {
-    case AclChainType.Inbound: defaultName = 'Inbound'; break;
-    case AclChainType.Outbound: defaultName = 'Outbound'; break;
-    case AclChainType.Forward: defaultName = 'Forward'; break;
+    case AclChainType.Inbound: baseName = 'Inbound'; break;
+    case AclChainType.Outbound: baseName = 'Outbound'; break;
+    case AclChainType.Forward: baseName = 'Forward'; break;
   }
+  const defaultName = uniqueChainName(baseName)
 
   aclV1.value.chains.push({
     name: defaultName,
@@ -42,12 +43,31 @@ function addChain(type: AclChainType) {
   menuOpen.value = false
 }
 
-function removeChain(index: number) {
-  if (window.confirm(t('acl.delete_chain_confirm'))) {
-    aclV1.value.chains.splice(index, 1)
-    if (activeTab.value >= aclV1.value.chains.length) {
-      activeTab.value = Math.max(0, aclV1.value.chains.length)
-    }
+/** 同名链加序号,避免多个同类型链的 tab 标题完全一样 */
+function uniqueChainName(base: string) {
+  const existing = new Set(aclV1.value.chains.map(c => c.name))
+  if (!existing.has(base)) return base
+  let index = 2
+  while (existing.has(`${base} ${index}`)) index++
+  return `${base} ${index}`
+}
+
+const confirmDialog = ref(false)
+const pendingDeleteIndex = ref(-1)
+
+function askRemoveChain(index: number) {
+  pendingDeleteIndex.value = index
+  confirmDialog.value = true
+}
+
+function confirmRemoveChain() {
+  const index = pendingDeleteIndex.value
+  confirmDialog.value = false
+  pendingDeleteIndex.value = -1
+  if (index < 0) return
+  aclV1.value.chains.splice(index, 1)
+  if (activeTab.value >= aclV1.value.chains.length) {
+    activeTab.value = Math.max(0, aclV1.value.chains.length)
   }
 }
 
@@ -84,29 +104,35 @@ const tabs = computed(() => {
   result.push({ type: 'groups', label: t('acl.groups'), index: result.length })
   return result
 })
+
+// 当前激活的规则链(用于独立的删除工具栏;groups/empty tab 时为 null)
+const activeChainIndex = computed(() => {
+  const index = activeTab.value
+  return index >= 0 && index < aclV1.value.chains.length ? index : -1
+})
+
+const activeChain = computed(() => {
+  const index = activeChainIndex.value
+  return index >= 0 ? aclV1.value.chains[index] : null
+})
+
+const activeChainLabel = computed(() => {
+  const index = activeChainIndex.value
+  if (index < 0) return ''
+  return activeChain.value?.name || `${t('acl.chain_fallback_name', 'Chain')} ${index}`
+})
 </script>
 
 <template>
   <div class="d-flex flex-column ga-4">
     <div class="d-flex align-center acl-tabs-row">
-      <v-tabs v-model="activeTab" show-arrows density="comfortable" class="flex-grow-1">
+      <v-tabs v-model="activeTab" show-arrows density="comfortable" class="flex-grow-1 min-w-0">
         <v-tab v-for="tab in tabs" :key="tab.type + tab.index" :value="tab.index" class="acl-tab">
-          <div class="d-flex align-center ga-1">
-            <span class="whitespace-nowrap">{{ tab.label }}</span>
-            <v-btn
-              v-if="tab.type === 'chain'"
-              icon="mdi-close"
-              variant="text"
-              color="error"
-              size="x-small"
-              density="comfortable"
-              @click.stop="removeChain(tab.index)"
-            />
-          </div>
+          <span class="whitespace-nowrap">{{ tab.label }}</span>
         </v-tab>
       </v-tabs>
 
-      <v-btn icon="mdi-plus" variant="text" size="small" rounded @click="openMenu" />
+      <v-btn icon="mdi-plus" variant="text" size="small" rounded :aria-label="t('acl.add_chain', 'Add chain')" @click="openMenu" />
       <v-menu v-model="menuOpen" :position-x="menuX" :position-y="menuY" location="bottom end">
         <v-list density="comfortable" min-width="160">
           <v-list-item @click="addChain(AclChainType.Inbound)">
@@ -120,6 +146,19 @@ const tabs = computed(() => {
           </v-list-item>
         </v-list>
       </v-menu>
+    </div>
+
+    <!-- Active chain toolbar (delete lives outside the tab to avoid nested buttons) -->
+    <div v-if="activeChain" class="d-flex align-center justify-space-between acl-chain-toolbar px-1">
+      <span class="text-body-2 font-weight-medium text-truncate">{{ activeChainLabel }}</span>
+      <v-btn
+        icon="mdi-delete"
+        variant="text"
+        color="error"
+        size="small"
+        :aria-label="t('web.common.delete')"
+        @click="askRemoveChain(activeChainIndex)"
+      />
     </div>
 
     <!-- Tab content -->
@@ -154,6 +193,18 @@ const tabs = computed(() => {
         </div>
       </v-window-item>
     </v-window>
+
+    <!-- Delete chain confirm dialog -->
+    <v-dialog v-model="confirmDialog" max-width="420px" transition="dialog-bottom-transition">
+      <v-card :title="t('web.common.confirm')" rounded="xl">
+        <v-card-text>{{ t('acl.delete_chain_confirm') }}</v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" rounded="pill" @click="confirmDialog = false">{{ t('web.common.cancel') }}</v-btn>
+          <v-btn color="error" variant="flat" rounded="pill" @click="confirmRemoveChain">{{ t('web.common.delete') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -163,6 +214,9 @@ const tabs = computed(() => {
 }
 .acl-tab {
   text-transform: none;
+}
+.acl-chain-toolbar {
+  min-height: 40px;
 }
 .acl-empty {
   padding: 2rem 0;

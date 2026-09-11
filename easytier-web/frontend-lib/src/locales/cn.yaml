@@ -32,6 +32,7 @@ vpn_portal_client_virtual_ip_placeholder: 例如：10.126.126.10/24
 vpn_portal_client_groups: ACL 组
 vpn_portal_client_groups_placeholder: 选择 ACL 组
 vpn_portal_remove_client: 删除客户端
+vpn_portal_remove_client_confirm: 确定删除该 VPN Portal 客户端？
 dev_name: TUN接口名称
 advanced_settings: 高级设置
 basic_settings: 基础设置
@@ -42,6 +43,7 @@ rpc_portal_whitelists: RPC白名单
 config_network: 配置网络
 running: 运行中
 error_msg: 错误信息
+error: 错误
 detail: 详情
 add_new_network: 添加新网络
 add_peer_url: 添加节点
@@ -77,6 +79,8 @@ enable_auto_launch: 开启开机自启
 hide_dock_icon: 隐藏 Dock 图标
 show_dock_icon: 显示 Dock 图标
 exit: 退出
+exit_confirm_title: 退出 EasyTier
+exit_confirm_message: 退出后正在运行的组网可能仍保持连接，确定退出？
 chips_placeholder: 例如： {0}, 输入后在下拉框中选择生效
 show_node_details: 显示节点详细信息
 hide_node_details: 隐藏节点详细信息
@@ -90,6 +94,9 @@ config_file: 配置文件
 close: 关闭
 save: 保存
 config_saved: 配置已保存
+config_file_generating: 生成中…
+config_file_generate_failed: 生成配置失败
+config_file_save_failed: 保存配置失败
 
 use_latency_first: 延迟优先模式
 my_node_info: 当前节点信息
@@ -226,6 +233,7 @@ exit_nodes: 出口节点列表
 exit_nodes_help: 转发所有流量的出口节点，虚拟IPv4地址，优先级由列表顺序决定
   
 port_forwards: 端口转发
+port_forwards_remove_confirm: 确定删除该端口转发规则？
 port_forwards_help: "将本地端口转发到虚拟网络中的远程端口。例如：udp://0.0.0.0:12345/10.126.126.1:23456，表示将本地UDP端口12345转发到虚拟网络中的10.126.126.1:23456。可以指定多个。"
 port_forwards_bind_addr: "绑定地址，如：0.0.0.0"
 port_forwards_dst_addr: "目标地址，如：10.126.126.1"
@@ -315,6 +323,18 @@ flags_group:
   p2p: 节点连通
   stack: 网卡与协议栈
   security: 安全与隐私
+
+preset:
+  section_title: 网络优化预设
+  section_hint: 一键优化协议与路由特性
+  gaming_name: 低延迟 · 游戏
+  gaming_desc: 延迟优先 · 多线程 · 强制直连
+  compat_name: 极限穿透 · 漫游
+  compat_desc: KCP + QUIC 代理 · 广域中继
+  secure_name: 严格安全 · 私网
+  secure_desc: 严格 P2P · 私有模式 · 强加密
+  default_name: 标准均衡模式
+  default_desc: 推荐配置 · 平衡功耗与性能
 
 port_forwards_bind_port: 绑定端口
 port_forwards_dst_port: 目标端口
@@ -428,7 +448,9 @@ web:
   device_management:
     edit_network: 编辑网络
     export_config: 导出配置
+    export_config_success: 配置已导出
     delete_network: 删除网络
+    delete_network_confirm: 确定删除该网络？此操作无法撤销。
     network: 网络
     select_network: 选择网络
     create_network: 创建网络
@@ -438,6 +460,7 @@ web:
     save_config: 保存
     config_saved: 配置已保存
     import_config: 导入
+    import_config_invalid: 所选文件不是有效的配置文件
     create_new: 创建新网络
     network_status: 网络状态
     loading_network_status: 正在加载网络状态
@@ -478,6 +501,10 @@ web:
     enable: 开启
     disable: 关闭
     address: 地址
+    help: 帮助
+    move_up: 上移
+    move_down: 下移
+    more_actions: 更多操作
 
   settings:
     title: 设置
@@ -549,6 +576,9 @@ acl:
   forward: 转发
   rules: 规则
   add_rule: 添加规则
+  add_chain: 添加规则链
+  chain_fallback_name: 规则链
+  drag_to_reorder: 拖动以重新排序
   edit_rule: 编辑规则
   rule:
     name: 规则名称
