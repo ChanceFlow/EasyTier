@@ -67,10 +67,18 @@ class StartVpnArgs {
 @TauriPlugin
 class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
     companion object {
+        // Tile bridge (upstream #2511): EasyTierVpnTileService hands the pending
+        // quick-settings action to this plugin through dispatchTileAction().
         @Volatile
         private var tileActionCallback: (String) -> Boolean = { false }
 
         fun dispatchTileAction(action: String): Boolean = tileActionCallback(action)
+
+        // Contract: must match MainForegroundService.CHANNEL_ID / NOTIFICATION_ID across modules
+        private const val NOTIFY_CHANNEL_ID = "easytier_channel_v2"
+        private const val OLD_NOTIFY_CHANNEL_ID = "easytier_channel"
+        private const val NOTIFY_ID = 1355
+        private const val WATCHDOG_TIMEOUT_MS = 15000L
     }
 
     private val implementation = Example()
@@ -486,13 +494,6 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         return "$num ${units[i]}"
     }
 
-    companion object {
-        // Contract: must match MainForegroundService.CHANNEL_ID / NOTIFICATION_ID across modules
-        private const val NOTIFY_CHANNEL_ID = "easytier_channel_v2"
-        private const val OLD_NOTIFY_CHANNEL_ID = "easytier_channel"
-        private const val NOTIFY_ID = 1355
-        private const val WATCHDOG_TIMEOUT_MS = 15000L
-    }
     fun consumeVpnTileAction(invoke: Invoke) {
         val ret = JSObject()
         ret.put("action", EasyTierVpnTileService.consumePendingAction(activity))
