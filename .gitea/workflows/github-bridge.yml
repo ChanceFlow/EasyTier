@@ -39,6 +39,7 @@ jobs:
     runs-on: et-glue
     env:
       ET_SERVER_URL: ${{ secrets.ET_SERVER_URL }}
+      ET_HTTP_PROXY: ${{ secrets.ET_HTTP_PROXY }}
       ET_TOKEN: ${{ secrets.ET_TOKEN }}
       GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
       DISPATCH_BUILDS: ${{ github.event.inputs.dispatch_builds }}  # 'inputs' ctx renders empty on dispatch in this Gitea
@@ -54,11 +55,16 @@ jobs:
           # A job container cannot reach Gitea directly, and that is measured, not
           # assumed: it sits on its own per-job podman network (10.89.x.0/24, no
           # `gitea` DNS entry), and every direct address - the host gateway, the
-          # LAN IPs, the VPN IP - simply drops the connection. The job's HTTP
-          # proxy is the one path that works. The runner sets it, but its NO_PROXY
-          # also lists the Gitea host, which makes curl and git bypass the proxy
-          # and hang for ~135 s. Clearing that is the actual fix.
-          export NO_PROXY="localhost,127.0.0.1,::1" no_proxy="localhost,127.0.0.1,::1"
+          # LAN IPs, the VPN IP - simply drops the connection. The only path that
+          # works is the LAN HTTP proxy, so send everything through it. The
+          # runner's `container.envs` do not reach job containers here (measured:
+          # HTTP_PROXY is absent from the job env), hence the explicit export.
+          if [ -n "${ET_HTTP_PROXY:-}" ]; then
+            export HTTP_PROXY="$ET_HTTP_PROXY" HTTPS_PROXY="$ET_HTTP_PROXY" \
+                   http_proxy="$ET_HTTP_PROXY" https_proxy="$ET_HTTP_PROXY"
+            # Only loopback bypasses the proxy; Gitea has to go through it too.
+            export NO_PROXY="localhost,127.0.0.1,::1" no_proxy="localhost,127.0.0.1,::1"
+          fi
 
           if [ -z "${ET_SERVER_URL:-}" ]; then
             echo "error: secret ET_SERVER_URL is not set" >&2; exit 1
