@@ -1,0 +1,78 @@
+# TEMPORARY diagnostic - delete after use.
+#
+# The et-glue jobs run in a per-job podman network, not postgresql_default,
+# so it is not obvious which address reaches Gitea from inside a job
+# container. This workflow probes the candidates from inside one.
+name: et-glue netprobe
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    # Alpine /bin/sh is busybox ash; the probes below use bash features.
+    shell: bash
+
+jobs:
+  probe:
+    runs-on: et-glue
+    steps:
+      - name: Probe network reachability to Gitea
+        run: |
+          set -uo pipefail
+          echo "== env var names (values not printed) =="
+          env | cut -d= -f1 | sort | tr '\n' ' '; echo
+          echo
+          echo "== /etc/hosts =="; cat /etc/hosts
+          echo
+          echo "== /etc/resolv.conf =="; cat /etc/resolv.conf 2>/dev/null || echo "(none)"
+          echo
+          echo "== interfaces =="; ip -4 addr show 2>/dev/null | grep -E '^[0-9]+:|inet '
+          echo
+          echo "== routes =="; ip route 2>/dev/null
+          GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+          echo "gw=${GW:-none}"
+          echo
+          echo "== name resolution =="
+          for h in gitea postgres host.containers.internal host.docker.internal; do
+            printf '  %-28s -> ' "$h"
+            getent hosts "$h" 2>/dev/null | head -1 || echo "NO RESULT"
+          done
+          echo
+          echo "== tcp connect (3s) =="
+          probe() {
+            local hp="$1" h="${1%%:*}" p="${1##*:}"
+            if timeout 3 bash -c "exec 3<>/dev/tcp/$h/$p" 2>/dev/null; then
+              echo "  OK    $hp"
+            else
+              echo "  FAIL  $hp"
+            fi
+          }
+          for hp in gitea:3000 postgres:5432 \
+                    host.containers.internal:3000 host.docker.internal:3000 \
+                    10.100.0.1:3000 10.0.8.5:3000 192.168.1.104:3000 \
+                    10.100.0.6:7890; do
+            probe "$hp"
+          done
+          [ -n "$GW" ] && probe "$GW:3000"
+          echo
+          echo "== http GET (noproxy, 4s) =="
+          for u in http://gitea:3000/api/v1/version \
+                   http://host.containers.internal:3000/api/v1/version \
+                   http://host.docker.internal:3000/api/v1/version \
+                   http://10.100.0.1:3000/api/v1/version \
+                   http://10.0.8.5:3000/api/v1/version \
+                   http://192.168.1.104:3000/api/v1/version; do
+            printf '  %-52s -> ' "$u"
+            code=$(curl -s --noproxy '*' --max-time 4 -o /dev/null -w '%{http_code}' "$u" 2>/dev/null)
+            echo "${code:-000}"
+          done
+          echo
+          echo "== through the job proxy (6s) =="
+          printf '  proxy -> 10.100.0.1:3000  '
+          curl -s --max-time 6 -x http://10.100.0.6:7890 -o /dev/null -w '%{http_code}\n' \
+            http://10.100.0.1:3000/api/v1/version 2>/dev/null || echo "FAIL"
+          echo
+          echo "== default gateway http =="
+          [ -n "$GW" ] && { printf '  http://%s:3000  ' "$GW"; curl -s --noproxy '*' --max-time 4 -o /dev/null -w '%{http_code}\n' "http://$GW:3000/api/v1/version" 2>/dev/null || echo FAIL; }
+          echo "== probe done =="
