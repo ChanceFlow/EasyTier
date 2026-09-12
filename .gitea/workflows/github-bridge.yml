@@ -28,6 +28,12 @@ on:
 env:
   GH_REPO: ChanceFlow/EasyTier
 
+defaults:
+  run:
+    # Pinned because the et-glue runner image is Alpine, where /bin/sh is
+    # busybox ash: it chokes on `[[ ]]` and array append. Do not remove.
+    shell: bash
+
 jobs:
   bridge:
     runs-on: et-glue

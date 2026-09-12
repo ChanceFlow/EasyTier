@@ -48,6 +48,12 @@ concurrency:
   group: mirror-github-release
   cancel-in-progress: false
 
+defaults:
+  run:
+    # Pinned because the et-glue runner image is Alpine, where /bin/sh is
+    # busybox ash: it chokes on `[[ ]]` and array append. Do not remove.
+    shell: bash
+
 jobs:
   mirror:
     runs-on: et-glue
@@ -79,7 +85,7 @@ jobs:
           if [[ -z "$VERSION" ]]; then
             echo "==> resolving latest GitHub release of $SOURCE_REPO"
             VERSION=$(curl -fsSL "${GH[@]}" "$GH_API/repos/$SOURCE_REPO/releases/latest" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+              | jq -r '.tag_name')
           fi
           echo "==> mirroring $SOURCE_REPO/$VERSION"
 
@@ -95,23 +101,18 @@ jobs:
           relg=$(curl -fsS "$API/releases/tags/$VERSION" -H "$AUTH" 2>/dev/null || true)
           if [[ -z "$relg" ]]; then
             echo "==> creating gitea release"
-            reljson=$(ghrel="$ghrel" VERSION="$VERSION" TS="$TS" python3 -c '
-          import json, os
-          rel = json.loads(os.environ["ghrel"])
-          print(json.dumps({
-              "tag_name": os.environ["VERSION"],
-              "name": rel.get("name") or os.environ["VERSION"],
-              "body": (rel.get("body") or "")[:20000],
-              "draft": False,
-              "prerelease": bool(rel.get("prerelease")),
-              "target_commitish": os.environ["TS"],
-          }))')
+            reljson=$(jq -n --argjson rel "$ghrel" --arg version "$VERSION" --arg ts "$TS" '{
+                tag_name: $version,
+                name: ($rel.name // $version),
+                body: (($rel.body // "")[:20000]),
+                draft: false,
+                prerelease: ($rel.prerelease // false),
+                target_commitish: $ts,
+              }')
             relg=$(curl -fsS -X POST "$API/releases" -H "$AUTH" \
               -H "Content-Type: application/json" -d "$reljson")
           fi
-          RID=$(printf '%s' "$relg" | python3 -c '
-          import json, sys
-          print(json.load(sys.stdin)["id"])')
+          RID=$(printf '%s' "$relg" | jq -r '.id')
           echo "gitea release id: $RID"
 
           # idempotency: name + asset id already attached on gitea.
@@ -120,15 +121,9 @@ jobs:
           # failed download can never leave the release with fewer files.
           [[ "${OVERWRITE:-false}" == "true" ]] || OVERWRITE=false
           echo "overwrite mode: $OVERWRITE"
-          existing=$(printf '%s' "$relg" | python3 -c '
-          import json, sys
-          for a in json.load(sys.stdin).get("assets", []):
-              print(str(a["id"]) + "\t" + a["name"])' 2>/dev/null || true)
+          existing=$(printf '%s' "$relg" | jq -r '.assets[]? | "\(.id)\t\(.name)"' 2>/dev/null || true)
 
-          printf '%s' "$ghrel" | python3 -c '
-          import json, sys
-          for a in json.load(sys.stdin).get("assets", []):
-              print(a["name"] + "\t" + a["browser_download_url"])' > /tmp/assets.tsv
+          printf '%s' "$ghrel" | jq -r '.assets[]? | "\(.name)\t\(.browser_download_url)"' > /tmp/assets.tsv
 
           total=$(wc -l < /tmp/assets.tsv)
           count=0
@@ -146,12 +141,7 @@ jobs:
               # name with a NEW asset id since our snapshot; delete every id
               # that currently carries the name, tolerating vanished assets.
               cur=$(curl -fsS "$API/releases/$RID" -H "$AUTH" \
-                | FNAME="$fname" python3 -c '
-          import json, os, sys
-          name = os.environ["FNAME"]
-          for a in json.load(sys.stdin).get("assets", []):
-              if a["name"] == name:
-                  print(a["id"])' 2>/dev/null || true)
+                | jq -r --arg n "$fname" '.assets[]? | select(.name == $n) | .id' 2>/dev/null || true)
               if [[ -z "$cur" ]]; then
                 cur="$aid"
               fi
