@@ -4,8 +4,13 @@
 #   .gitea/workflows/github-bridge.yml          (fast-forward the GitHub fork with main)
 #   .gitea/workflows/mirror-github-release.yml  (copy GitHub release assets back to Gitea)
 #
-# The runner host maps its `et-glue` label to the image `et-glue:latest`, so
-# that is the exact name that must exist on the host:
+# The runner host maps its `et-glue` label to the image `et-glue:latest`
+# (act_runner_glue/config.yaml: `et-glue:docker://et-glue:latest`), so that is
+# the exact name that must exist in the storage of the runtime the runner
+# talks to - which on this host is **rootful** podman, because act_runner runs
+# with DOCKER_HOST=unix:///run/podman/podman.sock. A `podman build` as a normal
+# user lands in rootless storage and is invisible to the runner; note it and
+# load into root:
 #
 #   docker build -t et-glue:latest docker/et-glue          # or: podman build
 #
@@ -17,9 +22,12 @@
 #   podman save --format docker-archive -o et-glue.tar docker.io/library/et-glue:latest
 #   gzip -9 et-glue.tar                                    # ~24 MB -> ~11 MB
 #   # on the runner host:
-#   docker load -i et-glue.tar.gz                          # docker reads gzip
-#   podman load -i et-glue.tar.gz                          # podman ignores the name; then:
-#   #   podman tag docker.io/library/et-glue:latest et-glue:latest
+#   sudo podman load -i et-glue.tar.gz                     # rootful - the runner's runtime
+#   sudo docker load -i et-glue.tar.gz                     # ...or docker, if that is what it uses
+#
+# Verified against podman's docker-compat API (the exact call act_runner makes):
+# POST /containers/create with Image=et-glue:latest answers 201 once the image
+# is loaded, so the short name does resolve to docker.io/library/et-glue:latest.
 #
 # What the two jobs actually invoke is the whole spec: bash (`[[ ]]`,
 # `set -euo pipefail`), git (clone/push over https), curl, jq (release JSON)
