@@ -7,6 +7,14 @@ name: et-glue netprobe
 
 on:
   workflow_dispatch:
+    # Gitea does not register a dispatchable workflow when `workflow_dispatch:`
+    # has no inputs: the API answers 204 but creates no run. Hence this no-op.
+    inputs:
+      note:
+        description: 'free-form note, unused'
+        type: string
+        default: ''
+        required: false
 
 defaults:
   run:
