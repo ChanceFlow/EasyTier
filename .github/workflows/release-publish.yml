@@ -22,10 +22,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          found=0
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=5" \
-            --jq '.[] | select(.draft) | .id' | while read -r id; do
-              [ -n "$id" ] || continue
-              gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f draft=false >/dev/null
-              echo "==> published release $id"
-            done
+          # Only the release this assembly just created/updated. Matching EVERY
+          # draft published unrelated ones the moment this ran (an old test
+          # build and an aborted prerelease, whose assets then sat under the
+          # wrong version tag). A freshly assembled draft is touched seconds
+          # ago, so a 30 minute window isolates it.
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=10" \
+            --jq '.[] | select(.draft) | select((.updated_at | fromdateiso8601) > (now - 1800)) | .id' \
+            | while read -r id; do
+                [ -n "$id" ] || continue
+                gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f draft=false >/dev/null
+                echo "==> published release $id"
+              done
