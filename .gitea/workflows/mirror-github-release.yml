@@ -70,12 +70,54 @@ jobs:
       - name: Mirror release and assets
         run: |
           set -euo pipefail
-          if [[ -z "$ET_SERVER_URL" || -z "$ET_TOKEN" ]]; then
-            echo "error: secrets ET_SERVER_URL / ET_TOKEN are not set" >&2
+          if [[ -z "${ET_TOKEN:-}" ]]; then
+            echo "error: secret ET_TOKEN is not set" >&2
             exit 1
           fi
+
+          # The job container runs on its own podman network, not the runner's,
+          # so the address in secrets.ET_SERVER_URL (the VPN/LAN one, correct for
+          # the easytier-builder jobs) is usually unroutable from here. Probe the
+          # candidates and keep the first that answers, so this job does not
+          # depend on how the runner happens to wire up the container.
+          # --noproxy is required: HTTP_PROXY is set for the job and would
+          # otherwise send container-internal names to the proxy.
+          GITEA_BASE=""
+          try_base() {
+            printf '  gitea candidate %-44s ' "$1"
+            if curl -fsS --noproxy '*' --max-time 5 -o /dev/null "$1/api/v1/version" 2>/dev/null; then
+              echo "reachable"; GITEA_BASE="$1"; return 0
+            fi
+            echo "unreachable"; return 1
+          }
+          for cand in "${ET_SERVER_URL:-}" \
+                      http://gitea:3000 \
+                      http://host.containers.internal:3000 \
+                      http://host.docker.internal:3000; do
+            [ -n "$cand" ] || continue
+            if try_base "$cand"; then break; fi
+          done
+          if [ -z "$GITEA_BASE" ]; then
+            GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+            [ -n "$GW" ] && { if try_base "http://$GW:3000"; then :; fi; }
+          fi
+          # Last resort: the job proxy is on the LAN and may reach the real address.
+          if [ -z "$GITEA_BASE" ] && [ -n "${ET_SERVER_URL:-}" ]; then
+            printf '  gitea candidate %-44s ' "$ET_SERVER_URL (via \$HTTP_PROXY)"
+            if curl -fsS --max-time 8 -o /dev/null "$ET_SERVER_URL/api/v1/version" 2>/dev/null; then
+              echo "reachable"; GITEA_BASE="$ET_SERVER_URL"
+            else
+              echo "unreachable"
+            fi
+          fi
+          if [ -z "$GITEA_BASE" ]; then
+            echo "error: no reachable Gitea base URL (tried ET_SERVER_URL, gitea, host.containers.internal, gateway, proxy)" >&2
+            exit 1
+          fi
+          echo "==> gitea base: $GITEA_BASE"
+
           GH_API="https://api.github.com"
-          API="$ET_SERVER_URL/api/v1/repos/${{ github.repository }}"
+          API="$GITEA_BASE/api/v1/repos/${{ github.repository }}"
           AUTH="Authorization: token $ET_TOKEN"
           GH=(-s)
           if [[ -n "${GH_RO_TOKEN:-}" ]]; then GH+=(-H "Authorization: Bearer $GH_RO_TOKEN"); fi
