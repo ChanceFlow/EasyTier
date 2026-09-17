@@ -1,0 +1,324 @@
+/* ============================================================================
+ * EasyTier Design System — v2 "Instrument"
+ *
+ * 单一事实来源。应用侧不要再写死 hex，一律引用这里的语义变量。
+ *
+ * 命名约定：
+ *   --et-*        语义令牌（主题无关的意图）—— 组件只用这一层
+ *   --et-<role>-<n>  同一语义的层级
+ *
+ * 双模：默认跟随 <html data-theme="dark|light">，也支持
+ *       <html class="v-theme--m3Dark|m3Light">（兼容 Vuetify 现有 class）。
+ *
+ * 对比度全部经 scripts/check-contrast.py 程序化验证，
+ * 正文/次要文本 >= 4.5:1，控件边界与状态信号 >= 3:1。
+ * ==========================================================================*/
+
+:root {
+  /* ---- 排版族 ---------------------------------------------------------- */
+  /* 用应用内嵌的 ET Sans / ET Mono（MiSans 子集 / JetBrains Mono 子集，
+   * woff2 按 unicode-range 切片，见 frontend-lib/src/assets/fonts 与随附
+   * LICENSE）。**不要改成 Google Fonts**：Android 端要离线可用，联网取字体
+   * 会闪字、失败时掉回系统字，且引入第三方运行时依赖。 */
+  --et-font-ui: "ET Sans", "MiSans", "Segoe UI Variable Display", "Segoe UI",
+    "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+    "HarmonyOS Sans", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --et-font-data: "ET Mono", "JetBrains Mono", "SF Mono", "Cascadia Mono",
+    "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
+  /* 只有 400/500/600 三档被内嵌，font-synthesis:none 下 700 会解析到 600 */
+
+  /* ---- 字阶（手机优先，1.125 邻近比）------------------------------------ */
+  --et-font-micro: 11px;   /* 徽标、单位 */
+  --et-font-caption: 12px; /* 辅助说明。不得承载关键信息 */
+  --et-font-body-sm: 14px; /* 密集行（compact 档降到 13）*/
+  --et-font-body: 16px;    /* 正文。手机正文下限 16px——低于此 iOS 会强行缩放、可读性差 */
+  --et-font-title: 17px;   /* 卡片标题 */
+  --et-font-headline: 20px;
+  --et-font-display: 28px; /* 大状态数字 */
+  --et-font-hero: 40px;    /* 首页唯一主数字 */
+
+  /* 流式字号：Text Reflow 要求内容驱动高度，不靠固定宽高裁切 */
+  --et-font-display-fluid: clamp(22px, 5vw, 28px);
+  --et-font-hero-fluid: clamp(32px, 9vw, 44px);
+
+  --et-leading-tight: 1.2;
+  --et-leading-normal: 1.5;
+  --et-leading-loose: 1.65;
+
+  --et-weight-regular: 400;
+  --et-weight-medium: 500;
+  --et-weight-semibold: 600;
+
+  /* 数字一律等宽对齐，否则列会跳 */
+  --et-numeric: tabular-nums;
+
+  /* ---- 间距（4 基准）--------------------------------------------------- */
+  --et-space-1: 4px;
+  --et-space-2: 8px;
+  --et-space-3: 12px;
+  --et-space-4: 16px;
+  --et-space-5: 20px;
+  --et-space-6: 24px;
+  --et-space-8: 32px;
+  --et-space-10: 40px;
+  --et-space-12: 48px;
+  --et-space-16: 64px;
+
+  /* ---- 圆角 ------------------------------------------------------------ */
+  --et-radius-xs: 4px;
+  --et-radius-sm: 8px;   /* 输入框、小控件 */
+  --et-radius-md: 12px;  /* 卡片 */
+  --et-radius-lg: 16px;  /* 底部面板 */
+  --et-radius-xl: 24px;  /* 模态 */
+  --et-radius-pill: 999px;
+
+  /* ---- 触达尺寸 -------------------------------------------------------- */
+  /* 三个平台的数字不可混为一谈：
+   *   iOS 44pt / Android 48dp / Web(WCAG 2.5.8) 24 CSS px（有间距等例外）。
+   * 取大者做移动端触达高度；Web 另有 --et-touch-web 的下限。 */
+  --et-touch: 48px;
+  --et-touch-min: 44px;
+  --et-touch-web: 24px;
+  --et-touch-gap: 8px;   /* 相邻触达目标的最小间距，防误触 */
+
+  /* 安全区：刘海/手势条。所有固定头尾栏必须让位 */
+  --et-safe-top: env(safe-area-inset-top, 0px);
+  --et-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --et-safe-left: env(safe-area-inset-left, 0px);
+  --et-safe-right: env(safe-area-inset-right, 0px);
+
+  /* 粘性栏高度：滚动的锚点必须带 scroll-padding，否则焦点会被栏挡住 */
+  --et-sticky-h: 56px;
+
+  /* ---- 动效 ------------------------------------------------------------ */
+  /* 退出比进入快：用户已经决定离开，不该等动画。 */
+  --et-dur-instant: 90ms;
+  --et-dur-fast: 140ms;
+  --et-dur-base: 200ms;
+  --et-dur-slow: 280ms;
+  --et-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --et-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --et-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  /* 悬停反馈用 power1.out：位移必须 <2px，读起来是"反馈"而不是"运动" */
+  --et-ease-hover: cubic-bezier(0.25, 0.8, 0.25, 1);
+  --et-hover-shift: -1px;
+  --et-hover-dur: 180ms;
+
+  /* ---- 层级（z-index 语义化，禁止裸数字）------------------------------- */
+  --et-z-base: 0;
+  --et-z-sticky: 100;
+  --et-z-nav: 200;
+  --et-z-sheet: 300;
+  --et-z-dialog: 400;
+  --et-z-toast: 500;
+  --et-z-tooltip: 600;
+
+  /* ---- 密度档 ---------------------------------------------------------- */
+  /* 手机默认 comfort；控制台/桌面切 compact，同一套令牌两档信息量。 */
+  --et-row-h: 56px;
+  --et-pad-card: var(--et-space-4);
+  --et-gap-stack: var(--et-space-3);
+}
+
+/* ============================================================================
+ * 暗色（默认）—— 不是纯黑：纯黑上边框与阴影全失效，分层会塌掉。
+ * ==========================================================================*/
+:root,
+[data-theme='dark'],
+.v-theme--m3Dark {
+  color-scheme: dark;
+
+  /* 表面：4 级，靠明度差分层，不靠阴影 */
+  --et-bg: #0a0e14;
+  --et-surface-1: #111823;
+  --et-surface-2: #18202e;
+  --et-surface-3: #1f2938;
+  --et-surface-sunken: #070a10;
+
+  --et-border: rgba(255, 255, 255, 0.08);          /* 装饰性分隔，无对比度要求 */
+  --et-border-strong: rgba(255, 255, 255, 0.16);   /* 更强的装饰边界 */
+  /* 交互控件（输入框/开关/下拉）的边界：WCAG 1.4.11 要求 >= 3:1。
+     16% 白只有 1.6:1 —— 这就是旧版输入框在暗色下"没有边框"的原因。 */
+  --et-control-border: #6e7a8c;
+  --et-scrim: rgba(4, 7, 12, 0.72);
+
+  /* 文本 */
+  --et-text: #e9eef6;
+  --et-text-2: #9ba8bc;
+  --et-text-3: #7c8aa0;
+  --et-text-disabled: #66738c;
+
+  /* 语义色 */
+  --et-accent: #2de0b0;        /* 活着 / 已连接 / 主操作 */
+  --et-on-accent: #04211a;
+  --et-accent-quiet: #123a31;  /* accent 的低饱和底 */
+  --et-info: #5ab0ff;          /* 同步中 / 中性信息 */
+  --et-on-info: #041628;
+  --et-info-quiet: #10263a;
+  --et-warn: #ffb020;          /* 降级 / 需要留意 */
+  --et-on-warn: #2a1c00;
+  --et-warn-quiet: #33260a;
+  --et-danger: #ff6b87;        /* 失败 / 断开 / 破坏性操作 */
+  --et-on-danger: #3b0608;
+  --et-danger-quiet: #35131c;
+  --et-neutral: #8a97ad;       /* 未开始 / 未知 */
+  --et-neutral-quiet: #1a2130;
+
+  --et-focus: #7ce8ff;         /* 焦点环，必须与 accent 可区分 */
+
+  --et-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --et-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --et-shadow-3: 0 12px 40px rgba(0, 0, 0, 0.6);
+
+  /* ---- v1 兼容别名（迁移期专用，删完即迁移完成）-------------------------
+   * 旧代码继续用 v1 名字，但立刻吃到 v2 的值 —— 所以不必一次性改完 1 万行。
+   * 必须写在主题块内而不是 :root：v1 的 .v-theme--m3Light 优先级更高，
+   * 放 :root 会被它压过去，亮色下就还是旧值。 */
+  --et-surface: var(--et-surface-1);
+  --et-text-secondary: var(--et-text-2);
+  --et-text-tertiary: var(--et-text-3);
+  --et-warning: var(--et-warn);
+  --et-accent-dim: var(--et-accent-quiet);
+  --et-radius: var(--et-radius-md);
+  --et-border-hairline: var(--et-border);
+  --et-nav-height: var(--et-sticky-h);
+  --et-tab-height: 54px;
+  --font-sans: var(--et-font-ui);
+  --font-mono: var(--et-font-data);
+  --fw-regular: var(--et-weight-regular);
+  --fw-medium: var(--et-weight-medium);
+  --fw-semibold: var(--et-weight-semibold);
+  --fw-bold: var(--et-weight-semibold);  /* 只内嵌 400/500/600 */
+  --et-cyan: var(--et-info);
+  --et-cyan-dim: var(--et-info-quiet);
+  --et-green: var(--et-accent);
+  /* v1 的霓虹发光是本次要淘汰的反模式，收敛成低强度 accent 光晕 */
+  --et-glow: rgba(45, 224, 176, 0.28);
+  --et-glow-cyan: rgba(90, 176, 255, 0.28);
+}
+
+/* ============================================================================
+ * 亮色
+ * ==========================================================================*/
+[data-theme='light'],
+.v-theme--m3Light {
+  color-scheme: light;
+
+  --et-bg: #f5f7fa;
+  --et-surface-1: #ffffff;
+  --et-surface-2: #eef2f7;
+  --et-surface-3: #ffffff;
+  --et-surface-sunken: #e8edf4;
+
+  --et-border: rgba(13, 20, 32, 0.1);
+  --et-border-strong: rgba(13, 20, 32, 0.2);
+  --et-control-border: #838b99;                    /* 同上，>= 3:1 */
+  --et-scrim: rgba(13, 20, 32, 0.45);
+
+  --et-text: #0d1420;
+  --et-text-2: #46536b;
+  --et-text-3: #5e6a80;
+  --et-text-disabled: #7c8598;
+
+  --et-accent: #00795f;
+  --et-on-accent: #ffffff;
+  --et-accent-quiet: #d6f2ea;
+  --et-info: #0b5fa5;
+  --et-on-info: #ffffff;
+  --et-info-quiet: #dbeafe;
+  --et-warn: #8a5300;
+  --et-on-warn: #ffffff;
+  --et-warn-quiet: #fdf0d5;
+  --et-danger: #b3123a;
+  --et-on-danger: #ffffff;
+  --et-danger-quiet: #fde2e8;
+  --et-neutral: #5e6a80;
+  --et-neutral-quiet: #eef2f7;
+
+  --et-focus: #0b5fa5;
+
+  --et-shadow-1: 0 1px 2px rgba(13, 20, 32, 0.06);
+  --et-shadow-2: 0 4px 16px rgba(13, 20, 32, 0.1);
+  --et-shadow-3: 0 12px 40px rgba(13, 20, 32, 0.16);
+
+  /* v1 兼容别名 —— 见暗色块的说明 */
+  --et-surface: var(--et-surface-1);
+  --et-text-secondary: var(--et-text-2);
+  --et-text-tertiary: var(--et-text-3);
+  --et-warning: var(--et-warn);
+  --et-accent-dim: var(--et-accent-quiet);
+  --et-radius: var(--et-radius-md);
+  --et-border-hairline: var(--et-border);
+  --et-nav-height: var(--et-sticky-h);
+  --et-tab-height: 54px;
+  --font-sans: var(--et-font-ui);
+  --font-mono: var(--et-font-data);
+  --fw-regular: var(--et-weight-regular);
+  --fw-medium: var(--et-weight-medium);
+  --fw-semibold: var(--et-weight-semibold);
+  --fw-bold: var(--et-weight-semibold);
+  --et-cyan: var(--et-info);
+  --et-cyan-dim: var(--et-info-quiet);
+  --et-green: var(--et-accent);
+  --et-glow: rgba(0, 121, 95, 0.22);
+  --et-glow-cyan: rgba(11, 95, 165, 0.22);
+}
+
+/* 紧凑档：控制台 / 桌面 */
+[data-density='compact'] {
+  --et-row-h: 36px;
+  --et-pad-card: var(--et-space-3);
+  --et-gap-stack: var(--et-space-2);
+  --et-font-body: 13px;
+  --et-font-body-sm: 13px;
+  --et-font-title: 15px;
+  --et-font-display: 22px;
+  --et-touch: 32px;
+  --et-hover-shift: -1px;
+}
+
+/* ============================================================================
+ * 全局基线 —— 这几条是 UX 指南里"做不到就出 bug"的部分，必须在根上设一次。
+ * ==========================================================================*/
+html {
+  /* 粘性头/底栏会挡住键盘焦点，scroll-padding 是 WCAG 2.4.11 的解 */
+  scroll-padding-top: calc(var(--et-sticky-h) + var(--et-space-4));
+  scroll-padding-bottom: calc(var(--et-touch) + var(--et-space-4));
+  /* 平滑滚动属于动效，reduced-motion 下会被下面的块关掉 */
+  scroll-behavior: smooth;
+  /* 移动端禁止横向溢出：任何超宽内容必须在自己的容器里滚 */
+  overflow-x: hidden;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* 行高必须无单位，否则子元素继承到固定像素、放大字号时会重叠 */
+  line-height: var(--et-leading-normal);
+}
+
+/* 长 token（IPv6、base64 密钥、URL）不得撑破容器 */
+.et-token {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* 需要单行截断的紧凑标签：只约束不可预测的值，且必须能拿到全文 */
+.et-nowrap {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --et-dur-instant: 0ms;
+    --et-dur-fast: 0ms;
+    --et-dur-base: 0ms;
+    --et-dur-slow: 0ms;
+    --et-hover-dur: 0ms;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
