@@ -138,17 +138,42 @@ v2 的判据只有一条：**这个屏幕在回答哪一个问题？** 答不出
 - `v-for` 缺 `:key`；用下标当 key。
 - `outline: none` 无替代；禁止缩放（`user-scalable=no`）。
 
-## 11. 自动化门禁
+## 11. 令牌的分发与迁移
+
+**单一来源**：`design-system/easytier/tokens.css`。它会被同步成
+`easytier-web/frontend-lib/src/tokens.css`（带「自动生成请勿手改」banner）：
 
 ```bash
-python3 design-system/easytier/check-contrast.py   # 60 项对比度断言，失败即非零
-python3 design-system/easytier/lint-design.py      # 静态规则，Critical/High 非零
+python3 design-system/easytier/sync-tokens.py           # 写入副本
+python3 design-system/easytier/sync-tokens.py --check   # CI 校验漂移
 ```
 
-两个脚本都是零依赖、纯标准库，可直接进 CI。**当前基线：对比度 60/60 通过；
-lint 79 处命中，其中 14 处阻断（12 个可点 div + 2 个 emoji 图标）—— 这 14 处是第一批要修的。**
+副本在 `easytier-frontend-lib.ts` 里 **import 在 `./style.css` 之后**——这一点不能改：
+v1 的令牌也在 `:root` / `.v-theme--m3Light` 里定义，同优先级只能靠源码顺序决胜。
 
-## 12. 验证清单（合并前逐条过）
+**迁移桥**：tokens.css 在两个主题块内提供了 v1 名字的兼容别名
+（`--et-surface` → `--et-surface-1`、`--et-text-secondary` → `--et-text-2`、
+`--font-sans` → `--et-font-ui` 等）。所以 v1 代码不改编也能立刻吃到 v2 的值。
+别名必须写在**主题块内**而不是 `:root`：v1 的 `.v-theme--m3Light` 优先级更高，放 `:root` 会被压过去。
+
+迁移策略：**每改完一个组件，就删掉它用到的那几行别名**。别名清空 = 迁移完成。
+不要在别名还在时又加新的 v1 名字用法。
+
+## 12. 自动化门禁
+
+```bash
+python3 design-system/easytier/sync-tokens.py --check   # 令牌副本未漂移
+python3 design-system/easytier/check-contrast.py        # 60 项对比度断言
+python3 design-system/easytier/lint-design.py           # 静态规则，Critical/High 非零
+```
+
+三个脚本零依赖、纯标准库，可直接进 CI。
+
+**当前基线（迁移开始时）**：对比度 60/60 通过；lint 79 处命中 / **14 处阻断**
+（12 个可点 div + 2 个 emoji 图标）。这 14 处由 v2 迁移的第一批模块负责清零，
+清完后 `.github/workflows/design-gate.yml` 才转为硬门禁。
+
+## 13. 验证清单（合并前逐条过）
 
 - [ ] `check-contrast.py` 全绿
 - [ ] `lint-design.py` 无 Critical/High

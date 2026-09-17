@@ -767,6 +767,31 @@ secret: 5J7vQ2mXpR9tLkWzN4hYbC8dF1gA6sE0uI3oP</div>
     </ul>
   </div>
 
+  <h2>十二、怎么落进现有 1 万行</h2>
+  <div class="card">
+    <p style="margin-top:0;color:var(--et-text-2)">
+      现有代码里有 <b>47 个 v1 令牌</b>、被引用 <b>约 300 次</b>（<code class="mono">--et-surface</code>
+      27 次、<code class="mono">--et-text-secondary</code> 26 次…）。一次性改名等于同时改 1 万行，
+      所以走桥接：
+    </p>
+    <ul style="color:var(--et-text-2);line-height:1.8">
+      <li><b>令牌仍是单一来源</b>：<code class="mono">design-system/easytier/tokens.css</code>
+        由脚本同步进 frontend-lib，副本带「勿手改」横幅，CI 校验漂移。</li>
+      <li><b>v2 排在 v1 之后加载</b>：同优先级下靠源码顺序决胜。产物里已用字节偏移验证——
+        暗色与亮色两处别名都排在各主题 v1 声明之后。</li>
+      <li><b>旧名字变成别名</b>：<code class="mono">--et-surface</code> →
+        <code class="mono">var(--et-surface-1)</code>。旧代码一行不改，渲染立刻变成 v2 的值。</li>
+      <li><b>别名写在主题块内而不是 <code class="mono">:root</code></b>：v1 的
+        <code class="mono">.v-theme--m3Light</code> 优先级更高，放 <code class="mono">:root</code>
+        会被它压过去，亮色下就还是旧值。</li>
+      <li><b>迁移完成 = 别名删空</b>。每改完一个组件，就删掉它用到的那几行。</li>
+    </ul>
+    <p style="margin-bottom:0;color:var(--et-text-3);font-size:var(--et-font-body-sm)">
+      另外在查 <code class="mono">dist/style.css</code> 膨胀到 <b>9.4 MB</b>（gzip 5 MB）的原因——
+      内嵌 woff2 疑似被 base64 内联进了 CSS，对 Android 是实打实的负担。
+    </p>
+  </div>
+
   <footer>
     EasyTier Design System v2 · 「Instrument」· 令牌源：<span class="mono">design-system/easytier/tokens.css</span> ·
     对比度断言：<span class="mono">check-contrast.py</span>
