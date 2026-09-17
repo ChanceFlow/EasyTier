@@ -109,7 +109,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          rid=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/${{ inputs.version }}" --jq '.id')
+          # 必须用 releases 列表按 tag_name 过滤：`releases/tags/{tag}` 对**草稿**
+          # 返回 404（即使带认证），而 action-gh-release 建的正是一个草稿。
+          # 这个坑实际踩过：步骤 404 导致整个 release.yml 被判失败，release 留在草稿。
+          rid=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            --jq --arg v "${{ inputs.version }}" '.[] | select(.tag_name==$v) | .id' | head -1)
+          if [ -z "$rid" ]; then
+            echo "::error::找不到 ${{ inputs.version }} 对应的 release"
+            exit 1
+          fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" \
             -f draft=false -f make_latest=true >/dev/null
           echo "==> published release ${{ inputs.version }} (id $rid)"

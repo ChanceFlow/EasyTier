@@ -62,8 +62,12 @@ jobs:
           if [ "$SC" != "$SG" ] || [ "$SG" != "$SM" ]; then
             echo "trio shas differ ($SC $SG $SM) - a build is stale or pending, waiting"; exit 0
           fi
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$V" --jq .id 2>/dev/null; then
-            echo "release $V already exists; re-assembly: dispatch release.yml manually"; exit 0
+          # 同样不能用 releases/tags/{tag} 判存在：对草稿返回 404，会让这道闸门
+          # 失效 —— 某条构建重跑一次就会再派发一次 release.yml。改用列表过滤。
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            --jq --arg v "$V" '.[] | select(.tag_name==$v) | .id' | head -1)
+          if [ -n "$existing" ]; then
+            echo "release $V already exists (id $existing); re-assembly: dispatch release.yml manually"; exit 0
           fi
           gh workflow run release.yml \
             -f core_run_id="${C%% *}" -f gui_run_id="${G%% *}" -f mobile_run_id="${M%% *}" \
