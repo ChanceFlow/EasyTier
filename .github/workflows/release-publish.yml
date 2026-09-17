@@ -44,7 +44,7 @@ jobs:
           if [ -n "$TAG" ]; then
             # 同上：按 tag 查对草稿返回 404，必须走列表过滤
             rid=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
-              --jq --arg v "$TAG" '.[] | select(.tag_name==$v) | .id' | head -1)
+              | jq -r --arg v "$TAG" '.[] | select(.tag_name==$v) | .id' | head -1)
           else
             # 只碰"最近 30 分钟内更新过"的草稿。早先这里匹配的是**所有**草稿，
             # 一次运行把无关的旧测试构建和已中止的预发布一起发布了，
