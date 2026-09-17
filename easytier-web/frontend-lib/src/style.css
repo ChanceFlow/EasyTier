@@ -13,7 +13,7 @@
  * — sans only — a CJK slice (3,756 Han glyphs: GB2312 Level-1 ∪ every Han
  * character used in app/locale sources, plus CJK punctuation & fullwidth
  * forms). Characters outside the slices fall through to the platform stack
- * kept behind the embedded families in --font-sans / --font-mono.
+ * kept behind the embedded families in --et-font-ui / --et-font-data.
  * Weights: only 400 / 500 / 600 are embedded; with `font-synthesis: none`
  * 700-level text intentionally resolves to the 600 (Semibold) cut.
  * ========================================================================= */
@@ -103,94 +103,24 @@
     U+2264-2265, U+25A0, U+25CF;
 }
 
+/* ===========================================================================
+ * Global baseline.
+ *
+ * Every design token lives in `tokens.css` (imported directly after this file
+ * by `easytier-frontend-lib.ts`) and is the single source of truth — do not
+ * redefine tokens here. Only the root typography defaults that tokens.css does
+ * not own stay in this file.
+ * ========================================================================= */
 :root {
-  --font-sans: "ET Sans", "MiSans", "Segoe UI Variable Display", "Segoe UI",
-    "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
-    "HarmonyOS Sans", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "ET Mono", "JetBrains Mono", "SF Mono", "Cascadia Mono",
-    "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
-
-  --fw-regular: 400;
-  --fw-medium: 500;
-  --fw-semibold: 600;
-  --fw-bold: 700;
-
-  --et-touch: 44px;
-  --et-radius: 18px;
-  --et-radius-sm: 12px;
-  --et-radius-xs: 8px;
-  --et-nav-height: 52px;
-  --et-tab-height: 54px;
-
-  --et-bg: #080A0F;
-  --et-surface: #0E131F;
-  --et-surface-2: #161D2E;
-  --et-surface-3: #202B3F;
-  --et-border: rgba(0, 242, 182, 0.12);
-  --et-border-hairline: rgba(255, 255, 255, 0.08);
-  --et-text: #F3F6FA;
-  --et-text-secondary: #8E99AF;
-  --et-text-tertiary: #7E8AA0;
-  --et-accent: #00F2B6;
-  --et-accent-dim: rgba(0, 242, 182, 0.14);
-  --et-danger: #FF4D6D;
-  --et-warning: #FFB703;
-  --et-info: #00B4D8;
-  --et-cyan: #00B4D8;
-  --et-cyan-dim: rgba(0, 180, 216, 0.14);
-  --et-green: #00F2B6;
-  --et-glow: rgba(0, 242, 182, 0.35);
-  --et-glow-cyan: rgba(0, 180, 216, 0.35);
-
-  /* Back-compat aliases used by existing scoped styles */
-  --ios-bg: var(--et-bg);
-  --ios-surface: var(--et-surface);
-  --ios-surface-secondary: var(--et-surface-2);
-  --ios-surface-tertiary: var(--et-surface-3);
-  --ios-border: var(--et-border);
-  --ios-border-hairline: var(--et-border-hairline);
-  --ios-text: var(--et-text);
-  --ios-text-secondary: var(--et-text-secondary);
-  --ios-text-tertiary: var(--et-text-tertiary);
-  --ios-green: var(--et-green);
-  --ios-blue: var(--et-accent);
-  --ios-orange: var(--et-warning);
-  --ios-red: var(--et-danger);
-  --ios-indigo: #7b8cff;
-  --ios-purple: #c084fc;
-  --ios-teal: var(--et-info);
-
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.45;
-  font-weight: 400;
+  font-family: var(--et-font-ui);
+  font-size: var(--et-font-body);
+  line-height: var(--et-leading-normal);
+  font-weight: var(--et-weight-regular);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
-}
-
-.v-theme--m3Light {
-  --et-bg: #F4F6FA;
-  --et-surface: #FFFFFF;
-  --et-surface-2: #EBF0F7;
-  --et-surface-3: #DCE4F0;
-  --et-border: rgba(15, 23, 42, 0.08);
-  --et-border-hairline: rgba(15, 23, 42, 0.06);
-  --et-text: #0F1720;
-  --et-text-secondary: #5B6578;
-  --et-text-tertiary: #646C7E;
-  --et-accent: #00875A;
-  --et-accent-dim: rgba(0, 135, 90, 0.12);
-  --et-danger: #E11D48;
-  --et-warning: #B45309;
-  --et-info: #0369A1;
-  --et-cyan: #0369A1;
-  --et-cyan-dim: rgba(2, 132, 199, 0.12);
-  --et-green: #00875A;
-  --et-glow: rgba(0, 135, 90, 0.22);
-  --et-glow-cyan: rgba(2, 132, 199, 0.22);
 }
 
 .v-theme--m3Dark { color-scheme: dark; }
@@ -205,7 +135,7 @@ html, body {
 html, body, #app {
   height: 100%;
   width: 100%;
-  font-family: var(--font-sans);
+  font-family: var(--et-font-ui);
   background-color: var(--et-bg);
   color: var(--et-text);
   -webkit-tap-highlight-color: transparent;
@@ -219,9 +149,13 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   -webkit-user-select: text;
 }
 
-.text-mono, .mono {
-  font-family: var(--font-mono) !important;
-  font-variant-numeric: tabular-nums;
+/* Machine data (IPs, ports, latency) uses the data face. `.text-mono` is often
+ * put on an element that a Vuetify component style also targets, so the class
+ * is doubled to win on specificity rather than on `!important`. */
+.text-mono.text-mono,
+.mono.mono {
+  font-family: var(--et-font-data);
+  font-variant-numeric: var(--et-numeric);
   letter-spacing: -0.2px;
 }
 
@@ -235,11 +169,15 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   outline-offset: 2px;
 }
 
-/* 16px inputs: prevent iOS focus zoom */
+/* iOS zooms the page when a focused field renders below 16px. Vuetify's own
+ * `.v-field { font-size: 16px }` is less specific than these selectors, so no
+ * `!important` is needed. The literal 16px is intentional (not
+ * --et-font-body): under `data-density="compact"` the token drops to 13px,
+ * which would re-introduce the iOS zoom. */
 .v-field input,
 .v-field textarea,
 .v-field .v-field__input {
-  font-size: 16px !important;
+  font-size: 16px;
 }
 
 .v-btn:not(.v-btn--icon).v-btn--size-default,
@@ -297,7 +235,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 .et-section-label,
 .ios-section-header {
   font-size: 0.72rem;
-  font-weight: var(--fw-semibold);
+  font-weight: var(--et-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--et-text-secondary);
@@ -344,19 +282,21 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   flex-shrink: 0;
 }
 
+/* Fixed bottom navigation. `.et-tab-bar` lands on a plain <nav>, so no Vuetify
+ * rule competes for these properties and plain declarations already win. */
 .et-tab-bar,
 .ios-tab-bar {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  height: calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px)) !important;
-  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--et-tab-height) + var(--et-safe-bottom));
+  padding-bottom: var(--et-safe-bottom);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  background: color-mix(in srgb, var(--et-surface) 82%, transparent) !important;
-  border-top: 1px solid var(--et-border) !important;
-  z-index: 1000;
+  background: color-mix(in srgb, var(--et-surface) 82%, transparent);
+  border-top: 1px solid var(--et-border);
+  z-index: var(--et-z-nav);
 }
 
 .et-tab-item,
@@ -379,7 +319,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 .et-tab-item span,
 .ios-tab-item span {
   font-size: 11px;
-  font-weight: var(--fw-medium);
+  font-weight: var(--et-weight-medium);
   margin-top: 2px;
 }
 
@@ -390,7 +330,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 
 .et-tab-item.tab-active span,
 .ios-tab-item.tab-active span {
-  font-weight: var(--fw-semibold);
+  font-weight: var(--et-weight-semibold);
 }
 
 .et-tab-item:active,
@@ -405,14 +345,16 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.et-action-grid .et-action-cell.v-btn {
-  height: auto !important;
+/* Doubled `.et-action-cell` (0,4,0) outranks Vuetify's own two-class button
+ * rules (e.g. `.v-btn--icon.v-btn--density-comfortable`) without `!important`. */
+.et-action-grid .et-action-cell.et-action-cell.v-btn {
+  height: auto;
   min-height: 4.25rem;
-  min-width: 0 !important;
+  min-width: 0;
   width: 100%;
-  padding: 0.7rem 0.35rem !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
+  padding: 0.7rem 0.35rem;
+  border-radius: 0;
+  box-shadow: none;
   letter-spacing: 0;
 }
 
@@ -426,7 +368,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   white-space: normal;
   text-align: center;
   font-size: 0.75rem;
-  font-weight: var(--fw-semibold);
+  font-weight: var(--et-weight-semibold);
   line-height: 1.2;
 }
 
@@ -434,8 +376,8 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   opacity: 0.95;
 }
 
-.et-action-grid .et-action-cell:active {
-  background-color: var(--et-surface-2) !important;
+.et-action-grid .et-action-cell.et-action-cell:active {
+  background-color: var(--et-surface-2);
 }
 
 .et-action-grid .et-action-cell:disabled {
@@ -450,10 +392,12 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   margin: 0.55rem auto 0.2rem;
 }
 
-.fw-regular { font-weight: var(--fw-regular) !important; }
-.fw-medium { font-weight: var(--fw-medium) !important; }
-.fw-semibold { font-weight: var(--fw-semibold) !important; }
-.fw-bold { font-weight: var(--fw-bold) !important; }
+/* Utility weight classes. Doubled classes keep them able to override a
+ * component's own `font-weight` without reaching for `!important`. */
+.fw-regular.fw-regular { font-weight: var(--et-weight-regular); }
+.fw-medium.fw-medium { font-weight: var(--et-weight-medium); }
+.fw-semibold.fw-semibold { font-weight: var(--et-weight-semibold); }
+.fw-bold.fw-bold { font-weight: var(--et-weight-semibold); } /* only 400/500/600 are embedded */
 
 .p-password { width: 100%; }
 .p-password > input { width: 100%; }
@@ -480,7 +424,14 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   border: 1px solid var(--et-border);
   border-radius: var(--et-radius);
   box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.45);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Explicit properties only: `all` also watches layout properties
+   * (width/height/margin) and makes hover feedback jitter. */
+  transition:
+    transform var(--et-hover-dur) var(--et-ease-hover),
+    opacity var(--et-hover-dur) var(--et-ease-hover),
+    color var(--et-hover-dur) var(--et-ease-hover),
+    background-color var(--et-hover-dur) var(--et-ease-hover),
+    border-color var(--et-hover-dur) var(--et-ease-hover);
   position: relative;
   overflow: hidden;
 }
@@ -497,11 +448,13 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   transform: translateY(0);
 }
 
-.et-glass {
-  background: color-mix(in srgb, var(--et-surface) 80%, transparent) !important;
-  backdrop-filter: blur(20px) saturate(1.4) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.4) !important;
-  border: 1px solid var(--et-border) !important;
+/* Doubled class: `.et-glass` is layered on top of a Vuetify surface, so it has
+ * to outrank that surface's own background/border without `!important`. */
+.et-glass.et-glass {
+  background: color-mix(in srgb, var(--et-surface) 80%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--et-border);
 }
 
 .et-badge {
@@ -509,7 +462,7 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   align-items: center;
   gap: 4px;
   font-size: 0.72rem;
-  font-weight: 600;
+  font-weight: var(--et-weight-semibold);
   padding: 3px 8px;
   border-radius: 999px;
   line-height: 1.2;
@@ -517,44 +470,28 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
 
 .et-badge--teal {
   background: var(--et-accent-dim);
-  color: var(--et-accent);
+  color: var(--et-accent-on-tint);
   border: 1px solid color-mix(in srgb, var(--et-accent) 30%, transparent);
 }
 
 .et-badge--cyan {
   background: var(--et-cyan-dim);
-  color: var(--et-cyan);
+  color: var(--et-info-on-tint);
   border: 1px solid color-mix(in srgb, var(--et-cyan) 30%, transparent);
 }
 
 .et-badge--amber {
   background: color-mix(in srgb, var(--et-warning) 15%, transparent);
-  color: var(--et-warning);
+  color: var(--et-warn-on-tint);
   border: 1px solid color-mix(in srgb, var(--et-warning) 30%, transparent);
 }
 
 .et-badge--coral {
   background: color-mix(in srgb, var(--et-danger) 15%, transparent);
-  color: var(--et-danger);
+  color: var(--et-danger-on-tint);
   border: 1px solid color-mix(in srgb, var(--et-danger) 30%, transparent);
 }
 
-/* Light theme only: the translucent badge tint lifts the effective background
- * luminance, so the token colours no longer reach 4.5:1 as badge text. The
- * worst case is the tint composited over --et-surface-3 #DCE4F0 (the badge on
- * darker grouped surfaces), followed by --et-surface-2 #EBF0F7 and
- * --et-surface #FFFFFF. Dark theme keeps the brighter token text from the base
- * rules above. Values are the lightest hue-preserving cuts that clear 4.5:1 on
- * the tinted background over all three surfaces, with a ~0.2 ratio safety
- * margin:
- *   amber #8B4209  5.92 / 5.22 / 4.71
- *   coral #A51735  5.97 / 5.25 / 4.73
- *   teal  #016747  5.92 / 5.20 / 4.71
- *   cyan  #035E93  5.95 / 5.26 / 4.73   (surface / surface-2 / surface-3) */
-.v-theme--m3Light .et-badge--amber { color: #8B4209; }
-.v-theme--m3Light .et-badge--coral { color: #A51735; }
-.v-theme--m3Light .et-badge--teal { color: #016747; }
-.v-theme--m3Light .et-badge--cyan { color: #035E93; }
 
 .et-ping-dot {
   width: 7px;
@@ -600,10 +537,15 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   animation: et-fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* The previous blanket `*, *::before, *::after { … !important }` override is
+ * gone: a universal selector cannot outrank component rules on specificity, so
+ * `!important` was its only working form. Reduced motion is covered instead by
+ * tokens.css zeroing --et-dur-* / --et-hover-dur (every transition in this file
+ * now uses those) plus the targeted animation stops below. Vuetify ships its
+ * own prefers-reduced-motion handling for its own components. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .et-ping-dot.is-pulse,
+  .et-animate-in {
+    animation: none;
   }
 }

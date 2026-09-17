@@ -3,7 +3,7 @@ import { useTimeAgo } from '@vueuse/core'
 import { NetworkInstance, VpnPortalClientState, type TunnelInfo, type NodeInfo, type PeerRoutePair, type VpnPortalClientInfo, type VpnPortalInfo } from '../types/network'
 import type { RemoteClient } from '../modules/api'
 import { useI18n } from 'vue-i18n';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 import { ipv4InetToString, ipv4ToString, ipv6ToString } from '../modules/utils';
 import { latencyMs, lossRate, numericValue, peerConns } from '../modules/statusDisplay';
@@ -26,7 +26,8 @@ const props = withDefaults(defineProps<{
   activeTab: 'all',
   refreshing: false,
   loading: false,
-  hidePowerToggle: false,
+  // hidePowerToggle 刻意不给 default:缺省(undefined)时组件只呈现"纯状态",
+  // 只有宿主显式传 false 时才保留 v1 的电源球交互(见 showPowerToggle)。
   // 必须显式写 undefined:Boolean prop 若没有 default,Vue 会在缺省时把它转成
   // false,从而吞掉 RPC running 状态;显式 undefined 才能让 ?? 回退生效。
   networkRunning: undefined,
@@ -87,27 +88,192 @@ function resetPeerFilters() {
   peerSearch.value = ''
 }
 
-const filteredPeers = computed(() => {
-  let list = peerRouteInfos.value
-  if (peerFilter.value === 'direct') {
-    list = list.filter(p => !p.route?.cost || p.route.cost === 1)
-  } else if (peerFilter.value === 'relay') {
-    list = list.filter(p => p.route?.cost && p.route.cost > 1)
-  } else if (peerFilter.value === 'server') {
-    list = list.filter(p => isPublicServerRoute(p))
-  }
+// ---------------------------------------------------------------------------
+// PeerRow 契约:状态点 / 虚拟 IP / 路径 / 延迟(右对齐等宽),行高 --et-row-h。
+//
+// 离线节点不隐藏:v1 里节点一离开就从列表消失,用户会以为"设备没添加"。后端
+// 只在 route 表里留痕、不再返回 peer 记录(甚至整条不再返回),所以这里在本组件
+// 记住最近见过的节点,离线后继续以 neutral 呈现,并给出"离线 Nh"——时长是本
+// 组件观测到的,不是后端字段。保留窗口 24h,切换网络时清空。
+// ---------------------------------------------------------------------------
+const OFFLINE_RETENTION_MS = 24 * 60 * 60 * 1000
 
-  if (peerSearch.value.trim()) {
-    const q = peerSearch.value.trim().toLowerCase()
-    list = list.filter(p => {
-      const h = (p.route?.hostname || '').toLowerCase()
-      const ip = ipFormat(p).toLowerCase()
-      return h.includes(q) || ip.includes(q)
+interface PeerPresence {
+  info: any
+  /** 最后一次在后端列表里看到它的时间 */
+  lastSeen: number
+  /** 首次观测到离线的时刻;在线时为 undefined */
+  offlineSince?: number
+}
+
+interface PeerRow {
+  key: string
+  info: any
+  offline: boolean
+  offlineSince?: number
+}
+
+const peerPresence = ref<Record<string, PeerPresence>>({})
+// 让"离线 Nh"随时间前进:网络不动时 peerRouteInfos 不更新,仍需刷新时长
+const presenceNow = ref(Date.now())
+
+/** 本机路由没有 cost;它永远在线,不能当离线处理。 */
+function isLocalRoute(info: any): boolean {
+  return !info?.route?.cost
+}
+
+/** 路由还在但对端记录消失 = 连接已丢失(后端不再返回该 peer)。 */
+function isPeerOffline(info: any): boolean {
+  if (!info?.route || isLocalRoute(info))
+    return false
+  return !info?.peer
+}
+
+function refreshPeerPresence() {
+  const now = Date.now()
+  presenceNow.value = now
+  const next: Record<string, PeerPresence> = {}
+  for (const [key, entry] of Object.entries(peerPresence.value)) {
+    if (now - (entry.offlineSince ?? entry.lastSeen) <= OFFLINE_RETENTION_MS)
+      next[key] = entry
+  }
+  peerRouteInfos.value.forEach((info, i) => {
+    const key = peerKey(info, i)
+    const prev = next[key]
+    if (isPeerOffline(info)) {
+      next[key] = {
+        info,
+        lastSeen: prev?.lastSeen ?? now,
+        offlineSince: prev?.offlineSince ?? now,
+      }
+    } else {
+      next[key] = { info, lastSeen: now }
+    }
+  })
+  peerPresence.value = next
+}
+
+watch(peerRouteInfos, refreshPeerPresence, { immediate: true })
+watch(() => props.curNetworkInst?.instance_id, () => {
+  // 换网络时旧网络的节点不能以"离线"身份跟过来
+  peerPresence.value = {}
+  refreshPeerPresence()
+})
+
+const peerRowsAll = computed<PeerRow[]>(() => {
+  const rows: PeerRow[] = []
+  const liveKeys = new Set<string>()
+  peerRouteInfos.value.forEach((info, i) => {
+    const key = peerKey(info, i)
+    liveKeys.add(key)
+    rows.push({
+      key,
+      info,
+      offline: isPeerOffline(info),
+      offlineSince: peerPresence.value[key]?.offlineSince,
+    })
+  })
+  for (const [key, entry] of Object.entries(peerPresence.value)) {
+    if (liveKeys.has(key))
+      continue
+    rows.push({
+      key,
+      info: entry.info,
+      offline: true,
+      offlineSince: entry.offlineSince ?? entry.lastSeen,
     })
   }
-
-  return list
+  return rows
 })
+
+function matchesPeerFilters(row: PeerRow): boolean {
+  const route = row.info?.route
+  if (peerFilter.value === 'direct' && route?.cost && route.cost !== 1)
+    return false
+  if (peerFilter.value === 'relay' && !(route?.cost && route.cost > 1))
+    return false
+  if (peerFilter.value === 'server' && !isPublicServerRoute(row.info))
+    return false
+
+  const q = peerSearch.value.trim().toLowerCase()
+  if (!q)
+    return true
+  const hostname = (route?.hostname || '').toLowerCase()
+  const ip = ipFormat(row.info).toLowerCase()
+  return hostname.includes(q) || ip.includes(q)
+}
+
+const filteredPeerRows = computed(() => peerRowsAll.value.filter(matchesPeerFilters))
+
+function offlineFor(since: number | undefined): string {
+  if (!since)
+    return ''
+  const elapsed = Math.max(0, presenceNow.value - since)
+  const hours = Math.floor(elapsed / 3600000)
+  if (hours >= 1)
+    return `${hours}h`
+  return `${Math.max(1, Math.floor(elapsed / 60000))}m`
+}
+
+function peerPathLabel(row: PeerRow): string {
+  const info = row.info
+  if (row.offline) {
+    const elapsed = offlineFor(row.offlineSince)
+    return elapsed ? `${t('web.device.offline')} ${elapsed}` : t('web.device.offline')
+  }
+  const route = info?.route
+  if (!route)
+    return t('status.lost', 'Lost')
+  if (isLocalRoute(info))
+    return t('status.local')
+  if (route.cost === 1)
+    return t('status.filter_direct')
+  const via = relayVia(info)
+  return via ? `${t('status.relay')} via ${via}` : t('status.relay')
+}
+
+/** 中继跳点的主机名(route.next_hop_peer_id 指向的 peer)。 */
+function relayVia(info: any): string {
+  const hopId = info?.route?.next_hop_peer_id
+  if (!hopId)
+    return ''
+  const hop = peerRouteInfos.value.find(p => (p.route?.peer_id ?? p.peer?.peer_id) === hopId)
+  return hop?.route?.hostname || `#${hopId}`
+}
+
+function peerRttText(row: PeerRow): string {
+  if (row.offline)
+    return '—'
+  return latencyMs(row.info) || '—'
+}
+
+function peerRttClass(row: PeerRow): string {
+  if (row.offline)
+    return 'is-idle'
+  const latency = latencyMs(row.info)
+  if (!latency)
+    return 'is-idle'
+  const ms = Number.parseInt(latency)
+  if (Number.isNaN(ms))
+    return 'is-idle'
+  if (ms >= 110)
+    return 'is-warn'
+  if (ms >= 45)
+    return 'is-mid'
+  return 'is-good'
+}
+
+function peerDotClass(row: PeerRow): string {
+  if (row.offline)
+    return 'is-idle'
+  const loss = lossRate(row.info)
+  if (loss && Number.parseFloat(loss) > 0)
+    return 'is-warn'
+  const rtt = peerRttClass(row)
+  if (rtt === 'is-idle')
+    return isLocalRoute(row.info) ? 'is-good' : 'is-idle'
+  return rtt
+}
 
 function routeCost(info: any) {
   if (!info?.route) {
@@ -128,21 +294,6 @@ function peerDeviceIcon(info: any): string {
   if (hostname.includes('server') || hostname.includes('node') || hostname.includes('vps')) return 'mdi-server'
   if (hostname.includes('gw') || hostname.includes('router') || hostname.includes('openwrt')) return 'mdi-router-wireless'
   return info.route.cost === 1 ? 'mdi-lightning-bolt' : 'mdi-transit-connection-variant'
-}
-
-function peerRouteCostColor(info: any): string {
-  if (!info?.route?.cost) return 'primary'
-  return info.route.cost === 1 ? 'success' : 'warning'
-}
-
-function peerLatencyColorClass(info: any): string {
-  const l = latencyMs(info)
-  if (!l) return ''
-  const val = parseInt(l)
-  if (isNaN(val)) return ''
-  if (val < 45) return 'is-green'
-  if (val < 110) return 'is-amber'
-  return 'is-red'
 }
 
 function resolveObjPath(path: string, obj: any = globalThis, separator = '.') {
@@ -405,10 +556,12 @@ const rxRate = ref('0 B')
 
 const showNodeDetails = ref(false)
 const selectedPeer = ref<any | null>(null)
+const selectedPeerOffline = ref(false)
 const peerSheetOpen = ref(false)
 
-function inspectPeer(info: any) {
-  selectedPeer.value = info
+function inspectPeer(row: PeerRow) {
+  selectedPeer.value = row?.info ?? row
+  selectedPeerOffline.value = !!row?.offline
   peerSheetOpen.value = true
 }
 
@@ -441,6 +594,9 @@ async function copyText(text: string) {
 
 onMounted(() => {
   rateIntervalId = window.setInterval(() => {
+    // 离线时长("离线 Nh")要跟着时钟走
+    presenceNow.value = Date.now()
+
     const curTxSum = txGlobalSum()
     txRate.value = humanFileSize((curTxSum - prevTxSum) / (rateInterval / 1000))
     prevTxSum = curTxSum
@@ -537,6 +693,15 @@ async function copyVpnPortalClientConfig(client: VpnPortalClientInfo) {
   }
 }
 
+/** 事件日志的稳定 key:时间 + 事件内容,同一个事件重渲染不会错位。 */
+function eventTimelineKey(item: any): string {
+  try {
+    return `${item?.time ?? 'na'}-${JSON.stringify(item?.event ?? {})}`
+  } catch {
+    return `${item?.time ?? 'na'}`
+  }
+}
+
 function showEventLogs() {
   const detail = props.curNetworkInst?.detail
   if (!detail)
@@ -579,6 +744,83 @@ const displayRunning = computed(() => props.networkRunning ?? isRunning.value)
 
 const myHostname = computed(() => {
   return props.curNetworkInst?.detail?.my_node_info?.hostname || 'easytier-node'
+})
+
+// ---------------------------------------------------------------------------
+// 状态信号(三重编码:色 + 形 + 文)。五态形状映射见 index.html 的 .signal:
+//   已连接=圆·accent / 连接中=方·info·呼吸 / 降级=三角·warn / 已断开=横条·danger
+//   / 未启动=空环·neutral。文字始终存在,灰度下也能区分。
+// ---------------------------------------------------------------------------
+type SignalState = 'up' | 'sync' | 'warn' | 'down' | 'idle'
+
+// 连接开关只在宿主显式传 hidePowerToggle=false 时保留(v1 桌面控制台兼容);
+// 缺省(undefined)与 true 都是纯状态,连接/断开由宿主自己的主操作承担。
+const showPowerToggle = computed(() => props.hidePowerToggle === false)
+
+const degradedPeerCount = computed(() => {
+  const list = props.curNetworkInst?.detail?.peer_route_pairs ?? []
+  return list.filter((info) => {
+    const latency = latencyMs(info)
+    if (latency && Number.parseInt(latency) >= 110)
+      return true
+    const loss = lossRate(info)
+    return !!loss && Number.parseFloat(loss) > 0
+  }).length
+})
+
+const signalState = computed<SignalState>(() => {
+  if (props.curNetworkInst?.error_msg)
+    return 'down'
+  // 权威运行态(VPN 感知)与 RPC 运行态不一致 → 降级:进程在跑但隧道没通,或反之
+  if (props.networkRunning !== undefined && props.networkRunning !== isRunning.value)
+    return 'warn'
+  if (!displayRunning.value)
+    return 'idle'
+  if (otherPeerCount.value === 0)
+    return 'sync'
+  if (degradedPeerCount.value > 0)
+    return 'warn'
+  return 'up'
+})
+
+const signalClass = computed(() => `is-${signalState.value}`)
+
+const signalText = computed(() => {
+  switch (signalState.value) {
+    case 'up':
+      return t('status.connected')
+    case 'sync':
+      return t('vpn_portal_state_connecting')
+    case 'warn':
+      return t('status.degraded', 'Degraded')
+    case 'down':
+      return t('status.disconnected')
+    default:
+      return t('network_stopped')
+  }
+})
+
+const orbIcon = computed(() => {
+  switch (signalState.value) {
+    case 'up':
+      return 'mdi-shield-check'
+    case 'sync':
+      return 'mdi-lan-connect'
+    case 'warn':
+      return 'mdi-shield-alert-outline'
+    case 'down':
+      return 'mdi-shield-off'
+    default:
+      return 'mdi-power'
+  }
+})
+
+const heroHint = computed(() => {
+  if (props.hidePowerToggle === true)
+    return t('status.controls_on_overview')
+  if (props.hidePowerToggle === undefined)
+    return t('status.status_only_hint', 'Live status only')
+  return displayRunning.value ? t('status.tap_to_disconnect') : t('status.tap_to_connect')
 })
 
 </script>
@@ -643,8 +885,8 @@ const myHostname = computed(() => {
           <div v-else class="event-log-body">
             <v-timeline v-if="dialogContent.length" side="end" density="compact" class="pa-2">
               <v-timeline-item
-                v-for="(item, i) in dialogContent"
-                :key="i"
+                v-for="item in dialogContent"
+                :key="eventTimelineKey(item)"
                 dot-color="primary"
                 size="small"
               >
@@ -681,12 +923,14 @@ const myHostname = computed(() => {
       <div v-if="showHome" class="home-tab-content">
         <div class="et-hero">
           <div class="et-hero-mesh" aria-hidden="true" />
-          <!-- 默认(桌面 / 测试):可交互电源球,emit / aria 与之前完全一致 -->
+          <!-- 迁移期可选:只有宿主显式传 hide-power-toggle=false 才保留 v1 的
+               可交互电源球(桌面控制台尚未把主操作移出状态卡)。emit / aria 与
+               之前完全一致。 -->
           <button
-            v-if="!hidePowerToggle"
+            v-if="showPowerToggle"
             type="button"
             class="et-power-orb"
-            :class="{ 'is-on': displayRunning }"
+            :class="signalClass"
             :aria-pressed="displayRunning"
             :aria-label="displayRunning ? t('status.disconnect') : t('status.connect')"
             @click="vibrate(12); $emit('toggle-network')"
@@ -694,36 +938,34 @@ const myHostname = computed(() => {
             <span class="et-orb-ring r1" />
             <span class="et-orb-ring r2" />
             <div class="et-orb-center">
-              <v-icon size="40">{{ displayRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+              <v-icon size="40">{{ orbIcon }}</v-icon>
             </div>
           </button>
 
-          <!-- 移动端 Hero 唯一控制:同样的视觉占位,但只读(非 button、不可聚焦、
-               无 click/aria-pressed;状态语义由下方 role="status" 药丸承载)。 -->
+          <!-- v2 默认:只读状态球。非 button、不可聚焦、无 click/aria-pressed,
+               状态语义完全由下方 role="status" 的信号药丸承载。 -->
           <div
             v-else
             class="et-power-orb is-readonly"
-            :class="{ 'is-on': displayRunning }"
+            :class="signalClass"
             aria-hidden="true"
           >
             <span class="et-orb-ring r1" />
             <span class="et-orb-ring r2" />
             <div class="et-orb-center">
-              <v-icon size="40">{{ displayRunning ? 'mdi-shield-check' : 'mdi-power' }}</v-icon>
+              <v-icon size="40">{{ orbIcon }}</v-icon>
             </div>
           </div>
 
-          <div class="et-hero-status-pill mt-3" :class="displayRunning ? 'is-on' : 'is-off'" role="status" aria-live="polite">
-            <div class="et-ping-dot is-pulse" :class="displayRunning ? 'is-green' : 'is-amber'" />
-            <span class="font-weight-bold">{{ displayRunning ? t('status.connected') : t('status.disconnected') }}</span>
-          </div>
+          <!-- 三重编码:形状(圆/方/三角/横条/环) + 颜色 + 文字 -->
+          <span class="et-signal mt-3" :class="signalClass" role="status">
+            <span class="et-signal__glyph" aria-hidden="true" />
+            <span class="et-signal__text">{{ signalText }}</span>
+          </span>
           <div class="et-hero-meta mono">
             {{ myHostname }} · <span :key="otherPeerCount" class="et-num et-tick font-weight-bold">{{ otherPeerCount }}</span> {{ t('status.devices_unit') }}
           </div>
-          <div class="et-hero-hint">
-            <template v-if="hidePowerToggle">{{ t('status.controls_on_overview', 'Connect or disconnect from the overview above') }}</template>
-            <template v-else>{{ displayRunning ? t('status.tap_to_disconnect') : t('status.tap_to_connect') }}</template>
-          </div>
+          <div class="et-hero-hint">{{ heroHint }}</div>
         </div>
 
         <div class="et-section">
@@ -731,7 +973,7 @@ const myHostname = computed(() => {
           <div class="et-id-card et-group pa-3 mb-3">
             <div class="d-flex align-center justify-space-between">
               <div class="d-flex align-center ga-3 min-w-0">
-                <div class="et-squircle" style="background: var(--et-accent-dim);">
+                <div class="et-squircle" style="background: var(--et-accent-quiet);">
                   <v-icon size="20" color="primary">mdi-ip-network</v-icon>
                 </div>
                 <div class="min-w-0">
@@ -796,8 +1038,8 @@ const myHostname = computed(() => {
           <div class="et-group">
             <div class="et-row">
               <div class="d-flex align-center ga-3">
-                <div class="et-squircle" style="background: #7c5cbf;">
-                  <v-icon size="18" color="white">mdi-vpn</v-icon>
+                <div class="et-squircle" style="background: var(--et-accent-quiet);">
+                  <v-icon size="18" color="primary">mdi-vpn</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ t('status.vpn_portal') }}</span>
               </div>
@@ -808,8 +1050,8 @@ const myHostname = computed(() => {
 
             <div class="et-row">
               <div class="d-flex align-center ga-3">
-                <div class="et-squircle" style="background: var(--et-warning);">
-                  <v-icon size="18" color="white">mdi-pulse</v-icon>
+                <div class="et-squircle" style="background: var(--et-warn-quiet);">
+                  <v-icon size="18" color="warning">mdi-pulse</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ t('event_log') }}</span>
               </div>
@@ -820,8 +1062,8 @@ const myHostname = computed(() => {
 
             <button type="button" class="et-row et-row-pressable et-press-row" :aria-expanded="showNodeDetails" @click="showNodeDetails = !showNodeDetails">
               <div class="d-flex align-center ga-3">
-                <div class="et-squircle" style="background: var(--et-info);">
-                  <v-icon size="18" color="white">mdi-information-outline</v-icon>
+                <div class="et-squircle" style="background: var(--et-info-quiet);">
+                  <v-icon size="18" color="info">mdi-information-outline</v-icon>
                 </div>
                 <span class="text-body-2 font-weight-medium">{{ showNodeDetails ? t('hide_node_details') : t('show_node_details') }}</span>
               </div>
@@ -860,7 +1102,7 @@ const myHostname = computed(() => {
 
         <div class="et-filter-scroll mb-3">
           <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'all' }" :aria-pressed="peerFilter === 'all'" @click="peerFilter = 'all'">
-            {{ t('status.filter_all') }} {{ peerRouteInfos.length }}
+            {{ t('status.filter_all') }} {{ peerRowsAll.length }}
           </button>
           <button type="button" class="et-filter" :class="{ 'is-on': peerFilter === 'direct' }" :aria-pressed="peerFilter === 'direct'" @click="peerFilter = 'direct'">
             {{ t('status.filter_direct') }}
@@ -875,53 +1117,35 @@ const myHostname = computed(() => {
 
         <div class="et-section">
           <div class="et-section-label">
-            {{ t('status.mesh_devices') }} (<span class="et-num">{{ filteredPeers.length }}</span>)
+            {{ t('status.mesh_devices') }} (<span class="et-num">{{ filteredPeerRows.length }}</span>)
           </div>
           <div class="et-group">
             <TransitionGroup tag="div" name="et-list-fade" class="et-list-wrap">
+              <!-- PeerRow:状态点 / 虚拟 IP / 路径 / 延迟(右对齐等宽) -->
               <button
-                v-for="(info, i) in filteredPeers"
-                :key="peerKey(info, i)"
+                v-for="row in filteredPeerRows"
+                :key="row.key"
                 type="button"
-                class="et-device-cell et-row-pressable et-press-row"
-                @click="inspectPeer(info)"
+                class="et-peer et-row-pressable et-press-row"
+                :class="{ 'is-offline': row.offline }"
+                @click="inspectPeer(row)"
               >
-                <div class="d-flex align-center ga-3 min-w-0">
-                  <div class="device-icon-wrap">
-                    <div class="device-squircle" :class="routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay'">
-                      <v-icon size="18" color="white">{{ peerDeviceIcon(info) }}</v-icon>
-                    </div>
-                    <div class="ping-dot" :class="peerLatencyColorClass(info) || (routeCost(info) === 'p2p' || !info.route?.cost ? 'is-direct' : 'is-relay')" />
-                  </div>
-                  <div class="min-w-0">
-                    <div class="d-flex align-center ga-1">
-                      <span class="device-name truncate font-weight-bold et-selectable">{{ info.route.hostname }}</span>
-                      <v-chip v-if="isPublicServerRoute(info)" size="x-small" color="info" variant="tonal" class="rounded-pill">{{ t('status.server') }}</v-chip>
-                      <v-chip v-if="shouldAvoidRelayData(info)" size="x-small" color="warning" variant="tonal" class="rounded-pill">{{ t('status.relay') }}</v-chip>
-                    </div>
-                    <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(info) }}</div>
-                  </div>
-                </div>
-                <div class="d-flex align-center ga-2 flex-shrink-0">
-                  <div class="text-end">
-                    <div v-if="latencyMs(info)" class="text-mono text-caption font-weight-bold et-num d-flex align-center justify-end ga-1">
-                      <span class="et-ping-dot" :class="peerLatencyColorClass(info) || 'is-green'" style="width: 5px; height: 5px;" />
-                      <span :key="dash(latencyMs(info))" class="et-tick">{{ latencyMs(info) }}</span>
-                    </div>
-                    <div v-else class="text-mono text-caption text-medium-emphasis">
-                      —
-                    </div>
-                    <v-chip :color="peerRouteCostColor(info)" size="x-small" variant="tonal" class="rounded-pill mt-1">
-                      {{ routeCost(info) }}
-                    </v-chip>
-                  </div>
-                  <v-icon size="18" color="medium-emphasis">mdi-chevron-right</v-icon>
-                </div>
+                <span class="et-peer__dot" :class="peerDotClass(row)" aria-hidden="true" />
+                <span class="et-peer__id">
+                  <span class="et-peer__head">
+                    <span class="et-peer__name et-nowrap">{{ row.info?.route?.hostname || '—' }}</span>
+                    <span v-if="isPublicServerRoute(row.info)" class="et-peer__tag">{{ t('status.server') }}</span>
+                    <span v-else-if="shouldAvoidRelayData(row.info)" class="et-peer__tag is-warn">{{ t('status.relay') }}</span>
+                  </span>
+                  <span class="et-peer__ip et-nowrap" :title="ipFormat(row.info)">{{ ipFormat(row.info) || '—' }}</span>
+                </span>
+                <span class="et-peer__path" :title="peerPathLabel(row)">{{ peerPathLabel(row) }}</span>
+                <span class="et-peer__rtt" :class="peerRttClass(row)">{{ peerRttText(row) }}</span>
               </button>
             </TransitionGroup>
 
             <!-- 统一空态:图标 + 引导 + 条件性主操作(清除筛选) -->
-            <div v-if="filteredPeers.length === 0" class="et-empty">
+            <div v-if="filteredPeerRows.length === 0" class="et-empty">
               <div class="et-empty__icon">
                 <v-icon size="26" color="primary">{{ peersFilteredActive ? 'mdi-magnify-close' : 'mdi-devices-plus' }}</v-icon>
               </div>
@@ -951,12 +1175,13 @@ const myHostname = computed(() => {
 
     <v-bottom-sheet v-model="peerSheetOpen" scrollable>
       <v-card rounded="t-xl" class="et-sheet">
-        <div class="sheet-grabber-hit" @click="peerSheetOpen = false">
-          <div class="sheet-grabber" />
-        </div>
+        <!-- 关闭热区:原生 button,键盘可聚焦,视觉仍是一根小药丸 -->
+        <button type="button" class="sheet-grabber-hit" :aria-label="t('close')" @click="peerSheetOpen = false">
+          <span class="sheet-grabber" aria-hidden="true" />
+        </button>
         <v-card-title class="d-flex align-center ga-3 pt-2">
           <div class="device-squircle is-direct">
-            <v-icon size="20" color="white">{{ peerDeviceIcon(selectedPeer) }}</v-icon>
+            <v-icon size="20">{{ peerDeviceIcon(selectedPeer) }}</v-icon>
           </div>
           <div class="min-w-0">
             <div class="text-subtitle-1 font-weight-bold truncate">{{ selectedPeer?.route?.hostname }}</div>
@@ -976,16 +1201,24 @@ const myHostname = computed(() => {
             <div class="et-section-label">{{ t('status.connectivity') }}</div>
             <div class="et-group">
               <div class="et-row">
+                <span>{{ t('web.device.status') }}</span>
+                <span :class="selectedPeerOffline ? 'text-medium-emphasis' : ''">
+                  {{ selectedPeerOffline ? t('web.device.offline') : t('status.connected') }}
+                </span>
+              </div>
+              <div class="et-row">
                 <span>{{ t('status.route_cost') }}</span>
                 <span class="font-weight-medium">{{ routeCost(selectedPeer) }}</span>
               </div>
               <div class="et-row">
                 <span>{{ t('status.ping') }}</span>
-                <span class="text-mono font-weight-bold" style="color: var(--et-accent);">{{ selectedPeer ? dash(latencyMs(selectedPeer)) : '—' }}</span>
+                <span class="text-mono font-weight-bold" :style="{ color: selectedPeerOffline ? 'var(--et-text-3)' : 'var(--et-accent)' }">
+                  {{ selectedPeer && !selectedPeerOffline ? dash(latencyMs(selectedPeer)) : '—' }}
+                </span>
               </div>
               <div class="et-row">
                 <span>{{ t('status.packet_loss') }}</span>
-                <span class="text-mono">{{ selectedPeer ? dash(lossRate(selectedPeer)) : '—' }}</span>
+                <span class="text-mono">{{ selectedPeer && !selectedPeerOffline ? dash(lossRate(selectedPeer)) : '—' }}</span>
               </div>
               <div class="et-row">
                 <span>{{ t('tunnel_proto') }}</span>
@@ -1062,15 +1295,21 @@ button.et-row {
   vertical-align: middle;
 }
 
-/* VBottomSheet has no swipe-to-dismiss: enlarge the grabber hit area to >=44px
- * while keeping the 40x4.5px visual bar unchanged. */
+/* Bottom sheet grabber hit area: a real <button> so it is keyboard focusable,
+ * >=48px tall, and has an accessible name. The 40x4.5px visual bar is unchanged. */
 .sheet-grabber-hit {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   min-height: var(--et-touch);
-  margin-top: 0.15rem;
+  margin-top: var(--et-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .sheet-grabber-hit .sheet-grabber {
@@ -1082,7 +1321,7 @@ button.et-row {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.25rem 0 1.5rem;
+  padding: var(--et-space-5) 0 var(--et-space-6);
   overflow: hidden;
 }
 
@@ -1090,12 +1329,12 @@ button.et-row {
   position: absolute;
   inset: -20% -10% 20%;
   background:
-    radial-gradient(circle at 50% 40%, var(--et-accent-dim), transparent 58%),
-    repeating-radial-gradient(circle at 50% 42%, transparent 0 18px, rgba(30, 200, 163, 0.05) 19px 20px);
+    radial-gradient(circle at 50% 40%, var(--et-accent-quiet), transparent 58%),
+    repeating-radial-gradient(circle at 50% 42%, transparent 0 18px, color-mix(in srgb, var(--et-accent) 5%, transparent) 19px 20px);
   /* Keep the decorative mesh on a lower layer than the z-index:1 hero content
    * so it never swallows taps. */
-  z-index: 0;
-  mask-image: linear-gradient(to bottom, #000 40%, transparent);
+  z-index: var(--et-z-base);
+  mask-image: linear-gradient(to bottom, black 40%, transparent);
 }
 
 .et-power-orb {
@@ -1104,13 +1343,13 @@ button.et-row {
   height: 112px;
   border-radius: 50%;
   border: none;
-  background: var(--et-surface);
-  color: var(--et-text-secondary);
+  background: var(--et-surface-1);
+  color: var(--et-text-2);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
-  z-index: 1;
+  box-shadow: var(--et-shadow-2);
+  z-index: var(--et-z-base);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1126,59 +1365,148 @@ button.et-row {
 
 .et-orb-ring.r2 {
   inset: -14px;
-  border: 1px dashed var(--et-border-hairline);
+  border: 1px dashed var(--et-border);
 }
 
-.et-power-orb.is-on {
+/* 五态配色。形状与文字由下方 .et-signal 承担,这里只做颜色层。 */
+.et-power-orb.is-up {
   color: var(--et-accent);
-  background: color-mix(in srgb, var(--et-accent) 14%, var(--et-surface));
+  background: color-mix(in srgb, var(--et-accent) 14%, var(--et-surface-1));
 }
 
-.et-power-orb.is-on .et-orb-ring.r1 {
-  border-color: color-mix(in srgb, var(--et-accent) 65%, transparent);
-  box-shadow: 0 0 28px var(--et-glow);
-  animation: et-orb 2.8s ease-in-out infinite;
+.et-power-orb.is-sync {
+  color: var(--et-info);
+  background: color-mix(in srgb, var(--et-info) 14%, var(--et-surface-1));
 }
 
-.et-power-orb.is-on .et-orb-ring.r2 {
-  border-color: color-mix(in srgb, var(--et-accent) 28%, transparent);
-  animation: et-radar-rotate 14s linear infinite;
+.et-power-orb.is-warn {
+  color: var(--et-warn);
+  background: color-mix(in srgb, var(--et-warn) 14%, var(--et-surface-1));
 }
 
-@keyframes et-radar-rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.et-power-orb.is-down {
+  color: var(--et-danger);
+  background: color-mix(in srgb, var(--et-danger) 14%, var(--et-surface-1));
 }
 
-.et-hero-status-pill {
+.et-power-orb.is-idle {
+  color: var(--et-text-2);
+  background: var(--et-surface-1);
+}
+
+.et-power-orb.is-up .et-orb-ring.r1,
+.et-power-orb.is-sync .et-orb-ring.r1 {
+  border-color: color-mix(in srgb, currentColor 65%, transparent);
+}
+
+.et-power-orb.is-up .et-orb-ring.r2,
+.et-power-orb.is-sync .et-orb-ring.r2 {
+  border-color: color-mix(in srgb, currentColor 28%, transparent);
+}
+
+/* 呼吸动画只在"连接中"使用 */
+.et-power-orb.is-sync .et-orb-ring.r1 {
+  box-shadow: 0 0 28px color-mix(in srgb, var(--et-info) 45%, transparent);
+  animation: et-orb 2.8s var(--et-ease-standard) infinite;
+}
+
+/* ---------- 状态信号:色 + 形 + 字 ---------- */
+.et-signal {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  z-index: 1;
+  gap: var(--et-space-2);
+  padding: 5px 12px 5px 10px;
+  border-radius: var(--et-radius-pill);
+  font-size: var(--et-font-caption);
+  font-weight: var(--et-weight-medium);
+  z-index: var(--et-z-base);
 }
 
-.et-hero-status-pill.is-on {
-  background: var(--et-accent-dim);
+.et-signal__glyph {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.et-signal__glyph::before {
+  content: '';
+  display: block;
+  background: currentColor;
+}
+
+.et-signal.is-up {
+  background: var(--et-accent-quiet);
   color: var(--et-accent);
-  border: 1px solid color-mix(in srgb, var(--et-accent) 30%, transparent);
 }
 
-.et-hero-status-pill.is-off {
-  background: var(--et-surface-2);
-  color: var(--et-text-secondary);
-  border: 1px solid var(--et-border-hairline);
+.et-signal.is-up .et-signal__glyph::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.et-signal.is-sync {
+  background: var(--et-info-quiet);
+  color: var(--et-info);
+}
+
+.et-signal.is-sync .et-signal__glyph::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  animation: et-signal-pulse 1.4s var(--et-ease-standard) infinite;
+}
+
+.et-signal.is-warn {
+  background: var(--et-warn-quiet);
+  color: var(--et-warn);
+}
+
+.et-signal.is-warn .et-signal__glyph::before {
+  width: 0;
+  height: 0;
+  background: none;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 12px solid currentColor;
+}
+
+.et-signal.is-down {
+  background: var(--et-danger-quiet);
+  color: var(--et-danger);
+}
+
+.et-signal.is-down .et-signal__glyph::before {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.et-signal.is-idle {
+  background: var(--et-neutral-quiet);
+  color: var(--et-neutral);
+}
+
+.et-signal.is-idle .et-signal__glyph::before {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: none;
+  border: 2px solid currentColor;
+}
+
+@keyframes et-signal-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .et-power-orb:active {
-  transform: scale(0.94);
+  transform: scale(0.985);
 }
 
-/* 只读镜像(移动端 Hero 唯一控制):不是控件,所以不给手型光标与按压缩放。 */
+/* 只读状态球:不是控件,所以不给手型光标与按压缩放。 */
 .et-power-orb.is-readonly {
   cursor: default;
 }
@@ -1192,24 +1520,12 @@ button.et-row {
   50% { transform: scale(1.04); opacity: 0.85; }
 }
 
-.et-hero-state {
-  margin-top: 0.85rem;
-  font-size: 1.35rem;
-  font-weight: 750;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  z-index: 1;
-}
-
-.et-hero-state.is-on { color: var(--et-accent); }
-.et-hero-state.is-off { color: var(--et-text-secondary); }
-
 .et-hero-meta,
 .et-hero-hint {
-  z-index: 1;
-  color: var(--et-text-secondary);
-  font-size: 0.78rem;
-  margin-top: 0.25rem;
+  z-index: var(--et-z-base);
+  color: var(--et-text-2);
+  font-size: var(--et-font-caption);
+  margin-top: var(--et-space-1);
 }
 
 .et-hero-hint { opacity: 0.8; }
@@ -1217,33 +1533,35 @@ button.et-row {
 .speed-cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: var(--et-gap-stack);
 }
 
 .speed-box {
-  background: var(--et-surface);
-  border-radius: 14px;
-  padding: 0.85rem 1rem;
+  background: var(--et-surface-1);
+  border-radius: var(--et-radius-md);
+  padding: var(--et-space-4);
   border: 1px solid var(--et-border);
 }
 
 .speed-val {
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: var(--et-font-headline);
+  font-weight: var(--et-weight-semibold);
   letter-spacing: -0.03em;
-  margin: 4px 0 2px;
+  margin: var(--et-space-1) 0;
 }
 
-.et-search-field :deep(.v-field) {
-  background: var(--et-surface) !important;
-  border-radius: 14px !important;
-  border: 1px solid var(--et-border);
-  min-height: 44px;
+/* 输入控件边界用 --et-control-border(装饰性的 --et-border 没有对比度保证)。
+ * 双写 .v-field 提升优先级,替代原来的 !important。 */
+.et-search-field :deep(.v-field.v-field) {
+  background: var(--et-surface-1);
+  border-radius: var(--et-radius-md);
+  border: 1px solid var(--et-control-border);
+  min-height: var(--et-touch-min);
 }
 
 .et-filter-scroll {
   display: flex;
-  gap: 8px;
+  gap: var(--et-touch-gap);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   padding-bottom: 2px;
@@ -1251,41 +1569,128 @@ button.et-row {
 
 .et-filter {
   flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--et-border);
-  background: var(--et-surface);
-  color: var(--et-text-secondary);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  min-height: var(--et-touch-min);
+  padding: 0 var(--et-space-4);
+  border-radius: var(--et-radius-pill);
+  border: 1px solid var(--et-control-border);
+  background: var(--et-surface-1);
+  color: var(--et-text-2);
+  font-size: var(--et-font-body-sm);
+  font-weight: var(--et-weight-semibold);
+  cursor: pointer;
 }
 
 .et-filter.is-on {
-  background: var(--et-accent-dim);
+  background: var(--et-accent-quiet);
   color: var(--et-accent);
-  border-color: transparent;
+  border-color: color-mix(in srgb, var(--et-accent) 45%, transparent);
 }
 
-.et-device-cell {
-  display: flex;
+/* ---------- PeerRow:状态点 / 虚拟 IP / 路径 / 延迟 ---------- */
+.et-peer {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--et-space-3);
   width: 100%;
-  padding: 0.8rem 1rem;
-  min-height: 56px;
-  cursor: pointer;
+  min-height: var(--et-row-h);
+  padding: var(--et-space-2) var(--et-pad-card);
   border: 0;
-  border-bottom: 1px solid var(--et-border-hairline);
+  border-bottom: 1px solid var(--et-border);
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
+  cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
 }
 
-.et-device-cell:last-child { border-bottom: none; }
+.et-peer:last-child { border-bottom: none; }
+
+.et-peer__dot {
+  width: var(--et-space-2);
+  height: var(--et-space-2);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--et-neutral);
+  flex: 0 0 auto;
+}
+
+.et-peer__dot.is-good { background: var(--et-accent); }
+.et-peer__dot.is-mid,
+.et-peer__dot.is-warn { background: var(--et-warn); }
+.et-peer__dot.is-idle {
+  background: transparent;
+  border: 2px solid var(--et-neutral);
+}
+
+.et-peer__id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.et-peer__head {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-1);
+  min-width: 0;
+}
+
+.et-peer__name {
+  font-size: var(--et-font-body-sm);
+  font-weight: var(--et-weight-medium);
+  color: var(--et-text);
+}
+
+.et-peer__tag {
+  flex: 0 0 auto;
+  font-size: var(--et-font-micro);
+  line-height: 1.4;
+  padding: 0 var(--et-space-1);
+  border-radius: var(--et-radius-pill);
+  color: var(--et-info);
+  border: 1px solid color-mix(in srgb, var(--et-info) 35%, transparent);
+}
+
+.et-peer__tag.is-warn {
+  color: var(--et-warn);
+  border-color: color-mix(in srgb, var(--et-warn) 35%, transparent);
+}
+
+.et-peer__ip {
+  font-family: var(--et-font-data);
+  font-variant-numeric: var(--et-numeric);
+  font-size: var(--et-font-caption);
+  color: var(--et-text-2);
+}
+
+.et-peer__path {
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--et-font-caption);
+  color: var(--et-text-2);
+}
+
+.et-peer__rtt {
+  min-width: var(--et-space-16);
+  text-align: right;
+  font-family: var(--et-font-data);
+  font-variant-numeric: var(--et-numeric);
+  font-size: var(--et-font-caption);
+  color: var(--et-text);
+}
+
+.et-peer__rtt.is-good { color: var(--et-accent); }
+.et-peer__rtt.is-mid,
+.et-peer__rtt.is-warn { color: var(--et-warn); }
+.et-peer__rtt.is-idle { color: var(--et-text-3); }
+
+.et-peer.is-offline .et-peer__name { color: var(--et-text-2); }
 
 /* TransitionGroup 容器:为 leave-active 的绝对定位提供包含块 */
 .et-list-wrap {
@@ -1293,61 +1698,42 @@ button.et-row {
   display: block;
 }
 
-.device-icon-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
 .device-squircle {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--et-radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .device-squircle.is-direct {
-  background: linear-gradient(135deg, #1ec8a3, #0f9d7e);
+  background: var(--et-accent-quiet);
+  color: var(--et-accent);
 }
 
 .device-squircle.is-relay {
-  background: linear-gradient(135deg, #f5b942, #c98500);
+  background: var(--et-warn-quiet);
+  color: var(--et-warn);
 }
 
-.ping-dot {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--et-surface);
-}
-
-.ping-dot.is-direct { background: var(--et-accent); }
-.ping-dot.is-relay { background: var(--et-warning); }
-
-.device-name {
-  font-size: 0.9375rem;
-  letter-spacing: -0.01em;
-}
-
-.et-sheet, .et-dialog-sheet {
-  background: var(--et-surface) !important;
+/* 双写类名提升优先级,替代原来的 !important */
+.v-card.et-sheet,
+.v-card.et-dialog-sheet {
+  background: var(--et-surface-1);
 }
 
 .vpn-client-config {
   background: var(--et-surface-2);
-  padding: 0.625rem;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-family: var(--font-mono);
+  padding: var(--et-space-2);
+  border-radius: var(--et-radius-sm);
+  font-size: var(--et-font-caption);
+  font-family: var(--et-font-data);
   overflow-x: auto;
 }
 
 .border-b {
-  border-bottom: 1px solid var(--et-border-hairline);
+  border-bottom: 1px solid var(--et-border);
 }
 
 .truncate {
@@ -1357,7 +1743,7 @@ button.et-row {
 }
 
 .text-mono {
-  font-family: var(--font-mono);
+  font-family: var(--et-font-data);
 }
 
 /* ---------- 数字质感 ---------- */
@@ -1366,16 +1752,16 @@ button.et-row {
 }
 
 /* ---------- 骨架 ---------- */
-.et-skeleton {
-  background: transparent !important;
+.et-skeleton.v-skeleton-loader {
+  background: transparent;
   width: 100%;
 }
 
 .et-skeleton-stack {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.25rem 0.25rem 1rem;
+  gap: var(--et-gap-stack);
+  padding: var(--et-space-1) var(--et-space-1) var(--et-space-4);
 }
 
 /* ---------- 空态 ---------- */
@@ -1385,45 +1771,48 @@ button.et-row {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 2rem 1.25rem;
-  color: var(--et-text-secondary);
+  padding: var(--et-space-8) var(--et-space-5);
+  color: var(--et-text-2);
 }
 
 .et-empty__icon {
   width: 64px;
   height: 64px;
-  border-radius: 18px;
+  border-radius: var(--et-radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--et-accent-dim);
-  margin-bottom: 0.75rem;
+  background: var(--et-accent-quiet);
+  margin-bottom: var(--et-space-3);
   flex-shrink: 0;
 }
 
 .et-empty__title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: var(--et-font-body);
+  font-weight: var(--et-weight-semibold);
   color: var(--et-text);
 }
 
 .et-empty__hint {
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font-size: var(--et-font-body-sm);
+  line-height: var(--et-leading-normal);
   max-width: 18rem;
-  margin-top: 0.25rem;
+  margin-top: var(--et-space-1);
 }
 
 /* ---------- 动效(仅在允许动效的设备上启用) ---------- */
 @media (prefers-reduced-motion: no-preference) {
   /* 数值刷新柔和过渡:key 触发重挂载 → 60ms fade */
   .et-tick {
-    animation: et-tick-in 60ms ease-out;
+    animation: et-tick-in var(--et-dur-instant) var(--et-ease-standard);
   }
 
   .et-press-row,
   .speed-box {
-    transition: transform 140ms ease-out, background-color 140ms ease-out, opacity 140ms ease-out;
+    transition:
+      transform var(--et-dur-fast) var(--et-ease-standard),
+      background-color var(--et-dur-fast) var(--et-ease-standard),
+      opacity var(--et-dur-fast) var(--et-ease-standard);
   }
 
   .et-press-row:active {
@@ -1431,13 +1820,15 @@ button.et-row {
   }
 
   .et-power-orb {
-    transition: transform 140ms ease-out;
+    transition: transform var(--et-dur-fast) var(--et-ease-standard);
   }
 
-  /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */
+  /* 列表进出场:12px 位移 + opacity,退出与进入同长(令牌已收敛) */
   .et-list-fade-enter-active,
   .et-list-fade-leave-active {
-    transition: opacity 180ms ease-out, transform 180ms ease-out;
+    transition:
+      opacity var(--et-dur-base) var(--et-ease-standard),
+      transform var(--et-dur-base) var(--et-ease-standard);
   }
 
   .et-list-fade-enter-from,
@@ -1452,7 +1843,7 @@ button.et-row {
   }
 
   .et-list-fade-move {
-    transition: transform 160ms ease-out;
+    transition: transform var(--et-dur-base) var(--et-ease-standard);
   }
 
   .et-skeleton :deep(.v-skeleton-loader__bone::after) {
@@ -1471,6 +1862,10 @@ button.et-row {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .et-power-orb.is-on .et-orb-ring { animation: none; }
+  /* 呼吸动画是"连接中"的专属状态提示,reduced-motion 下必须停 */
+  .et-power-orb.is-sync .et-orb-ring,
+  .et-signal.is-sync .et-signal__glyph::before {
+    animation: none;
+  }
 }
 </style>

@@ -1,0 +1,34 @@
+name: Design Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'easytier-gui/**'
+      - 'easytier-web/frontend-lib/**'
+      - 'design-system/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'easytier-gui/**'
+      - 'easytier-web/frontend-lib/**'
+      - 'design-system/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Verify Design Tokens & Guidelines
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify design gates
+        run: bash design-system/easytier/verify-all.sh --gates

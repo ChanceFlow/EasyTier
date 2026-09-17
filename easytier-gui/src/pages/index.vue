@@ -763,16 +763,18 @@ function exitApp(): void {
 
     <v-bottom-sheet v-model="settingsSheetOpen">
       <v-card class="et-sheet-card pb-4">
-        <div class="sheet-grabber" />
+        <div class="sheet-grabber" aria-hidden="true" />
         <v-card-title class="text-subtitle-1 font-weight-bold pt-1">
           {{ t('web.settings.title') }}
         </v-card-title>
         <v-card-text class="pt-2">
           <div class="et-group mb-3">
-            <div
+            <button
               v-for="item in visibleSettingsItems()"
               :key="item.key"
-              class="et-row et-row-pressable"
+              type="button"
+              class="et-row et-row-pressable et-row-btn"
+              :aria-label="item.value ? `${item.label} · ${item.value}` : item.label"
               @click="item.command()"
             >
               <div class="d-flex align-center ga-3 min-w-0">
@@ -789,11 +791,16 @@ function exitApp(): void {
                   mdi-chevron-right
                 </v-icon>
               </div>
-            </div>
+            </button>
           </div>
 
           <div class="et-group mb-3">
-            <div class="et-row et-row-pressable" @click="aboutVisible = true; settingsSheetOpen = false">
+            <button
+              type="button"
+              class="et-row et-row-pressable et-row-btn"
+              :aria-label="t('about.title')"
+              @click="aboutVisible = true; settingsSheetOpen = false"
+            >
               <div class="d-flex align-center ga-3">
                 <div class="et-squircle" style="background: var(--et-surface-2);">
                   <v-icon size="18" color="primary">
@@ -805,7 +812,7 @@ function exitApp(): void {
               <v-icon size="18" color="medium-emphasis">
                 mdi-chevron-right
               </v-icon>
-            </div>
+            </button>
           </div>
 
           <v-btn
@@ -825,37 +832,51 @@ function exitApp(): void {
 
     <v-bottom-sheet v-model="logSheetOpen">
       <v-card class="et-sheet-card pb-4">
-        <div class="sheet-grabber" />
+        <div class="sheet-grabber" aria-hidden="true" />
         <v-card-title class="text-subtitle-1 font-weight-bold pt-1">
           {{ t('logging') }}
         </v-card-title>
         <v-card-text>
           <div class="et-group mb-3">
-            <div
+            <button
               v-for="level in logLevels"
               :key="level"
-              class="et-row et-row-pressable"
+              type="button"
+              class="et-row et-row-pressable et-row-btn"
+              :aria-label="t(`logging_level_${level}`)"
+              :aria-pressed="currentLogLevel === level"
               @click="applyLogLevel(level)"
             >
               <span class="font-weight-medium">{{ t(`logging_level_${level}`) }}</span>
               <v-icon v-if="currentLogLevel === level" color="primary" size="20">
                 mdi-check
               </v-icon>
-            </div>
+            </button>
           </div>
           <div class="et-group">
-            <div v-if="!isAndroid" class="et-row et-row-pressable" @click="openLogDir">
+            <button
+              v-if="!isAndroid"
+              type="button"
+              class="et-row et-row-pressable et-row-btn"
+              :aria-label="t('logging_open_dir')"
+              @click="openLogDir"
+            >
               <span>{{ t('logging_open_dir') }}</span>
               <v-icon size="18" color="medium-emphasis">
                 mdi-folder-open-outline
               </v-icon>
-            </div>
-            <div class="et-row et-row-pressable" @click="copyLogDir">
+            </button>
+            <button
+              type="button"
+              class="et-row et-row-pressable et-row-btn"
+              :aria-label="t('logging_copy_dir')"
+              @click="copyLogDir"
+            >
               <span>{{ t('logging_copy_dir') }}</span>
               <v-icon size="18" color="medium-emphasis">
                 mdi-content-copy
               </v-icon>
-            </div>
+            </button>
           </div>
         </v-card-text>
       </v-card>
@@ -1072,33 +1093,55 @@ function exitApp(): void {
   word-break: break-word;
 }
 
-/* the collapsed "advanced console" disclosure under the phone hero */
-.et-adv-wrap {
-  padding: 0 16px;
+/* sheet rows are real <button>s now: .et-row (frontend-lib) still owns the
+   layout + --et-touch floor, this only resets the UA chrome */
+.et-row-btn {
+  width: 100%;
+  min-height: var(--et-touch);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  appearance: none;
 }
 
-.et-adv-panel {
-  background: var(--et-surface) !important;
-  border: 1px solid var(--et-border) !important;
-  border-radius: var(--et-radius) !important;
+.et-row-btn:focus-visible {
+  outline: 2px solid var(--et-focus);
+  outline-offset: calc(var(--et-space-1) * -1);
+}
+
+/* the collapsed "advanced console" disclosure under the phone hero */
+.et-adv-wrap {
+  padding: 0 var(--et-space-4);
+}
+
+/* compound selectors beat Vuetify's .v-expansion-panel rules without !important */
+.et-adv-panel.v-expansion-panel {
+  background: var(--et-surface-1);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-md);
 }
 
 .et-adv-title {
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: var(--et-font-body);
+  font-weight: var(--et-weight-semibold);
   letter-spacing: -0.01em;
 }
 
 .et-adv-sub {
-  font-size: 0.72rem;
-  color: var(--et-text-secondary);
-  margin-top: 1px;
+  font-size: var(--et-font-caption);
+  color: var(--et-text-2);
+  margin-top: var(--et-space-1);
 }
 
-.et-nav-btn {
-  min-width: 44px !important;
-  min-height: 44px !important;
-  width: 44px;
-  height: 44px;
+/* icon buttons in the fixed header keep the platform touch floor even at
+   size="small"; the compound selector outranks .v-btn--icon.v-btn--density-* */
+.et-nav-btn.v-btn.v-btn--icon {
+  min-width: var(--et-touch);
+  min-height: var(--et-touch);
+  width: var(--et-touch);
+  height: var(--et-touch);
 }
 </style>

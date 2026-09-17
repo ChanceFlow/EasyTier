@@ -145,9 +145,10 @@ watch(tomlConfig, (newValue) => {
 .config-textarea {
     max-height: 60vh;
 }
-.config-textarea :deep(textarea) {
-    overflow-y: auto !important;
-    font-family: var(--font-mono) !important;
+.config-textarea :deep(textarea.v-field__input) {
+    /* 靠类名把特异性提到 Vuetify 的 .v-field__input 之上，不再用 !important */
+    overflow-y: auto;
+    font-family: var(--et-font-data);
     font-variant-numeric: tabular-nums;
 }
 

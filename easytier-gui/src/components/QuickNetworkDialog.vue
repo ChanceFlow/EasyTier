@@ -28,6 +28,7 @@ const secretTouched = ref(false)
 const peerUrlTouched = ref(false)
 
 const PEER_URL_PATTERN = /^(?:tcp|udp|ws|wss|wg|quic):\/\/\S+$/i
+const PEER_URL_SCHEMES = 'tcp:// · udp:// · ws:// · wss:// · wg:// · quic://'
 
 const nameError = computed(() =>
   nameTouched.value && !networkName.value.trim()
@@ -43,8 +44,21 @@ const peerUrlError = computed(() => {
   const value = peerUrl.value.trim()
   if (!value || !peerUrlTouched.value || PEER_URL_PATTERN.test(value))
     return ''
-  // a soft warning only: an unknown scheme is flagged, but never hard-blocks
-  return t('quick_network.peer_url_invalid', 'Use a supported scheme: tcp://, udp://, ws://, wss://, wg:// or quic://')
+  // name the exact segment that is wrong (MASTER §4: say which part failed,
+  // not just "invalid format")
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value)?.[1]
+  if (scheme) {
+    return pt(
+      'quick_network.peer_url_scheme',
+      `不支持的协议「${scheme}://」，可用：${PEER_URL_SCHEMES}`,
+      `Unsupported scheme “${scheme}://” — use ${PEER_URL_SCHEMES}`,
+    )
+  }
+  return pt(
+    'quick_network.peer_url_missing_scheme',
+    `缺少协议前缀，需要写成 协议://主机:端口，例如 tcp://public.easytier.top:11010（可用：${PEER_URL_SCHEMES}）`,
+    `Missing the scheme — write scheme://host:port, e.g. tcp://public.easytier.top:11010 (supported: ${PEER_URL_SCHEMES})`,
+  )
 })
 const formInvalid = computed(() => !networkName.value.trim() || !networkSecret.value.trim())
 
@@ -80,10 +94,12 @@ function submit() {
     :fullscreen="mobileUI"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <v-card rounded="xl" class="et-dialog-card pa-3">
+    <v-card rounded="xl" class="et-dialog-card et-quick-card pa-3">
       <div class="d-flex align-center ga-3 px-3 pt-2">
-        <div class="et-squircle" style="background: var(--et-accent-dim);">
-          <v-icon size="20" color="primary">mdi-shield-plus-outline</v-icon>
+        <div class="et-squircle" style="background: var(--et-accent-quiet);">
+          <v-icon size="20" color="primary">
+            mdi-shield-plus-outline
+          </v-icon>
         </div>
         <div>
           <div class="text-subtitle-1 font-weight-bold">
@@ -114,6 +130,7 @@ function submit() {
             enterkeyhint="done"
             :error="!!nameError"
             :error-messages="nameError ? [nameError] : []"
+            :aria-invalid="nameError ? 'true' : 'false'"
             @blur="nameTouched = true"
           />
         </div>
@@ -137,6 +154,7 @@ function submit() {
             :placeholder="pt('dialog.secret_placeholder', '相同密码加入同一网络', 'Same secret to join the same network')"
             :error="!!secretError"
             :error-messages="secretError ? [secretError] : []"
+            :aria-invalid="secretError ? 'true' : 'false'"
             @blur="secretTouched = true"
           >
             <!-- a real button (not :append-inner-icon) so aria-label /
@@ -165,8 +183,7 @@ function submit() {
             <button
               v-if="!peerUrl"
               type="button"
-              class="et-inline-btn text-caption text-primary font-weight-medium"
-              style="font-size: 0.75rem;"
+              class="et-inline-btn text-primary font-weight-medium"
               :aria-label="t('quick_network.use_official_aria', 'Fill in the official public peer node')"
               @click="peerUrl = 'tcp://public.easytier.top:11010'"
             >
@@ -188,6 +205,7 @@ function submit() {
             enterkeyhint="done"
             :error="!!peerUrlError"
             :error-messages="peerUrlError ? [peerUrlError] : []"
+            :aria-invalid="peerUrlError ? 'true' : 'false'"
             @blur="peerUrlTouched = true"
           />
         </div>
@@ -231,16 +249,33 @@ function submit() {
 </template>
 
 <style scoped>
+/* MASTER §4 输入框: the control border is --et-control-border (>= 3:1), not
+   Vuetify's 38 %-opacity theme outline; the focus ring is a 2px --et-focus
+   outline (>= 3:1 on both surfaces). Field errors stay red and are declared
+   last so they win over the focused state. */
+.et-quick-card :deep(.v-field--variant-outlined .v-field__outline) {
+  color: var(--et-control-border);
+  --v-field-border-opacity: 1;
+}
+
+.et-quick-card :deep(.v-field--variant-outlined.v-field--focused .v-field__outline) {
+  color: var(--et-focus);
+}
+
+.et-quick-card :deep(.v-field--variant-outlined.v-field--error .v-field__outline) {
+  color: var(--et-danger);
+}
+
 /* show/hide secret toggle rendered inside the field's append-inner slot */
 .et-field-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: var(--et-touch-min);
+  height: var(--et-touch-min);
   /* keep the compact field height while still offering a large tap target */
-  margin-block: -4px;
-  margin-inline-end: -4px;
+  margin-block: calc(var(--et-space-1) * -1);
+  margin-inline-end: calc(var(--et-space-1) * -1);
   padding: 0;
   border: 0;
   background: transparent;
@@ -248,13 +283,26 @@ function submit() {
   cursor: pointer;
 }
 
+.et-field-icon-btn:focus-visible {
+  outline: 2px solid var(--et-focus);
+  outline-offset: 2px;
+  border-radius: var(--et-radius-sm);
+}
+
 /* "use official node" is now a real button: reset the UA chrome, keep the
    previous caption look */
 .et-inline-btn {
-  padding: 2px 0;
+  padding: var(--et-space-1) 0;
   border: 0;
   background: none;
   font-family: inherit;
+  font-size: var(--et-font-caption);
   cursor: pointer;
+}
+
+.et-inline-btn:focus-visible {
+  outline: 2px solid var(--et-focus);
+  outline-offset: 2px;
+  border-radius: var(--et-radius-xs);
 }
 </style>

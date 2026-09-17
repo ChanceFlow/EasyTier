@@ -8,7 +8,9 @@ const emit = defineEmits<{
 
 const { pt } = usePhoneText()
 const page = ref(0)
-const PAGES = 3
+// stable ids double as the dot list keys and keep the page count single-sourced
+const PAGE_IDS = ['intro', 'permissions', 'steps'] as const
+const PAGES = PAGE_IDS.length
 
 const SWIPE_MIN_DX = 48
 let swipeStartX = 0
@@ -82,10 +84,20 @@ const p2Items = computed(() => [
 ])
 
 const p3Steps = computed(() => [
-  pt('onboard.3.step1', '创建或选择网络配置', 'Create or select a network config'),
-  pt('onboard.3.step2', '填写网络名与密码——相同凭据即同一张网', 'Enter network name and secret — same credentials, same mesh'),
-  pt('onboard.3.step3', '点「连接」，等待节点出现', 'Tap Connect and watch peers arrive'),
+  { id: 'config', text: pt('onboard.3.step1', '创建或选择网络配置', 'Create or select a network config') },
+  { id: 'credentials', text: pt('onboard.3.step2', '填写网络名与密码——相同凭据即同一张网', 'Enter network name and secret — same credentials, same mesh') },
+  { id: 'connect', text: pt('onboard.3.step3', '点「连接」，等待节点出现', 'Tap Connect and watch peers arrive') },
 ])
+
+// the hint names the control in words; the gear glyph is decorative next to it
+const p3Hint = computed(() => ({
+  before: pt('onboard.3.hint_before', '右上角的', 'The '),
+  after: pt(
+    'onboard.3.hint_after',
+    '设置按钮可切换语言与主题；组网配置在「高级控制台」里。',
+    ' settings button at the top right switches language and theme; detailed config lives in the Advanced console.',
+  ),
+}))
 </script>
 
 <template>
@@ -97,12 +109,20 @@ const p3Steps = computed(() => [
     transition="dialog-bottom-transition"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <v-card class="et-onboard">
+    <v-card class="et-onboard" @keydown.esc.stop.prevent="finish">
       <div class="et-onboard-top">
         <v-spacer />
         <!-- the dialog is persistent, so this is the guaranteed way out on
-             every page (the last page keeps its primary CTA as well) -->
-        <v-btn variant="text" rounded="pill" size="small" :aria-label="headings[0]" @click="finish">
+             every page (Esc is wired to the same exit; the last page keeps its
+             primary CTA as well) -->
+        <v-btn
+          class="et-onboard-skip"
+          variant="text"
+          rounded="pill"
+          size="small"
+          :aria-label="headings[0]"
+          @click="finish"
+        >
           {{ headings[0] }}
         </v-btn>
       </div>
@@ -118,7 +138,7 @@ const p3Steps = computed(() => [
                 <div class="et-onboard-shield">
                   <svg viewBox="0 0 24 24" width="46" height="46">
                     <path d="M12 2 4 5v6c0 5.25 3.4 9.74 8 11 4.6-1.26 8-5.75 8-11V5l-8-3Z" style="fill: var(--et-accent)" />
-                    <path d="M8.6 12.2l2.3 2.3 4.5-4.6" fill="none" style="stroke: #06231c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M8.6 12.2l2.3 2.3 4.5-4.6" fill="none" style="stroke: var(--et-on-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
                 </div>
               </div>
@@ -139,7 +159,7 @@ const p3Steps = computed(() => [
               </h2>
               <div class="et-onboard-list">
                 <div v-for="item in p2Items" :key="item.title" class="et-onboard-item">
-                  <div class="et-squircle" style="background: var(--et-accent-dim);">
+                  <div class="et-squircle" style="background: var(--et-accent-quiet);">
                     <v-icon size="18" color="primary">
                       {{ item.icon }}
                     </v-icon>
@@ -164,22 +184,35 @@ const p3Steps = computed(() => [
                 {{ pt('onboard.3.title', '三步上手', 'Up and running in 3 steps') }}
               </h2>
               <div class="et-onboard-list">
-                <div v-for="(step, i) in p3Steps" :key="i" class="et-onboard-step">
-                  <span class="et-onboard-step-num mono">{{ i + 1 }}</span>
-                  <span class="et-onboard-step-text">{{ step }}</span>
+                <div v-for="(step, idx) in p3Steps" :key="step.id" class="et-onboard-step">
+                  <span class="et-onboard-step-num mono" aria-hidden="true">{{ idx + 1 }}</span>
+                  <span class="et-onboard-step-text">{{ step.text }}</span>
                 </div>
               </div>
               <p class="et-onboard-hint">
-                {{ pt('onboard.3.hint', '右上角 ⚙ 可切换语言与主题；组网配置在「高级控制台」里。', 'Switch language and theme via ⚙ at the top right; detailed config lives in the Advanced console.') }}
+                <span>{{ p3Hint.before }}</span>
+                <v-icon
+                  class="et-onboard-hint-icon"
+                  size="14"
+                  aria-hidden="true"
+                >
+                  mdi-cog-outline
+                </v-icon>
+                <span>{{ p3Hint.after }}</span>
               </p>
             </div>
           </v-window-item>
         </v-window>
       </div>
 
-      <div class="et-onboard-bottom safe-bottom">
+      <div class="et-onboard-bottom">
         <div class="et-onboard-dots" aria-hidden="true">
-          <span v-for="i in PAGES" :key="i" class="et-onboard-dot" :class="{ 'is-active': page === i - 1 }" />
+          <span
+            v-for="(pageId, pageIdx) in PAGE_IDS"
+            :key="pageId"
+            class="et-onboard-dot"
+            :class="{ 'is-active': page === pageIdx }"
+          />
         </div>
         <div class="d-flex align-center ga-3">
           <v-btn v-if="page > 0" variant="text" rounded="pill" size="large" @click="page -= 1">
@@ -207,16 +240,26 @@ const p3Steps = computed(() => [
 </template>
 
 <style scoped>
-.et-onboard {
-  background: radial-gradient(900px 420px at 50% -10%, var(--et-accent-dim), transparent 60%), var(--et-bg) !important;
+/* .v-card/.v-sheet paint their own background at the same specificity as a
+   single class, so the compound selector is what wins — no !important. */
+.et-onboard.v-card {
+  background: radial-gradient(900px 420px at 50% -10%, var(--et-accent-quiet), transparent 60%), var(--et-bg);
   display: flex;
   flex-direction: column;
 }
 
 .et-onboard-top {
   display: flex;
-  padding: 8px 12px 0;
-  min-height: 48px;
+  /* fullscreen surface: the skip button must clear the notch/island */
+  padding: calc(var(--et-space-2) + var(--et-safe-top)) var(--et-space-3) 0;
+  min-height: var(--et-touch);
+}
+
+/* the skip escape hatch is a real v-btn; keep it at the platform touch floor
+   even at size="small" */
+.et-onboard-skip.v-btn {
+  min-height: var(--et-touch);
+  padding-inline: var(--et-space-4);
 }
 
 .et-onboard-body {
@@ -241,14 +284,14 @@ const p3Steps = computed(() => [
   min-height: 0;
   max-width: 480px;
   margin: 0 auto;
-  padding: 16px 28px 28px;
+  padding: var(--et-space-4) var(--et-space-6) var(--et-space-6);
   display: flex;
   flex-direction: column;
   justify-content: center;
   /* safe: falls back to flex-start when the content overflows, so large
      system fonts / landscape stay scrollable instead of clipping the top */
   justify-content: safe center;
-  gap: 10px;
+  gap: var(--et-gap-stack);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -261,24 +304,24 @@ const p3Steps = computed(() => [
 }
 
 .et-onboard-title {
-  font-size: 1.45rem;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.25;
+  font-size: var(--et-font-display-fluid);
+  font-weight: var(--et-weight-semibold);
+  letter-spacing: -0.02em;
+  line-height: var(--et-leading-tight);
 }
 
 .et-onboard-text {
-  font-size: 0.95rem;
-  line-height: 1.65;
-  color: var(--et-text-secondary);
+  font-size: var(--et-font-body);
+  line-height: var(--et-leading-loose);
+  color: var(--et-text-2);
 }
 
-/* page 1 art: shield in soft signal-cyan rings */
+/* page 1 art: shield in soft signal rings (flat surfaces, no neon halo) */
 .et-onboard-art {
   position: relative;
   width: 168px;
   height: 168px;
-  margin: 0 auto 18px;
+  margin: 0 auto var(--et-space-4);
   display: grid;
   place-items: center;
 }
@@ -290,7 +333,7 @@ const p3Steps = computed(() => [
 }
 
 .et-onboard-ring.r1 {
-  inset: 18px;
+  inset: var(--et-space-4);
   border-color: color-mix(in srgb, var(--et-accent) 22%, transparent);
 }
 
@@ -301,81 +344,91 @@ const p3Steps = computed(() => [
 .et-onboard-shield {
   width: 84px;
   height: 84px;
-  border-radius: 26px;
+  border-radius: var(--et-radius-xl);
   display: grid;
   place-items: center;
   background: var(--et-surface-2);
   border: 1px solid var(--et-accent);
-  box-shadow: 0 0 42px -10px var(--et-glow);
   position: relative;
-  z-index: 1;
+  z-index: var(--et-z-base);
 }
 
 .et-onboard-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 6px;
+  gap: var(--et-space-3);
+  margin-top: var(--et-space-2);
 }
 
 .et-onboard-item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  background: var(--et-surface);
+  gap: var(--et-space-3);
+  background: var(--et-surface-1);
   border: 1px solid var(--et-border);
-  border-radius: var(--et-radius);
-  padding: 14px;
+  border-radius: var(--et-radius-md);
+  padding: var(--et-pad-card);
 }
 
 .et-onboard-item-title {
-  font-size: 0.92rem;
+  font-size: var(--et-font-body);
 }
 
 .et-onboard-item-body {
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--et-text-secondary);
-  margin-top: 2px;
+  font-size: var(--et-font-body-sm);
+  line-height: var(--et-leading-normal);
+  color: var(--et-text-2);
+  margin-top: var(--et-space-1);
 }
 
 .et-onboard-step {
   display: flex;
   align-items: center;
-  gap: 14px;
-  background: var(--et-surface);
+  gap: var(--et-space-3);
+  background: var(--et-surface-1);
   border: 1px solid var(--et-border);
-  border-radius: var(--et-radius);
-  padding: 14px 16px;
+  border-radius: var(--et-radius-md);
+  padding: var(--et-space-3) var(--et-pad-card);
 }
 
 .et-onboard-step-num {
-  width: 30px;
-  height: 30px;
+  width: var(--et-space-8);
+  height: var(--et-space-8);
   flex-shrink: 0;
-  border-radius: 10px;
+  border-radius: var(--et-radius-sm);
   display: grid;
   place-items: center;
-  background: var(--et-accent-dim);
+  background: var(--et-accent-quiet);
   color: var(--et-accent);
-  font-weight: 800;
-  font-size: 0.95rem;
+  font-weight: var(--et-weight-semibold);
+  font-size: var(--et-font-body-sm);
 }
 
 .et-onboard-step-text {
-  font-size: 0.9rem;
-  font-weight: 500;
-  line-height: 1.45;
+  font-size: var(--et-font-body);
+  font-weight: var(--et-weight-medium);
+  line-height: var(--et-leading-normal);
 }
 
 .et-onboard-hint {
-  font-size: 0.78rem;
-  color: var(--et-text-tertiary);
-  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--et-space-1);
+  font-size: var(--et-font-caption);
+  line-height: var(--et-leading-normal);
+  color: var(--et-text-3);
+  margin-top: var(--et-space-2);
+}
+
+.et-onboard-hint-icon {
+  color: var(--et-text-2);
+  flex: 0 0 auto;
 }
 
 .et-onboard-bottom {
-  padding: 10px 20px 18px;
+  /* fullscreen surface, bottom bar: keep the primary CTA above the gesture bar */
+  padding: var(--et-space-3) var(--et-space-5) calc(var(--et-space-5) + var(--et-safe-bottom));
   max-width: 560px;
   width: 100%;
   margin: 0 auto;
@@ -384,22 +437,22 @@ const p3Steps = computed(() => [
 .et-onboard-dots {
   display: flex;
   justify-content: center;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: var(--et-space-2);
+  margin-bottom: var(--et-space-3);
 }
 
 .et-onboard-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
+  width: var(--et-space-2);
+  height: var(--et-space-2);
+  border-radius: var(--et-radius-pill);
   background: var(--et-surface-3);
   transition:
-    width 0.25s ease,
-    background-color 0.25s ease;
+    width var(--et-dur-base) var(--et-ease-standard),
+    background-color var(--et-dur-base) var(--et-ease-standard);
 }
 
 .et-onboard-dot.is-active {
-  width: 18px;
+  width: var(--et-space-5);
   background: var(--et-accent);
 }
 </style>

@@ -318,6 +318,21 @@ status:
   appearance_dark: Dark
   appearance_light: Light
 
+  peak: PEAK
+  pause: Pause
+  resume: Resume
+  pause_chart: Pause live chart
+  resume_chart: Resume live chart
+  chart_live: Live
+  chart_paused: Paused
+  degraded: Degraded
+  lost: Lost
+  status_only_hint: Live status only
+  clear_filters: Clear filters
+  no_devices_hint: Waiting for peers to join this network
+  no_devices_filtered_hint: No match for current search or filter
+  event_log_empty_hint: Events will appear once the instance starts reporting
+  vpn_portal_empty_hint: Enable VPN Portal in the config tab to share WireGuard access
 tabs:
   home: Mesh
   devices: Devices
@@ -493,6 +508,8 @@ web:
     active: Active
     stopped: Stopped
 
+    rm_sheet_empty_hint: Create a network to join your mesh
+    rm_activity_empty_hint: Network events appear here as peers join and routes change
   network:
     title: Network
     create: Create Network
@@ -629,3 +646,20 @@ acl:
     name: Name
     type: Type
   match: Match
+  empty_title: Access control is off
+  empty_hint: Enable ACL to define which traffic may cross the mesh
+
+config_tier:
+  label: Configuration tier
+  basic: Basic
+  advanced: Advanced
+  expert: Expert
+validation:
+  summary: Fix these fields before running
+  prefix_range: 'Prefix length {0} is outside 1-32'
+  mtu_range: 'MTU {0} is outside 400-1380'
+  port_range: 'Port {0} is outside 1-65535'
+  ipv4_segment_count: 'IPv4 needs 4 dot-separated segments, got {0}'
+  ipv4_segment_number: 'Segment {0} ("{1}") is not a 1-3 digit number'
+  ipv4_segment_range: 'Segment {0} is {1}, outside 0-255'
+prefix_length: Prefix length

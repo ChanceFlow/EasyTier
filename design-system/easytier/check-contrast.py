@@ -51,6 +51,20 @@ CHECKS: list[tuple[str, str, float, str]] = [
     ("--et-focus", "--et-bg", 3.0, "焦点环 on 画布"),
 ]
 
+# 叠加背景：徽标/Chip 的文字画在"自身低透明淡底"上。淡底抬高背景亮度、吃掉对比度，
+# 所以必须按**合成后的真实颜色**断言 —— 只看"文字对纯背景"会整类漏掉。
+# (前景令牌, 背景规格, 下限, 说明)
+#   背景规格 = "--token"              → 实色
+#            = ("--token", α, "--底")  → α 透明淡色合成到实色底上
+COMPOSITE: list[tuple[str, object, float, str]] = [
+    ("--et-accent-on-tint", "--et-accent-quiet", 4.5, "teal 徽标 on accent-quiet"),
+    ("--et-info-on-tint", "--et-info-quiet", 4.5, "cyan 徽标 on info-quiet"),
+    ("--et-warn-on-tint", ("--et-warn", 0.15, "--et-surface-1"), 4.5, "amber 徽标 15% warn over 卡片"),
+    ("--et-warn-on-tint", ("--et-warn", 0.15, "--et-surface-2"), 4.5, "amber 徽标 15% warn over 次级卡片"),
+    ("--et-danger-on-tint", ("--et-danger", 0.15, "--et-surface-1"), 4.5, "coral 徽标 15% danger over 卡片"),
+    ("--et-danger-on-tint", ("--et-danger", 0.15, "--et-surface-2"), 4.5, "coral 徽标 15% danger over 次级卡片"),
+]
+
 
 def strip_comments(css: str) -> str:
     """Remove /* ... */ including multi-line, so selectors survive intact."""

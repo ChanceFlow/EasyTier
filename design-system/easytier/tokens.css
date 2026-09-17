@@ -166,6 +166,14 @@
 
   --et-focus: #7ce8ff;         /* 焦点环，必须与 accent 可区分 */
 
+  /* 语义色画在"自身低透明淡底"上时的文字色（徽标/Chip）。
+   * 淡底会抬高背景亮度、吃掉对比度，深色下语义色本身够亮，直接复用；
+   * 亮色下必须加深，见亮色块。check-contrast.py 会按真实叠加结果断言。 */
+  --et-accent-on-tint: var(--et-accent);
+  --et-warn-on-tint: var(--et-warn);
+  --et-danger-on-tint: var(--et-danger);
+  --et-info-on-tint: var(--et-info);
+
   --et-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --et-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5);
   --et-shadow-3: 0 12px 40px rgba(0, 0, 0, 0.6);
@@ -236,6 +244,13 @@
   --et-neutral-quiet: #eef2f7;
 
   --et-focus: #0b5fa5;
+
+  /* 淡底上的文字色：亮色下淡底会把对比度压到刚好压线（实测 warn 只有 4.55:1），
+   * 这几个值是加深后的安全余量（warn 5.24:1）。它们属于令牌层，不该写在组件里。 */
+  --et-accent-on-tint: #016747;
+  --et-warn-on-tint: #8b4209;
+  --et-danger-on-tint: #a51735;
+  --et-info-on-tint: #035e93;
 
   --et-shadow-1: 0 1px 2px rgba(13, 20, 32, 0.06);
   --et-shadow-2: 0 4px 16px rgba(13, 20, 32, 0.1);
@@ -320,5 +335,21 @@ body {
   }
   html {
     scroll-behavior: auto;
+  }
+
+  /* 全局兜底：组件里写死字面量时长的 transition/animation 也必须停。
+   * 这条规则**故意用 !important**，且**只允许存在于本文件**：
+   * 通用选择器（*）在特异性上永远赢不过组件自己的规则，!important 是它唯一
+   * 有效的形式；它是无障碍覆盖，不是"选择器优先级失控"。
+   * lint-design.py 的 important 规则对 tokens.css 豁免。
+   * 注意 duration 要压到 .01ms 而不是 0：有些实现会因 0 时长跳过 transitionend，
+   * 反而让依赖它做收尾的逻辑卡住。 */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

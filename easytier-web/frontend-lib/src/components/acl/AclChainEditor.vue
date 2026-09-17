@@ -46,6 +46,17 @@ const showRuleDialog = ref(false)
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 
+// 每条规则一个稳定身份:拖拽重排、中间插入/删除时 DOM 不会错位复用。
+const ruleKeys = ref<WeakMap<AclRule, string>>(new WeakMap())
+function ruleViewKey(rule: AclRule): string {
+  let key = ruleKeys.value.get(rule)
+  if (!key) {
+    key = uuidv4()
+    ruleKeys.value.set(rule, key)
+  }
+  return key
+}
+
 function getProtocolLabel(proto: AclProtocol) {
   switch (proto) {
     case AclProtocol.Any: return t('acl.any')
@@ -229,7 +240,7 @@ function resetDrag() {
       <tbody>
         <tr
           v-for="(rule, index) in rules()"
-          :key="index"
+          :key="ruleViewKey(rule)"
           :draggable="true"
           class="acl-row"
           :class="{ 'acl-row-dragover': dragOverIndex === index, 'acl-row-dragging': dragIndex === index }"
@@ -323,11 +334,11 @@ function resetDrag() {
 .acl-meta-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
-  padding: 1rem;
-  background: var(--v-theme-surfaceContainerLow);
-  border-radius: 12px;
-  border: 1px solid var(--v-theme-outlineVariant);
+  gap: var(--et-space-4);
+  padding: var(--et-space-4);
+  background: var(--et-surface-2);
+  border-radius: var(--et-radius-md);
+  border: 1px solid var(--et-border);
 }
 @media (min-width: 768px) {
   .acl-meta-grid {
@@ -335,20 +346,20 @@ function resetDrag() {
   }
   .acl-meta-row {
     grid-column: span 2;
-    border-top: 1px solid var(--v-theme-outlineVariant);
-    padding-top: 0.75rem;
-    margin-top: 0.5rem;
+    border-top: 1px solid var(--et-border);
+    padding-top: var(--et-space-3);
+    margin-top: var(--et-space-2);
   }
 }
 .acl-table {
-  border: 1px solid var(--v-theme-outlineVariant);
-  background: var(--v-theme-surface);
+  border: 1px solid var(--et-border);
+  background: var(--et-surface-1);
 }
 .acl-row {
   cursor: default;
 }
 .acl-row-dragover {
-  outline: 2px dashed var(--v-theme-primary);
+  outline: 2px dashed var(--et-accent);
   outline-offset: -2px;
 }
 .acl-row-dragging {
@@ -356,11 +367,12 @@ function resetDrag() {
 }
 .acl-drag-handle {
   cursor: grab;
-  color: var(--v-theme-onSurfaceVariant);
+  color: var(--et-text-2);
 }
 .acl-mobile-index {
   display: none;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--et-font-data);
+  font-variant-numeric: var(--et-numeric);
 }
 /* 触屏设备没有 HTML5 拖拽:隐藏拖拽手柄,改显示序号,并用行内上下移按钮排序 */
 @media (max-width: 599px) {
@@ -375,19 +387,20 @@ function resetDrag() {
   }
 }
 .acl-proto-badge {
-  padding: 2px 8px;
-  background: var(--v-theme-primaryContainer);
-  color: var(--v-theme-onPrimaryContainer);
-  border-radius: 6px;
-  font-size: 0.65rem;
-  font-weight: bold;
+  padding: 2px var(--et-space-2);
+  background: var(--et-accent-quiet);
+  color: var(--et-accent);
+  border-radius: var(--et-radius-xs);
+  font-family: var(--et-font-data);
+  font-size: var(--et-font-micro);
+  font-weight: var(--et-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .acl-match-row {
   flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--et-space-2);
   flex-wrap: wrap;
 }
 @media (min-width: 640px) {
@@ -400,34 +413,36 @@ function resetDrag() {
   flex-wrap: wrap;
 }
 .acl-label {
-  font-size: 0.6rem;
-  font-weight: bold;
+  font-size: var(--et-font-micro);
+  font-weight: var(--et-weight-semibold);
   text-transform: uppercase;
-  color: var(--v-theme-onSurfaceVariant);
+  color: var(--et-text-3);
   width: 1.75rem;
 }
 .acl-ip {
-  font-family: "Roboto Mono", ui-monospace, monospace;
-  font-size: 0.75rem;
-  background: var(--v-theme-surfaceContainerHighest);
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-family: var(--et-font-data);
+  font-size: var(--et-font-caption);
+  font-variant-numeric: var(--et-numeric);
+  background: var(--et-surface-3);
+  padding: 1px var(--et-space-2);
+  border-radius: var(--et-radius-xs);
 }
 .acl-group {
-  font-size: 0.75rem;
-  font-weight: bold;
-  color: #9d5cff;
+  font-size: var(--et-font-caption);
+  font-weight: var(--et-weight-semibold);
+  color: var(--et-info);
 }
 .acl-port {
-  font-size: 0.75rem;
-  color: var(--v-theme-primary);
-  font-family: "Roboto Mono", ui-monospace, monospace;
+  font-size: var(--et-font-caption);
+  color: var(--et-accent);
+  font-family: var(--et-font-data);
+  font-variant-numeric: var(--et-numeric);
 }
 .acl-any {
-  color: var(--v-theme-onSurfaceVariant);
+  color: var(--et-text-3);
 }
 .acl-arrow {
-  color: var(--v-theme-outline);
+  color: var(--et-text-3);
   transform: rotate(90deg);
 }
 @media (min-width: 640px) {
@@ -436,14 +451,14 @@ function resetDrag() {
   }
 }
 .acl-allow {
-  color: var(--v-theme-success);
+  color: var(--et-accent);
 }
 .acl-drop {
-  color: var(--v-theme-error);
-  font-weight: bold;
+  color: var(--et-danger);
+  font-weight: var(--et-weight-semibold);
 }
 .acl-no-rules {
-  color: var(--v-theme-onSurfaceVariant);
-  padding: 1rem;
+  color: var(--et-text-2);
+  padding: var(--et-space-4);
 }
 </style>

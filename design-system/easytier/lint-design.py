@@ -23,6 +23,9 @@ TARGETS = [
 ]
 SKIP_PARTS = {"generated", "node_modules", "dist", "__pycache__"}
 SKIP_SUFFIX = (".d.ts",)
+# 令牌文件里允许 !important：全局 reduced-motion 兜底必须用通用选择器 + !important
+# 才压得住组件里写死的字面量时长（见 tokens.css 的注释）。
+SKIP_NAMES = {"tokens.css", "theme.ts"}
 
 # emoji 与杂项符号：用作结构性图标即违规（字体依赖、无法用令牌控制）
 # 只认 pictographic emoji 与杂项符号。箭头（U+2190-21FF）**不算**：
@@ -58,6 +61,9 @@ RULES: list[Rule] = [
 
     ("placeholder-only-label", "Medium", r"<input[^>]*placeholder=(?![^>]*(aria-label|id=))",
      "只用 placeholder 当标签 —— 输入后标签消失，且读屏读不到，需配可见 label"),
+    # 迁移进度指标：组件里写死的颜色应当逐个换成 --et-*。不阻断，用来看趋势。
+    ("hardcoded-hex", "Low", r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b",
+     "组件里写死颜色 —— 换成 --et-* 语义令牌（theme.ts 是唯一例外，它必须给 Vuetify 字面量）"),
 ]
 
 CATEGORY_OF = {
@@ -65,6 +71,7 @@ CATEGORY_OF = {
     "viewport-zoom-block": "缩放", "zindex-literal": "层级", "vfor-no-key": "列表",
     "key-index": "列表", "click-on-div": "控件语义", "transition-all": "动效",
     "important": "样式卫生", "fixed-text-height": "文本重排",
+    "hardcoded-hex": "令牌化进度",
     "placeholder-only-label": "表单",
 }
 
@@ -100,7 +107,9 @@ def sources() -> list[Path]:
         for p in base.rglob("*"):
             if not p.is_file() or p.suffix not in (".vue", ".ts", ".css", ".html"):
                 continue
-            if p.name.endswith(SKIP_SUFFIX) or SKIP_PARTS & set(p.parts):
+            if p.name.endswith(SKIP_SUFFIX) or p.name in SKIP_NAMES:
+                continue
+            if SKIP_PARTS & set(p.parts):
                 continue
             out.append(p)
     return sorted(out)

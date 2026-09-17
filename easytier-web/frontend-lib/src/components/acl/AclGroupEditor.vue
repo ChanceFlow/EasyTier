@@ -35,6 +35,18 @@ const members = computed({
 
 const declares = computed(() => groupInfo().declares)
 
+// 每个声明一个稳定身份：中间插入/删除时表格行不会错位复用 DOM。
+// 用对象身份（WeakMap）而不是 group_name —— 编辑中名字会变，且允许重复。
+const declareKeys = ref<WeakMap<GroupIdentity, string>>(new WeakMap())
+function declareKey(item: GroupIdentity): string {
+  let key = declareKeys.value.get(item)
+  if (!key) {
+    key = uuidv4()
+    declareKeys.value.set(item, key)
+  }
+  return key
+}
+
 function addGroup() {
   editingGroupIndex.value = -1
   editingGroup.value = {
@@ -96,7 +108,7 @@ function saveGroup() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(item, index) in declares" :key="index">
+          <tr v-for="(item, index) in declares" :key="declareKey(item)">
             <td>{{ item.group_name }}</td>
             <td class="acl-secret">
               <v-text-field

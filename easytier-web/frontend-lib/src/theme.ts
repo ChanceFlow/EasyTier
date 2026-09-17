@@ -5,114 +5,120 @@ import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
 
 /**
- * EasyTier mobile-first theme.
- * Seed: signal teal (#1EC8A3) on OLED black — mesh-alive, not generic SaaS blue.
+ * EasyTier mobile-first theme — design system v2 "Instrument".
+ *
+ * Vuetify generates `--v-theme-*` CSS variables from these literals, so every
+ * value here is a literal hex copy of a `tokens.css` semantic token. Keep the
+ * two in sync; the token names are named in the comments.
+ * Contrast of every on/container pair was verified against the tokens:
+ * text pairs >= 4.5:1, `outline` is a control border and clears the 3:1 of
+ * WCAG 1.4.11 (`--et-control-border` on `--et-surface-1`).
  */
 const m3Light = {
   dark: false,
   colors: {
-    primary: '#00875A',
-    onPrimary: '#FFFFFF',
-    primaryContainer: '#C8F5E8',
-    onPrimaryContainer: '#04211A',
-    secondary: '#4B5568',
-    onSecondary: '#FFFFFF',
-    secondaryContainer: '#E2E8F0',
-    onSecondaryContainer: '#1E293B',
-    tertiary: '#0284C7',
-    onTertiary: '#FFFFFF',
-    tertiaryContainer: '#DBE8FF',
-    onTertiaryContainer: '#0A1F4A',
-    error: '#E11D48',
-    onError: '#FFFFFF',
-    errorContainer: '#FFE1E6',
-    onErrorContainer: '#4C0519',
-    surface: '#FFFFFF',
-    onSurface: '#0F1720',
-    surfaceVariant: '#E8EDF4',
-    onSurfaceVariant: '#5B6578',
-    surfaceContainerLowest: '#FFFFFF',
-    surfaceContainerLow: '#F8FAFC',
-    surfaceContainer: '#F1F5F9',
-    surfaceContainerHigh: '#E2E8F0',
-    surfaceContainerHighest: '#CBD5E1',
-    outline: '#94A3B8',
-    outlineVariant: '#CBD5E1',
-    inverseSurface: '#0F172A',
-    inverseOnSurface: '#F8FAFC',
-    inversePrimary: '#00F2B6',
+    primary: '#00795F',                 // --et-accent
+    onPrimary: '#FFFFFF',               // --et-on-accent
+    primaryContainer: '#D6F2EA',        // --et-accent-quiet
+    onPrimaryContainer: '#00795F',      // --et-accent on quiet
+    secondary: '#5E6A80',               // --et-neutral
+    onSecondary: '#FFFFFF',             // on --et-neutral (5.46:1)
+    secondaryContainer: '#EEF2F7',      // --et-neutral-quiet
+    onSecondaryContainer: '#0D1420',    // --et-text
+    tertiary: '#0B5FA5',                // --et-info
+    onTertiary: '#FFFFFF',              // --et-on-info
+    tertiaryContainer: '#DBEAFE',       // --et-info-quiet
+    onTertiaryContainer: '#0B5FA5',     // --et-info on quiet
+    error: '#B3123A',                   // --et-danger
+    onError: '#FFFFFF',                 // --et-on-danger
+    errorContainer: '#FDE2E8',          // --et-danger-quiet
+    onErrorContainer: '#B3123A',        // --et-danger on quiet
+    surface: '#FFFFFF',                 // --et-surface-1
+    onSurface: '#0D1420',               // --et-text
+    surfaceVariant: '#EEF2F7',          // --et-surface-2
+    onSurfaceVariant: '#46536B',        // --et-text-2
+    surfaceContainerLowest: '#E8EDF4',  // --et-surface-sunken
+    surfaceContainerLow: '#FFFFFF',     // --et-surface-1
+    surfaceContainer: '#FFFFFF',        // --et-surface-1
+    surfaceContainerHigh: '#EEF2F7',    // --et-surface-2
+    surfaceContainerHighest: '#FFFFFF', // --et-surface-3
+    outline: '#838B99',                 // --et-control-border (>=3:1)
+    outlineVariant: '#CFD0D2',          // --et-border-strong over --et-surface-1
+    inverseSurface: '#0D1420',          // --et-text
+    inverseOnSurface: '#F5F7FA',        // --et-bg
+    inversePrimary: '#2DE0B0',          // dark --et-accent
     shadow: '#000000',
     scrim: '#000000',
-    background: '#F8FAFC',
-    onBackground: '#0F1720',
-    surfaceBright: '#FFFFFF',
-    surfaceDim: '#E2E8F0',
-    success: '#00875A',
-    onSuccess: '#FFFFFF',
-    successContainer: '#C8F5E8',
-    onSuccessContainer: '#04211A',
-    warning: '#B45309',
-    onWarning: '#FFFFFF',
-    warningContainer: '#FEF3C7',
-    onWarningContainer: '#78350F',
-    info: '#0369A1',
-    onInfo: '#FFFFFF',
-    infoContainer: '#E0F2FE',
-    onInfoContainer: '#0369A1',
+    background: '#F5F7FA',              // --et-bg
+    onBackground: '#0D1420',            // --et-text
+    surfaceBright: '#FFFFFF',           // --et-surface-1
+    surfaceDim: '#E8EDF4',              // --et-surface-sunken
+    success: '#00795F',                 // --et-accent
+    onSuccess: '#FFFFFF',               // --et-on-accent
+    successContainer: '#D6F2EA',        // --et-accent-quiet
+    onSuccessContainer: '#00795F',
+    warning: '#8A5300',                 // --et-warn
+    onWarning: '#FFFFFF',               // --et-on-warn
+    warningContainer: '#FDF0D5',        // --et-warn-quiet
+    onWarningContainer: '#8A5300',
+    info: '#0B5FA5',                    // --et-info
+    onInfo: '#FFFFFF',                  // --et-on-info
+    infoContainer: '#DBEAFE',           // --et-info-quiet
+    onInfoContainer: '#0B5FA5',
   },
 }
 
 const m3Dark = {
   dark: true,
   colors: {
-    primary: '#00F2B6',
-    onPrimary: '#04211A',
-    primaryContainer: '#054A38',
-    onPrimaryContainer: '#C8F5E8',
-    secondary: '#8E99AF',
-    onSecondary: '#111622',
-    secondaryContainer: '#1E273A',
-    onSecondaryContainer: '#E2E8F0',
-    tertiary: '#00B4D8',
-    onTertiary: '#041628',
-    tertiaryContainer: '#0A3246',
-    onTertiaryContainer: '#CAF0F8',
-    error: '#FF4D6D',
-    onError: '#3B0608',
-    errorContainer: '#5C1220',
-    onErrorContainer: '#FFD5DC',
-    surface: '#0D111A',
-    onSurface: '#F3F6FA',
-    surfaceVariant: '#151B28',
-    onSurfaceVariant: '#8E99AF',
-    surfaceContainerLowest: '#06080D',
-    surfaceContainerLow: '#090D14',
-    surfaceContainer: '#0D111A',
-    surfaceContainerHigh: '#151B28',
-    surfaceContainerHighest: '#1F283B',
-    outline: '#5D6880',
-    outlineVariant: '#202B3F',
-    inverseSurface: '#F3F6FA',
-    inverseOnSurface: '#0D111A',
-    inversePrimary: '#00875A',
+    primary: '#2DE0B0',                 // --et-accent
+    onPrimary: '#04211A',               // --et-on-accent
+    primaryContainer: '#123A31',        // --et-accent-quiet
+    onPrimaryContainer: '#2DE0B0',      // --et-accent on quiet
+    secondary: '#8A97AD',               // --et-neutral
+    onSecondary: '#0A0E14',             // --et-bg (6.55:1 on neutral)
+    secondaryContainer: '#1A2130',      // --et-neutral-quiet
+    onSecondaryContainer: '#E9EEF6',    // --et-text
+    tertiary: '#5AB0FF',                // --et-info
+    onTertiary: '#041628',              // --et-on-info
+    tertiaryContainer: '#10263A',       // --et-info-quiet
+    onTertiaryContainer: '#5AB0FF',     // --et-info on quiet
+    error: '#FF6B87',                   // --et-danger
+    onError: '#3B0608',                 // --et-on-danger
+    errorContainer: '#35131C',          // --et-danger-quiet
+    onErrorContainer: '#FF6B87',        // --et-danger on quiet
+    surface: '#111823',                 // --et-surface-1
+    onSurface: '#E9EEF6',               // --et-text
+    surfaceVariant: '#18202E',          // --et-surface-2
+    onSurfaceVariant: '#9BA8BC',        // --et-text-2
+    surfaceContainerLowest: '#070A10',  // --et-surface-sunken
+    surfaceContainerLow: '#111823',     // --et-surface-1
+    surfaceContainer: '#111823',        // --et-surface-1
+    surfaceContainerHigh: '#18202E',    // --et-surface-2
+    surfaceContainerHighest: '#1F2938', // --et-surface-3
+    outline: '#6E7A8C',                 // --et-control-border (>=3:1)
+    outlineVariant: '#373D46',          // --et-border-strong over --et-surface-1
+    inverseSurface: '#E9EEF6',          // --et-text
+    inverseOnSurface: '#0A0E14',        // --et-bg
+    inversePrimary: '#00795F',          // light --et-accent
     shadow: '#000000',
     scrim: '#000000',
-    background: '#07090E',
-    onBackground: '#F3F6FA',
-    surfaceBright: '#1F283B',
-    surfaceDim: '#07090E',
-    success: '#00F2B6',
-    onSuccess: '#04211A',
-    successContainer: '#054A38',
-    onSuccessContainer: '#C8F5E8',
-    warning: '#FFB703',
-    onWarning: '#2A1C00',
-    warningContainer: '#543B00',
-    onWarningContainer: '#FFE8B5',
-    info: '#00B4D8',
-    onInfo: '#041628',
-    infoContainer: '#0A3246',
-    onInfoContainer: '#CAF0F8',
+    background: '#0A0E14',              // --et-bg
+    onBackground: '#E9EEF6',            // --et-text
+    surfaceBright: '#1F2938',           // --et-surface-3
+    surfaceDim: '#070A10',              // --et-surface-sunken
+    success: '#2DE0B0',                 // --et-accent
+    onSuccess: '#04211A',               // --et-on-accent
+    successContainer: '#123A31',        // --et-accent-quiet
+    onSuccessContainer: '#2DE0B0',
+    warning: '#FFB020',                 // --et-warn
+    onWarning: '#2A1C00',               // --et-on-warn
+    warningContainer: '#33260A',        // --et-warn-quiet
+    onWarningContainer: '#FFB020',
+    info: '#5AB0FF',                    // --et-info
+    onInfo: '#041628',                  // --et-on-info
+    infoContainer: '#10263A',           // --et-info-quiet
+    onInfoContainer: '#5AB0FF',
   },
 }
 

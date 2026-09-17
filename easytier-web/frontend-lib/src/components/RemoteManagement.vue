@@ -628,6 +628,15 @@ const activityEvents = computed(() => {
     return detail.events.map((event: string) => JSON.parse(event))
 })
 
+/** 事件日志的稳定 key:时间 + 事件内容,重渲染不会错位。 */
+function eventTimelineKey(item: any): string {
+    try {
+        return `${item?.time ?? 'na'}-${JSON.stringify(item?.event ?? {})}`
+    } catch {
+        return `${item?.time ?? 'na'}`
+    }
+}
+
 </script>
 
 <template>
@@ -648,13 +657,23 @@ const activityEvents = computed(() => {
         />
 
         <!-- ================= 1. Top Network Switcher Profile Card ================= -->
-        <div class="et-network-chip et-press-row d-flex align-center justify-space-between mb-3 mt-2" @click="openNetworkSheet">
+        <!-- 整块可点,但内部还有"更多操作"按钮:嵌套 button 是非法 HTML,所以用
+             role=button + tabindex + 键盘处理,保证键盘与读屏可达。 -->
+        <div
+            class="et-network-chip et-press-row d-flex align-center justify-space-between mb-3 mt-2"
+            :aria-label="`${heroNetworkName} · ${heroIsRunning ? t('web.device_management.active') : t('web.device_management.stopped')}`"
+            @click="openNetworkSheet"
+            @keydown.enter.prevent="openNetworkSheet"
+            @keydown.space.prevent="openNetworkSheet"
+            role="button"
+            tabindex="0"
+        >
             <div class="d-flex align-center ga-3 min-w-0">
                 <div
                     class="et-squircle"
-                    :style="{ background: heroIsRunning ? 'var(--et-accent)' : 'var(--et-surface-2)' }"
+                    :style="{ background: heroIsRunning ? 'var(--et-accent-quiet)' : 'var(--et-surface-2)' }"
                 >
-                    <v-icon size="18" :color="heroIsRunning ? 'onPrimary' : 'medium-emphasis'">
+                    <v-icon size="18" :color="heroIsRunning ? 'primary' : 'medium-emphasis'">
                         {{ heroIsRunning ? 'mdi-shield-check' : 'mdi-shield-outline' }}
                     </v-icon>
                 </div>
@@ -692,10 +711,10 @@ const activityEvents = computed(() => {
         <!-- Network Switcher Bottom Sheet (iOS Action Sheet) -->
         <v-bottom-sheet v-model="networkSheetOpen" scrollable>
             <v-card rounded="t-xl" class="et-network-sheet">
-                <!-- 抓条:视觉仍是一根小药丸,外层容器提供 >=44px 的触摸区域 -->
-                <div class="et-sheet-grabber-hit" @click="networkSheetOpen = false">
-                    <div class="sheet-grabber" />
-                </div>
+                <!-- 抓条:原生 button,视觉仍是一根小药丸,外层提供 >=48px 触摸区域 -->
+                <button type="button" class="et-sheet-grabber-hit" :aria-label="t('close')" @click="networkSheetOpen = false">
+                    <span class="sheet-grabber" aria-hidden="true" />
+                </button>
                 <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
                     <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.network') }}</span>
                     <div class="d-flex align-center ga-1">
@@ -716,15 +735,17 @@ const activityEvents = computed(() => {
                         <div class="et-empty__hint">{{ t('web.device_management.rm_sheet_empty_hint', 'Create a network to join your mesh') }}</div>
                     </div>
                     <TransitionGroup v-else tag="div" name="et-list-fade" class="ios-group mb-2 et-list-wrap">
-                        <div
+                        <button
                             v-for="item in instanceList"
                             :key="item.uuid"
+                            type="button"
                             class="et-row et-row-pressable et-press-row"
+                            :aria-label="`${item.meta?.network_name ?? item.uuid} · ${t(isRunning(item.uuid) ? 'network_running' : 'network_stopped')}`"
                             @click="sheetSelectNetwork(item)"
                         >
                             <div class="d-flex align-center ga-3 min-w-0">
-                                <div class="et-squircle" :style="{ background: isRunning(item.uuid) ? 'var(--et-accent)' : 'var(--et-surface-2)' }">
-                                    <v-icon size="18" :color="isRunning(item.uuid) ? 'onPrimary' : 'medium-emphasis'">
+                                <div class="et-squircle" :style="{ background: isRunning(item.uuid) ? 'var(--et-accent-quiet)' : 'var(--et-surface-2)' }">
+                                    <v-icon size="18" :color="isRunning(item.uuid) ? 'primary' : 'medium-emphasis'">
                                         {{ isRunning(item.uuid) ? 'mdi-shield-check' : 'mdi-shield-off' }}
                                     </v-icon>
                                 </div>
@@ -739,7 +760,7 @@ const activityEvents = computed(() => {
                                 </v-chip>
                                 <v-icon v-if="item.uuid === selectedInstanceId?.uuid" color="primary" size="20">mdi-check-circle</v-icon>
                             </div>
-                        </div>
+                        </button>
                     </TransitionGroup>
                 </v-card-text>
             </v-card>
@@ -748,9 +769,9 @@ const activityEvents = computed(() => {
         <!-- More actions:锚定底部动作面板,整行 >=48px(移动端比裸坐标菜单更可用) -->
         <v-bottom-sheet v-model="actionMenuOpen">
             <v-card rounded="t-xl" class="et-network-sheet">
-                <div class="et-sheet-grabber-hit" @click="actionMenuOpen = false">
-                    <div class="sheet-grabber" />
-                </div>
+                <button type="button" class="et-sheet-grabber-hit" :aria-label="t('close')" @click="actionMenuOpen = false">
+                    <span class="sheet-grabber" aria-hidden="true" />
+                </button>
                 <v-card-title class="d-flex align-center justify-space-between pt-1 pb-2">
                     <span class="text-subtitle-1 font-weight-bold">{{ t('web.device_management.more_actions') }}</span>
                     <v-btn icon="mdi-close" variant="text" size="small" :aria-label="t('close')" @click="actionMenuOpen = false" />
@@ -844,8 +865,8 @@ const activityEvents = computed(() => {
                         <div v-if="activityEvents.length" class="ios-group pa-3">
                             <v-timeline side="end" density="compact">
                                 <v-timeline-item
-                                    v-for="(item, i) in activityEvents"
-                                    :key="i"
+                                    v-for="item in activityEvents"
+                                    :key="eventTimelineKey(item)"
                                     dot-color="primary"
                                     size="small"
                                 >
@@ -1006,16 +1027,16 @@ const activityEvents = computed(() => {
     height: 100%;
     display: flex;
     flex-direction: column;
-    padding: 0 0.75rem;
+    padding: 0 var(--et-space-3);
     position: relative;
 }
 
 .et-network-chip {
-    background-color: var(--et-surface);
+    background-color: var(--et-surface-1);
     border: 1px solid var(--et-border);
-    border-radius: 16px;
-    padding: 0.7rem 0.9rem;
-    min-height: 56px;
+    border-radius: var(--et-radius-lg);
+    padding: var(--et-space-3);
+    min-height: var(--et-row-h);
     cursor: pointer;
 }
 
@@ -1023,39 +1044,53 @@ const activityEvents = computed(() => {
     background-color: var(--et-surface-2);
 }
 
+/* 原生 <button> 承载 .et-row 布局时,先剥掉 UA 外观 */
+button.et-row {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
 /* ---------- 共享动效 kit:骨架 / 列表进出场 / 按压反馈 / 空态 ---------- */
 
-/* 骨架容器:透出 et-bg 背景,由内层 bone 提供占位条 */
-.et-skeleton {
-    background: transparent !important;
+/* 骨架容器:透出 et-bg 背景,由内层 bone 提供占位条。
+ * 双写 .v-skeleton-loader 提升优先级,替代原来的 !important。 */
+.et-skeleton.v-skeleton-loader {
+    background: transparent;
     width: 100%;
 }
 
 .et-skeleton-stack {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.25rem 0.25rem 1rem;
+    gap: var(--et-gap-stack);
+    padding: var(--et-space-1) var(--et-space-1) var(--et-space-4);
 }
 
 .et-skeleton--inline {
-    padding: 0.15rem 0;
+    padding: var(--et-space-1) 0;
 }
 
 /* 静默刷新指示:顶部 2px 细线。pointer-events:none,绝不拦截点击,也不降低内容透明度。 */
 .et-refresh-bar {
     position: absolute;
     top: 0;
-    left: 0.75rem;
-    right: 0.75rem;
+    left: var(--et-space-3);
+    right: var(--et-space-3);
     height: 2px;
-    border-radius: 999px;
+    border-radius: var(--et-radius-pill);
     background: var(--et-accent);
     opacity: 0;
     overflow: hidden;
     pointer-events: none;
-    z-index: 4;
-    transition: opacity 120ms ease-out;
+    z-index: var(--et-z-sticky);
+    transition: opacity var(--et-dur-fast) var(--et-ease-standard);
 }
 
 /* 延迟 180ms 出现:极快的轮询不会造成闪烁 */
@@ -1068,7 +1103,7 @@ const activityEvents = computed(() => {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--et-accent) 55%, transparent), transparent);
     transform: translateX(-100%);
 }
 
@@ -1077,23 +1112,29 @@ const activityEvents = computed(() => {
     to { transform: translateX(100%); }
 }
 
-/* 底部面板抓条:视觉仍是一根小药丸,外层容器提供 >=44px 高的触摸区域 */
+/* 底部面板抓条:原生 button,触摸区域 >=48px,视觉仍是一根小药丸 */
 .et-sheet-grabber-hit {
-    min-height: 44px;
+    min-height: var(--et-touch);
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 1rem;
+    padding: 0 var(--et-space-4);
+    border: 0;
+    background: transparent;
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .et-sheet-grabber-hit :deep(.sheet-grabber) {
     margin: 0;
 }
 
-/* 底部动作面板:整行 >=48px,符合移动端最小触摸目标 */
-.et-sheet-action {
-    min-height: 48px !important;
+/* 底部动作面板:整行 >=48px,符合移动端最小触摸目标。
+ * 双写 .v-list-item 提升优先级,替代原来的 !important。 */
+.et-sheet-action.v-list-item {
+    min-height: var(--et-touch);
 }
 
 /* 空态 */
@@ -1103,39 +1144,42 @@ const activityEvents = computed(() => {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 2rem 1.25rem;
-    color: var(--et-text-secondary);
+    padding: var(--et-space-8) var(--et-space-5);
+    color: var(--et-text-2);
 }
 
 .et-empty__icon {
     width: 64px;
     height: 64px;
-    border-radius: 18px;
+    border-radius: var(--et-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--et-accent-dim);
-    margin-bottom: 0.75rem;
+    background: var(--et-accent-quiet);
+    margin-bottom: var(--et-space-3);
     flex-shrink: 0;
 }
 
 .et-empty__title {
-    font-size: 1rem;
-    font-weight: var(--fw-semibold, 600);
+    font-size: var(--et-font-body);
+    font-weight: var(--et-weight-semibold);
     color: var(--et-text);
 }
 
 .et-empty__hint {
-    font-size: 0.8125rem;
-    line-height: 1.5;
+    font-size: var(--et-font-body-sm);
+    line-height: var(--et-leading-normal);
     max-width: 18rem;
-    margin-top: 0.25rem;
+    margin-top: var(--et-space-1);
 }
 
 @media (prefers-reduced-motion: no-preference) {
     .et-network-chip,
     .et-press-row {
-        transition: transform 140ms ease-out, background-color 140ms ease-out, opacity 140ms ease-out;
+        transition:
+            transform var(--et-dur-fast) var(--et-ease-standard),
+            background-color var(--et-dur-fast) var(--et-ease-standard),
+            opacity var(--et-dur-fast) var(--et-ease-standard);
     }
 
     .et-network-chip:active,
@@ -1147,10 +1191,12 @@ const activityEvents = computed(() => {
         animation: et-refresh-sweep 900ms linear infinite;
     }
 
-    /* 列表进出场:12px 位移 + opacity 180ms ease-out,move 160ms */
+    /* 列表进出场:12px 位移 + opacity */
     .et-list-fade-enter-active,
     .et-list-fade-leave-active {
-        transition: opacity 180ms ease-out, transform 180ms ease-out;
+        transition:
+            opacity var(--et-dur-base) var(--et-ease-standard),
+            transform var(--et-dur-base) var(--et-ease-standard);
     }
 
     .et-list-fade-enter-from,
@@ -1165,14 +1211,13 @@ const activityEvents = computed(() => {
     }
 
     .et-list-fade-move {
-        transition: transform 160ms ease-out;
+        transition: transform var(--et-dur-base) var(--et-ease-standard);
     }
 
     .et-list-wrap {
         position: relative;
         display: block;
     }
-
 
     /* bone 微光,贴合主题色而不是纯灰 */
     .et-skeleton :deep(.v-skeleton-loader__bone::after) {
@@ -1186,30 +1231,31 @@ const activityEvents = computed(() => {
 }
 
 .hero-net-name {
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: var(--et-font-body);
+    font-weight: var(--et-weight-semibold);
     letter-spacing: -0.02em;
 }
 
 .rm-empty-hint {
     max-width: 20rem;
-    line-height: 1.5;
+    line-height: var(--et-leading-normal);
 }
 
 .network-content {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 0.25rem 0 calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    padding: var(--et-space-1) 0 calc(var(--et-tab-height) + var(--et-safe-bottom) + var(--et-space-3));
 }
 
 .has-tab-bar :deep(.et-sticky-run) {
-    bottom: calc(var(--et-tab-height) + env(safe-area-inset-bottom, 0px));
-    padding-bottom: 0.75rem;
+    bottom: calc(var(--et-tab-height) + var(--et-safe-bottom));
+    padding-bottom: var(--et-space-3);
 }
 
-.et-menu-list {
-    background-color: var(--et-surface) !important;
+/* 双写 .v-list 提升优先级,替代原来的 !important */
+.et-menu-list.v-list {
+    background-color: var(--et-surface-1);
 }
 
 .truncate {
@@ -1217,62 +1263,18 @@ const activityEvents = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .text-mono {
-  font-family: var(--font-mono);
+  font-family: var(--et-font-data);
 }
 
 @media (min-width: 600px) {
     .network-content {
-        padding-bottom: 1.5rem;
+        padding-bottom: var(--et-space-4);
     }
     .has-tab-bar :deep(.et-sticky-run) {
-        bottom: 1rem;
+        bottom: var(--et-space-4);
         padding-bottom: 0;
     }
-}
-
-.et-desktop-tabs {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px;
-    background: var(--et-surface);
-    border: 1px solid var(--et-border);
-    border-radius: var(--et-radius);
-}
-
-.et-desktop-tab-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px;
-    border-radius: var(--et-radius-sm);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--et-text-secondary);
-    font-size: 0.825rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.et-desktop-tab-btn:hover {
-    color: var(--et-text);
-    background: var(--et-surface-2);
-}
-
-.et-desktop-tab-btn.is-active {
-    color: var(--et-accent);
-    background: var(--et-accent-dim);
-    border-color: color-mix(in srgb, var(--et-accent) 35%, transparent);
-}
-
-.et-tab-badge {
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--et-accent);
-    color: #04211A;
 }
 </style>
