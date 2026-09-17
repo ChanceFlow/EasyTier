@@ -53,3 +53,6 @@ go.sum
 # release artifacts
 release-artifacts/
 
+
+# Python bytecode from the design-system gate scripts
+design-system/**/__pycache__/

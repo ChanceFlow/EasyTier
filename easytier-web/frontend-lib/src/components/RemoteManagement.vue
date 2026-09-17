@@ -20,11 +20,25 @@ const props = withDefaults(defineProps<{
     connectedOverride?: boolean;
     /** 移动端:Status 的电源球只读,只作为 Hero 的镜像。 */
     hidePowerToggle?: boolean;
+    /**
+     * 宿主(App 壳)自己掌控底部导航时置 true:隐藏组件内建 tab bar。
+     *
+     * 内建 tab bar 是 position:fixed 的,嵌在宿主的折叠面板/局部容器里时
+     * 会"逃出"容器浮在屏幕底部,出现导航套导航。宿主接管导航后置 true。
+     */
+    hideTabBar?: boolean;
+    /**
+     * 受控面板:传入时由宿主决定当前显示哪个面板,组件内部不再持有导航状态。
+     * 缺省(undefined)时保持原有自管导航行为,桌面端不受影响。
+     */
+    panel?: 'home' | 'devices' | 'config' | 'activity';
 }>(), {
     // 必须显式 undefined:Boolean prop 若没有 default,Vue 会在缺省时转成 false,
     // 转发给 Status 后会吞掉 RPC running 状态,桌面/测试行为就会变。
     connectedOverride: undefined,
     hidePowerToggle: false,
+    hideTabBar: false,
+    panel: undefined,
 });
 
 const instanceId = defineModel('instanceId', {
@@ -182,7 +196,12 @@ const needShowNetworkStatus = computed(() => {
 })
 
 // ---- 移动端底部原生 Tab ----
+// 宿主传入 panel 时进入"受控"模式:导航由宿主持有,这里只跟随。
+// 缺省时行为与以前完全一致(自管 mobileTab),桌面端与既有测试不受影响。
 const mobileTab = ref<'home' | 'devices' | 'config' | 'activity'>('home');
+watch(() => props.panel, (p) => {
+    if (p) mobileTab.value = p;
+}, { immediate: true });
 watch(mobileTab, async (newTab) => {
     if (newTab === 'config' && !currentNetworkConfig.value) {
         await loadCurrentNetworkConfig();
@@ -640,7 +659,7 @@ function eventTimelineKey(item: any): string {
 </script>
 
 <template>
-    <div class="device-management" :class="{ 'has-tab-bar': needShowNetworkStatus }">
+    <div class="device-management" :class="{ 'has-tab-bar': needShowNetworkStatus && !hideTabBar }">
         <input
             type="file"
             @change="handleFileUpload"
@@ -939,7 +958,7 @@ function eventTimelineKey(item: any): string {
 
         <!-- ================= 3. Fixed iOS Bottom Tab Bar ================= -->
         <nav
-            v-if="needShowNetworkStatus"
+            v-if="needShowNetworkStatus && !hideTabBar"
             class="et-tab-bar d-flex align-center justify-space-around"
             role="tablist"
         >

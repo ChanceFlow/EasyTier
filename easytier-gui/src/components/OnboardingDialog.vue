@@ -94,8 +94,8 @@ const p3Hint = computed(() => ({
   before: pt('onboard.3.hint_before', '右上角的', 'The '),
   after: pt(
     'onboard.3.hint_after',
-    '设置按钮可切换语言与主题；组网配置在「高级控制台」里。',
-    ' settings button at the top right switches language and theme; detailed config lives in the Advanced console.',
+    '底部「设备 / 配置 / 动态」三个页签可查看节点、改配置与看历史事件。',
+    ' Devices, Config and Activity tabs at the bottom show peers, settings and past events.',
   ),
 }))
 </script>

@@ -149,6 +149,41 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   -webkit-user-select: text;
 }
 
+/* Vuetify 把 `font-family: Roboto, sans-serif` 硬编码进了它的排版工具类
+ * （.text-h1…​.text-caption、响应式的 .text-md-* / .text-lg-* … 共 80 个），
+ * 而且**没有可覆盖的 CSS 变量**。这些类直接作用在元素上，`:root` 的字体只能
+ * 靠继承，压不过它们 —— 于是凡是用 Vuetify 文字类的地方，中文都会掉进系统字体：
+ * 无 CJK 的环境（精简 Linux、CI 截图）直接显示豆腐块，有 CJK 的机器上则是
+ * 中英文两套字形混排。
+ *
+ * 这里用 `:root` + `:is(...)` 把特异性提到 (0,2,0)，不依赖加载顺序地拿回 ET Sans。
+ * 必须逐个列出、**不能用 [class*="text-"] 通配** —— 那会连带命中自家的 .text-mono，
+ * 而它经常和 .text-caption 出现在同一个元素上（Config / HumanEvent / RemoteManagement）。
+ * 本条刻意写在 .text-mono 之前：两者同为 (0,2,0)，靠源码顺序让等宽胜出。 */
+:root :is(
+  .text-h1, .text-h2, .text-h3, .text-h4, .text-h5, .text-h6,
+  .text-subtitle-1, .text-subtitle-2, .text-body-1, .text-body-2,
+  .text-button, .text-caption, .text-overline,
+  .text-sm-h1, .text-sm-h2, .text-sm-h3, .text-sm-h4, .text-sm-h5, .text-sm-h6,
+  .text-sm-subtitle-1, .text-sm-subtitle-2, .text-sm-body-1, .text-sm-body-2,
+  .text-sm-button, .text-sm-caption, .text-sm-overline,
+  .text-md-h1, .text-md-h2, .text-md-h3, .text-md-h4, .text-md-h5, .text-md-h6,
+  .text-md-subtitle-1, .text-md-subtitle-2, .text-md-body-1, .text-md-body-2,
+  .text-md-button, .text-md-caption, .text-md-overline,
+  .text-lg-h1, .text-lg-h2, .text-lg-h3, .text-lg-h4, .text-lg-h5, .text-lg-h6,
+  .text-lg-subtitle-1, .text-lg-subtitle-2, .text-lg-body-1, .text-lg-body-2,
+  .text-lg-button, .text-lg-caption, .text-lg-overline,
+  .text-xl-h1, .text-xl-h2, .text-xl-h3, .text-xl-h4, .text-xl-h5, .text-xl-h6,
+  .text-xl-subtitle-1, .text-xl-subtitle-2, .text-xl-body-1, .text-xl-body-2,
+  .text-xl-button, .text-xl-caption, .text-xl-overline,
+  .text-xxl-h1, .text-xxl-h2, .text-xxl-h3, .text-xxl-h4, .text-xxl-h5, .text-xxl-h6,
+  .text-xxl-subtitle-1, .text-xxl-subtitle-2, .text-xxl-body-1, .text-xxl-body-2,
+  .text-xxl-button, .text-xxl-caption, .text-xxl-overline,
+  .v-badge__badge, .v-kbd
+) {
+  font-family: var(--et-font-ui);
+}
+
 /* Machine data (IPs, ports, latency) uses the data face. `.text-mono` is often
  * put on an element that a Vuetify component style also targets, so the class
  * is doubled to win on specificity rather than on `!important`. */

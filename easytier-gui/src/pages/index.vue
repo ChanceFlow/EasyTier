@@ -44,6 +44,24 @@ const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
 const manualDisconnect = ref(false)
 
+// ---- 移动端一级导航 --------------------------------------------------------
+// 组网 / 设备 / 配置 / 动态。原先这三块藏在首页的「高级控制台」折叠面板里，
+// 而 RemoteManagement 自带的 tab bar 是 position:fixed，会从折叠容器里逃出来
+// 浮在底部 —— 等于导航套导航。现在由 App 持有导航，各面板直接是一级页面。
+const APP_TABS = [
+  { id: 'mesh', labelKey: 'tabs.home', iconOn: 'mdi-shield', iconOff: 'mdi-shield-outline' },
+  { id: 'devices', labelKey: 'tabs.devices', iconOn: 'mdi-devices', iconOff: 'mdi-devices' },
+  { id: 'config', labelKey: 'tabs.config', iconOn: 'mdi-cog', iconOff: 'mdi-cog-outline' },
+  { id: 'activity', labelKey: 'tabs.activity', iconOn: 'mdi-pulse', iconOff: 'mdi-chart-line' },
+] as const
+type AppTab = typeof APP_TABS[number]['id']
+const appTab = ref<AppTab>('mesh')
+
+// tab 徽标与 Hero 用同一个数据源，避免两处数字打架
+const peerBadgeCount = computed(() =>
+  mobileStats.ready && mobileStats.connected ? mobileStats.peerCount : 0,
+)
+
 // declared up front: initWithMode and the hero actions reference them
 const remoteClient = computed(() => new GUIRemoteClient())
 const instanceId = ref<string | undefined>(undefined)
@@ -941,10 +959,17 @@ function exitApp(): void {
     </v-dialog>
 
     <main class="et-main">
-      <div class="et-main-body">
-        <!-- ================= phone: hero + collapsed advanced console ================= -->
+      <div class="et-main-body" :class="{ 'has-app-tabbar': mobileUI }">
+        <!-- ================= phone =================
+             一级导航由 App 自己持有(组网/设备/配置/动态),不再有"高级控制台"这层壳。
+             之前那层折叠面板套 RemoteManagement 的写法有两个问题:
+               1) 导航套导航 —— 折叠面板一层、RemoteManagement 内建 tab bar 又一层;
+               2) 内建 tab bar 是 position:fixed,会从折叠容器里"逃出来"浮在屏幕底部,
+                  面板收起时底部仍挂着一条无主的 tab bar。
+             现在 RemoteManagement 只作为「面板」渲染(:hide-tab-bar + :panel),导航归 App。 -->
         <template v-if="mobileUI">
           <MeshHero
+            v-if="appTab === 'mesh'"
             :client-running="clientRunning"
             :instance-id="instanceId"
             :busy="heroBusy || isModeSaving"
@@ -960,50 +985,29 @@ function exitApp(): void {
             @open-notif-settings="openNotificationSettings"
           />
 
-          <div class="et-adv-wrap pb-6">
-            <v-expansion-panels flat>
-              <v-expansion-panel value="advanced" class="et-adv-panel">
-                <v-expansion-panel-title>
-                  <div class="d-flex align-center ga-3 min-w-0">
-                    <div class="et-squircle" style="background: var(--et-surface-2);">
-                      <v-icon size="16" color="primary">
-                        mdi-console-network-outline
-                      </v-icon>
-                    </div>
-                    <div class="min-w-0">
-                      <div class="et-adv-title">
-                        {{ pt('hero.advanced_console', '高级控制台', 'Advanced console') }}
-                      </div>
-                      <div class="et-adv-sub truncate">
-                        {{ pt('hero.advanced_hint', '网络配置、节点详情与历史事件都在这里', 'Network config, node details and events live here') }}
-                      </div>
-                    </div>
-                  </div>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text>
-                  <RemoteManagement
-                    v-if="clientRunning"
-                    v-model:instance-id="instanceId"
-                    :api="remoteClient"
-                    :pause-auto-refresh="isModeSaving"
-                    :connected-override="mobileStats.ready ? mobileStats.connected : undefined"
-                    :hide-power-toggle="true"
-                  />
-                  <div v-else class="et-empty d-flex flex-column align-center justify-center">
-                    <v-icon size="56" class="mb-4" color="medium-emphasis">
-                      mdi-server-network-off
-                    </v-icon>
-                    <div class="text-h6 text-center font-weight-bold mb-3">
-                      {{ t('client.not_running') }}
-                    </div>
-                    <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" prepend-icon="mdi-replay" @click="reconnectClient">
-                      {{ t('client.retry') }}
-                    </v-btn>
-                  </div>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
-          </div>
+          <template v-else>
+            <RemoteManagement
+              v-if="clientRunning"
+              v-model:instance-id="instanceId"
+              :api="remoteClient"
+              :pause-auto-refresh="isModeSaving"
+              :connected-override="mobileStats.ready ? mobileStats.connected : undefined"
+              :hide-power-toggle="true"
+              :hide-tab-bar="true"
+              :panel="appTab"
+            />
+            <div v-else class="et-empty d-flex flex-column align-center justify-center">
+              <v-icon size="56" class="mb-4" color="medium-emphasis">
+                mdi-server-network-off
+              </v-icon>
+              <div class="text-h6 text-center font-weight-bold mb-3">
+                {{ t('client.not_running') }}
+              </div>
+              <v-btn color="primary" variant="flat" rounded="pill" :loading="isModeSaving" prepend-icon="mdi-replay" @click="reconnectClient">
+                {{ t('client.retry') }}
+              </v-btn>
+            </div>
+          </template>
         </template>
 
         <!-- ============ desktop: full web console, unchanged path ============ -->
@@ -1029,6 +1033,38 @@ function exitApp(): void {
         </template>
       </div>
     </main>
+
+    <!-- App 的一级导航。样式复用 design-system 的 .et-tab-bar / .et-tab-item
+         （全局样式，已带安全区、毛玻璃与 --et-z-nav 语义层级），
+         文案复用 frontend-lib 已有的 tabs.*，不再自造一套。 -->
+    <nav
+      v-if="mobileUI"
+      class="et-tab-bar d-flex align-center justify-space-around"
+      role="tablist"
+      :aria-label="pt('tabs.label', '主导航', 'Main navigation')"
+    >
+      <button
+        v-for="tab in APP_TABS"
+        :key="tab.id"
+        type="button"
+        class="et-tab-item"
+        :class="{ 'tab-active': appTab === tab.id }"
+        role="tab"
+        :aria-selected="appTab === tab.id"
+        @click="appTab = tab.id"
+      >
+        <v-badge
+          v-if="tab.id === 'devices' && peerBadgeCount > 0"
+          :content="peerBadgeCount"
+          color="primary"
+          inline
+        >
+          <v-icon size="22">{{ appTab === tab.id ? tab.iconOn : tab.iconOff }}</v-icon>
+        </v-badge>
+        <v-icon v-else size="22">{{ appTab === tab.id ? tab.iconOn : tab.iconOff }}</v-icon>
+        <span>{{ t(tab.labelKey) }}</span>
+      </button>
+    </nav>
 
     <OnboardingDialog v-model="onboardingVisible" />
     <QuickNetworkDialog
@@ -1112,28 +1148,10 @@ function exitApp(): void {
   outline-offset: calc(var(--et-space-1) * -1);
 }
 
-/* the collapsed "advanced console" disclosure under the phone hero */
-.et-adv-wrap {
-  padding: 0 var(--et-space-4);
-}
-
-/* compound selectors beat Vuetify's .v-expansion-panel rules without !important */
-.et-adv-panel.v-expansion-panel {
-  background: var(--et-surface-1);
-  border: 1px solid var(--et-border);
-  border-radius: var(--et-radius-md);
-}
-
-.et-adv-title {
-  font-size: var(--et-font-body);
-  font-weight: var(--et-weight-semibold);
-  letter-spacing: -0.01em;
-}
-
-.et-adv-sub {
-  font-size: var(--et-font-caption);
-  color: var(--et-text-2);
-  margin-top: var(--et-space-1);
+/* 移动端底部固定导航会给内容封底：不预留高度的列表最后一项会被压住。
+   高度 = tab bar 高度 + 安全区，与 .et-tab-bar 的定义保持一致。 */
+.has-app-tabbar {
+  padding-bottom: calc(var(--et-tab-height) + var(--et-safe-bottom) + var(--et-space-4));
 }
 
 /* icon buttons in the fixed header keep the platform touch floor even at

@@ -672,7 +672,7 @@ function onAction() {
             </template>
           </p>
           <p v-if="hiddenPeerCount" class="et-hero-peers-more">
-            {{ pt('hero.peers_more', `另有 ${hiddenPeerCount} 个节点在「高级控制台」`, `${hiddenPeerCount} more in the Advanced console`) }}
+            {{ pt('hero.peers_more', `另有 ${hiddenPeerCount} 个节点，见「设备」`, `${hiddenPeerCount} more in Devices`) }}
           </p>
         </div>
       </template>

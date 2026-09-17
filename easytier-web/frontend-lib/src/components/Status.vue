@@ -739,7 +739,7 @@ const isRunning = computed(() => {
 })
 
 // 显示态:移动端 Hero 传入的 VPN 感知状态优先;未传入时保持原有 RPC running 语义。
-// 这样高级控制台不会和 Hero 显示互相矛盾的状态。
+// 这样管理面板不会和移动端 Hero 显示互相矛盾的状态。
 const displayRunning = computed(() => props.networkRunning ?? isRunning.value)
 
 const myHostname = computed(() => {
@@ -1668,7 +1668,11 @@ button.et-row {
 }
 
 .et-peer__path {
-  max-width: 42%;
+  /* 用 rem 而不是 42%：.et-peer__path 是 grid 项目，百分比上限会相对
+     **它自己的网格区域**解析 —— 列按内容算出 24px 后，42% 又把它压到
+     10.08px，结果「本机 / 直连 / 中继」只显示得出一个字。实测就是这个值。
+     rem 上限语义明确，也足够容纳最长的「中继 via <主机名>」。 */
+  max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

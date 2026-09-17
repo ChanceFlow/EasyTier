@@ -80,7 +80,7 @@ CATEGORY_OF = {
     "key-index": "列表", "click-on-div": "控件语义", "transition-all": "动效",
     "important": "样式卫生", "fixed-text-height": "文本重排",
     "hardcoded-hex": "令牌化进度", "mono-with-cjk": "字体回退",
-    "font-stack-cjk": "字体回退",
+    "font-stack-cjk": "字体回退", "vuetify-font-override": "字体回退",
     "placeholder-only-label": "表单",
 }
 
@@ -109,7 +109,7 @@ def scan_blocks(path: Path, text: str, raw: str) -> list[tuple[str, str, int, st
 
 
 def check_font_invariants() -> list[tuple[str, str, int, str, str]]:
-    """tokens.css 的等宽栈必须显式接上 CJK 字体。
+    """字体相关的两条不变式（都是实测踩过的坑）。
 
     这是防这一类回归的不变式：ET Mono 无 CJK 切片，栈里若不接 CJK，
     任何混排中文都会掉到 generic monospace 而不可见。
@@ -121,12 +121,29 @@ def check_font_invariants() -> list[tuple[str, str, int, str, str]]:
     stack = m.group(1)
     cjk = ("PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
            "Noto Sans CJK", "Source Han Sans")
+    hits = []
     if not any(f in stack for f in cjk):
         line = css[:m.start()].count("\n") + 1
-        return [("font-stack-cjk", "High", line, "--et-font-data",
-                 "等宽字体栈里没有 CJK 回退 —— 中英混排时中文会不可见，"
-                 "请补 PingFang SC / Noto Sans SC / Microsoft YaHei 之一")]
-    return []
+        hits.append(("font-stack-cjk", "High", line, "--et-font-data",
+                     "等宽字体栈里没有 CJK 回退 —— 中英混排时中文会不可见，"
+                     "请补 PingFang SC / Noto Sans SC / Microsoft YaHei 之一"))
+
+    # Vuetify 把 font-family: Roboto 硬编码进 80 个排版工具类，且没有可覆盖的
+    # CSS 变量。不覆写的话，凡是用 .text-* 的地方中文都会掉进系统字体。
+    style_path = ROOT / "easytier-web" / "frontend-lib" / "src" / "style.css"
+    # 必须剥注释：文档里就写着 [class*="text-"] 这个反面例子，
+    # 不剥的话规则会匹配到自己的说明文字。
+    style = strip_comments(style_path.read_text(encoding="utf-8"))
+    if not re.search(r":root\s+:is\([^)]*\.text-caption", style, re.DOTALL):
+        hits.append(("vuetify-font-override", "High", 1, "style.css",
+                     "缺少对 Vuetify 排版工具类的字体覆写 —— .text-* 会退回 Roboto，"
+                     "中文在无 CJK 环境显示豆腐块、有 CJK 的机器上中英混排两套字形"))
+    # 通配会把自家的 .text-mono 也罩进去，等宽数字会变成 UI 字体
+    if re.search(r'\[class\*?\^?=\s*["\']text-', style):
+        hits.append(("vuetify-font-override", "High", 1, "style.css",
+                     "字体覆写用了 [class*=text-] 通配 —— 会误伤 .text-mono，"
+                     "请逐个列出 Vuetify 的排版类"))
+    return hits
 
 
 def sources() -> list[Path]:
@@ -181,6 +198,9 @@ def main() -> int:
     files = sources()
     findings: dict[str, list[tuple[Path, int, str, str]]] = defaultdict(list)
     sev_of = {rid: sev for rid, sev, _, _ in RULES}
+    # 不变式规则不在 RULES 里（没有正则 pattern），单独登记严重度
+    sev_of.setdefault("font-stack-cjk", "High")
+    sev_of.setdefault("vuetify-font-override", "High")
     msg_of = {rid: msg for rid, _, _, msg in RULES}
 
     for f in files:
