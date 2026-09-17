@@ -61,6 +61,14 @@ RULES: list[Rule] = [
 
     ("placeholder-only-label", "Medium", r"<input[^>]*placeholder=(?![^>]*(aria-label|id=))",
      "只用 placeholder 当标签 —— 输入后标签消失，且读屏读不到，需配可见 label"),
+    # ET Mono 只内嵌 latin 切片。.mono 里出现中文会掉进无 CJK 的 monospace
+    # 回退链而整段不可见（实测踩过：hero 的 "2 个节点在线" 只剩 "2"）。
+    # 只认"中文落在 .mono 元素自身的文本节点里"。若中文在元素外、只在同一行，
+    # 那是正确写法（如 <span class="mono">{{n}}</span> 个节点），不能误报。
+    # 已知盲区：文本来自计算属性时静态查不到，靠 tokens.css 的 CJK 回退兜底。
+    ("mono-with-cjk", "High",
+     r'class="[^"]*\bmono\b[^"]*"[^>]*>(?:(?!</?\w)[\s\S]){0,120}?[\u4e00-\u9fff]',
+     "等宽元素里混了中文 —— ET Mono 无 CJK 切片会让中文不可见；只给数字/ID 加 .mono，中文留在 UI 字体"),
     # 迁移进度指标：组件里写死的颜色应当逐个换成 --et-*。不阻断，用来看趋势。
     ("hardcoded-hex", "Low", r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b",
      "组件里写死颜色 —— 换成 --et-* 语义令牌（theme.ts 是唯一例外，它必须给 Vuetify 字面量）"),
@@ -71,7 +79,8 @@ CATEGORY_OF = {
     "viewport-zoom-block": "缩放", "zindex-literal": "层级", "vfor-no-key": "列表",
     "key-index": "列表", "click-on-div": "控件语义", "transition-all": "动效",
     "important": "样式卫生", "fixed-text-height": "文本重排",
-    "hardcoded-hex": "令牌化进度",
+    "hardcoded-hex": "令牌化进度", "mono-with-cjk": "字体回退",
+    "font-stack-cjk": "字体回退",
     "placeholder-only-label": "表单",
 }
 
@@ -97,6 +106,27 @@ def scan_blocks(path: Path, text: str, raw: str) -> list[tuple[str, str, int, st
                      "固定高度 + overflow:hidden + 文字裁切（WCAG 1.4.12 文本重排）"
                      "—— 改用 min-height 或内容驱动高度"))
     return hits
+
+
+def check_font_invariants() -> list[tuple[str, str, int, str, str]]:
+    """tokens.css 的等宽栈必须显式接上 CJK 字体。
+
+    这是防这一类回归的不变式：ET Mono 无 CJK 切片，栈里若不接 CJK，
+    任何混排中文都会掉到 generic monospace 而不可见。
+    """
+    css = (ROOT / "design-system" / "easytier" / "tokens.css").read_text(encoding="utf-8")
+    m = re.search(r"--et-font-data:(.*?);", css, re.DOTALL)
+    if not m:
+        return [("font-stack-cjk", "High", 1, "--et-font-data", "tokens.css 里找不到 --et-font-data")]
+    stack = m.group(1)
+    cjk = ("PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
+           "Noto Sans CJK", "Source Han Sans")
+    if not any(f in stack for f in cjk):
+        line = css[:m.start()].count("\n") + 1
+        return [("font-stack-cjk", "High", line, "--et-font-data",
+                 "等宽字体栈里没有 CJK 回退 —— 中英混排时中文会不可见，"
+                 "请补 PingFang SC / Noto Sans SC / Microsoft YaHei 之一")]
+    return []
 
 
 def sources() -> list[Path]:
@@ -156,6 +186,9 @@ def main() -> int:
     for f in files:
         for rid, _sev, line, snippet, _msg in scan(f, args.rule):
             findings[rid].append((f, line, snippet, ""))
+
+    for rid, sev, line, snip, msg in check_font_invariants():
+        findings[rid].append((ROOT / "design-system/easytier/tokens.css", line, snip, msg))
 
     total = sum(len(v) for v in findings.values())
     blocking = sum(len(v) for k, v in findings.items() if sev_of[k] in ("Critical", "High"))

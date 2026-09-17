@@ -582,7 +582,7 @@ function onAction() {
             <span class="et-hero-metric-value mono">{{ latencyText }}</span>
             <span class="et-hero-metric-unit mono">ms</span>
           </div>
-          <div class="et-hero-metric-caption mono">
+          <div class="et-hero-metric-caption">
             {{ focusCaption }}
           </div>
         </div>
@@ -641,7 +641,9 @@ function onAction() {
         <div class="et-hero-card et-hero-peers">
           <div class="et-hero-sec-t">
             <span>{{ pt('hero.peers_title', '节点', 'Nodes') }}</span>
-            <span class="mono">{{ onlinePeerCount }} {{ pt('hero.online', '在线', 'online') }}</span>
+            <!-- 只有计数用等宽:ET Mono 没有 CJK 切片,中文标签必须留在 UI 字体里,
+                 否则会掉进无 CJK 的 monospace 回退链而整段不可见。 -->
+            <span class="et-hero-sec-count"><span class="mono">{{ onlinePeerCount }}</span> {{ pt('hero.online', '在线', 'online') }}</span>
           </div>
           <ul v-if="peerRows.length" class="et-peer-list">
             <li

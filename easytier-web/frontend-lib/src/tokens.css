@@ -30,8 +30,13 @@
   --et-font-ui: "ET Sans", "MiSans", "Segoe UI Variable Display", "Segoe UI",
     "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
     "HarmonyOS Sans", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  /* ⚠️ ET Mono 只内嵌了 latin 切片，**没有 CJK**。所以等宽栈末尾必须显式接上
+   * CJK 字体，否则中英混排时中文会一路掉到 generic monospace（无 CJK 字形）
+   * 而整段不可见。更稳的做法是把中文标签留在 UI 字体里，只给数字/ID 加 .mono
+   * ——lint-design.py 的 mono-with-cjk 规则会拦这个组合。 */
   --et-font-data: "ET Mono", "JetBrains Mono", "SF Mono", "Cascadia Mono",
-    "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
+    "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas,
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   /* 只有 400/500/600 三档被内嵌，font-synthesis:none 下 700 会解析到 600 */
 
   /* ---- 字阶（手机优先，1.125 邻近比）------------------------------------ */
