@@ -1,36 +1,60 @@
 name: Publish Release
 
-# Un-draft the release that Assemble Release dispatched (upstream's
-# release.yml creates drafts for manual review; on this fork the pipeline
-# is fully automated). Runs after the assembly workflow finishes.
+# 手动兜底：把草稿 release 去掉草稿状态。
+#
+# ⚠️ 这个工作流**不能**再依赖 workflow_run 自动触发，原因是有实测证据的：
+# assemble.yml 用仓库自带的 GITHUB_TOKEN 调 `gh workflow run` 派发 release.yml，
+# 而 GitHub 会抑制由 GITHUB_TOKEN 产生的后续事件 —— release.yml 每次跑完，
+# 监听 "EasyTier Release" 的 workflow_run 都不会发生。原配置就是这么写的，
+# 结果是本工作流**一次都没被自动触发过**（Release 已跑多次，本工作流上次运行
+# 停在 2026-08-31，且早于当天那次 Release），release 一直挂在草稿里等人手动发。
+#
+# 现在去草稿由 release.yml 的收尾步骤直接完成（资产全部上传完才发布）。
+# 这里保留手动入口，用于补发历史草稿、或 release.yml 收尾步骤失败时兜底。
 
 on:
-  workflow_run:
-    workflows: ["EasyTier Release"]
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要去草稿的 release tag（留空 = 处理最近 30 分钟内更新过的草稿）'
+        type: string
+        default: ''
+        required: false
+      make_latest:
+        description: '同时设为 latest release'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Un-draft the freshly assembled release
+      - name: Un-draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
+          MAKE_LATEST: ${{ github.event.inputs.make_latest }}
         run: |
           set -euo pipefail
-          # Only the release this assembly just created/updated. Matching EVERY
-          # draft published unrelated ones the moment this ran (an old test
-          # build and an aborted prerelease, whose assets then sat under the
-          # wrong version tag). A freshly assembled draft is touched seconds
-          # ago, so a 30 minute window isolates it.
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=10" \
-            --jq '.[] | select(.draft) | select((.updated_at | fromdateiso8601) > (now - 1800)) | .id' \
-            | while read -r id; do
-                [ -n "$id" ] || continue
-                gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -f draft=false >/dev/null
-                echo "==> published release $id"
-              done
+          TAG="${TAG// /}"
+          if [ -n "$TAG" ]; then
+            rid=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id')
+          else
+            # 只碰"最近 30 分钟内更新过"的草稿。早先这里匹配的是**所有**草稿，
+            # 一次运行把无关的旧测试构建和已中止的预发布一起发布了，
+            # 资产随即挂到错误的版本号下。
+            rid=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=10" \
+              --jq '.[] | select(.draft) | select((.updated_at | fromdateiso8601) > (now - 1800)) | .id' \
+              | head -1)
+          fi
+          if [ -z "$rid" ]; then
+            echo "没有需要发布的草稿"
+            exit 0
+          fi
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" \
+            -f draft=false -f make_latest="${MAKE_LATEST:-false}" >/dev/null
+          echo "==> published release $rid"

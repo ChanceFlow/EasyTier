@@ -93,3 +93,23 @@ jobs:
             ./zipped_assets/*
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ inputs.version }}
+
+      # 去草稿必须在这里做，不能靠 release-publish.yml 的 workflow_run。
+      #
+      # assemble.yml 是用仓库自带的 GITHUB_TOKEN 调 `gh workflow run` 派发本工作流的，
+      # 而 GitHub 会抑制由 GITHUB_TOKEN 产生的后续事件 —— 本工作流每次跑完，
+      # Publish Release 都不会被触发（实测：Release 至今跑了多次，Publish 上一次
+      # 运行还停在 8-31，且早于当天的 Release）。结果就是 release 一直挂在草稿里等人手动发。
+      #
+      # 放在 action-gh-release 之后，保证 33 个资产全部上传完才发布，
+      # 避免出现"已发布但资产不全"的窗口。
+      - name: Publish (un-draft) the assembled release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rid=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/${{ inputs.version }}" --jq '.id')
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" \
+            -f draft=false -f make_latest=true >/dev/null
+          echo "==> published release ${{ inputs.version }} (id $rid)"
