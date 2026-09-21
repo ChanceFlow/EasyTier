@@ -119,5 +119,16 @@ jobs:
             exit 1
           fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" \
-            -f draft=false -f make_latest=true >/dev/null
-          echo "==> published release ${{ inputs.version }} (id $rid)"
+            -f draft=false >/dev/null
+          echo "==> un-drafted release ${{ inputs.version }} (id $rid)"
+
+          # make_latest 必须**单独**再发一次，不能和 draft=false 放在同一个请求里。
+          # 同一个请求里 GitHub 会拿**更新前**的状态（此时还是草稿）去判定 make_latest，
+          # 于是静默忽略它 —— 不报错、返回 200，但 Latest 不会移动。
+          # 实测 v2.7.0-chance.5：带 make_latest=true 的那次 PATCH 成功、release 也变成
+          # draft=false，但十几分钟后 releases/latest 仍指向 chance.4；单独再 PATCH 一次
+          # make_latest=true 后立刻生效（chance.5 latest=true，chance.4 latest=false）。
+          # 影响面：每个 chance.N 都不会被标成 Latest，用户点 "Latest" 下到的是上一版。
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$rid" \
+            -f make_latest=true >/dev/null
+          echo "==> marked ${{ inputs.version }} as latest"
