@@ -44,20 +44,48 @@ const editingMode = ref<Mode>({ mode: 'normal' })
 const isModeSaving = ref(false)
 const manualDisconnect = ref(false)
 
-// ---- 移动端一级导航 --------------------------------------------------------
-// 组网 / 设备 / 配置 / 动态。原先这三块藏在首页的「高级控制台」折叠面板里，
-// 而 RemoteManagement 自带的 tab bar 是 position:fixed，会从折叠容器里逃出来
-// 浮在底部 —— 等于导航套导航。现在由 App 持有导航，各面板直接是一级页面。
+// ---- 导航 ----------------------------------------------------------------
+// 移动端一级导航:首页 / 节点 / 配置 / 动态 / 设置。五项都是「目的地」,没有一项
+// 是另一个页面的子视图。
+//
+// 「配置」曾经被降级成「网络详情」推入页,理由是它是 44 字段的专家表单、不该占
+// 一级导航位。那条理由被推翻了:对 EasyTier 的用户(自建 mesh 的技术用户)来说配置
+// 是一级需求而不是 1% 的会话,可发现性比导航预算的洁癖更重要;而 5 格本来就在
+// 底部导航 3–5 的规范上限之内(见 design-system MASTER.md §6)。
+// 于是配置回到页签,推入页整个删掉 —— 否则两个入口指向同一个表单。
 const APP_TABS = [
   { id: 'mesh', labelKey: 'tabs.home', iconOn: 'mdi-shield', iconOff: 'mdi-shield-outline' },
   { id: 'devices', labelKey: 'tabs.devices', iconOn: 'mdi-devices', iconOff: 'mdi-devices' },
   { id: 'config', labelKey: 'tabs.config', iconOn: 'mdi-cog', iconOff: 'mdi-cog-outline' },
   { id: 'activity', labelKey: 'tabs.activity', iconOn: 'mdi-pulse', iconOff: 'mdi-chart-line' },
+  { id: 'settings', labelKey: 'tabs.settings', iconOn: 'mdi-tune', iconOff: 'mdi-tune-variant' },
 ] as const
 type AppTab = typeof APP_TABS[number]['id']
 const appTab = ref<AppTab>('mesh')
 
-// tab 徽标与 Hero 用同一个数据源，避免两处数字打架
+// 桌面端没有底部导航(手机底部栏钉在桌面窗口底部、还会压住内容),改用顶栏
+// 分段导航。四段与移动端的四个内容目的地一一对应,只是「首页」在这里是
+// RemoteManagement 的 home 面板(桌面仪表盘),不是手机的 MeshHero。
+const DESKTOP_TABS = [
+  { id: 'home', labelKey: 'tabs.overview' },
+  { id: 'devices', labelKey: 'tabs.devices' },
+  { id: 'config', labelKey: 'tabs.config' },
+  { id: 'activity', labelKey: 'tabs.activity' },
+] as const
+type DesktopPanel = typeof DESKTOP_TABS[number]['id']
+const desktopPanel = ref<DesktopPanel>('home')
+
+// 只有这四个 tab 交给 RemoteManagement 当面板渲染。写成 computed 而不是直接传
+// appTab,是因为 AppTab 里还有 'mesh' / 'settings',而 RemoteManagement 的 panel
+// 只接受 home/devices/config/activity —— 直接传过不了 vue-tsc。
+const remotePanel = computed<'devices' | 'config' | 'activity'>(() => {
+  if (appTab.value === 'config') {
+    return 'config'
+  }
+  return appTab.value === 'activity' ? 'activity' : 'devices'
+})
+
+// tab 徽标与 Hero 用同一个数据源,避免两处数字打架
 const peerBadgeCount = computed(() =>
   mobileStats.ready && mobileStats.connected ? mobileStats.peerCount : 0,
 )
@@ -737,6 +765,29 @@ function exitApp(): void {
           <span class="et-nav-title">EasyTier</span>
         </div>
 
+        <!-- 桌面端导航:顶栏分段控件。原来这里没有导航 —— 桌面窗口底部钉着的是
+             RemoteManagement 内建的手机 tab bar(position:fixed; bottom:0),
+             它会压住内容,而且桌面本来就不该有底部页签。 -->
+        <nav
+          v-if="!mobileUI"
+          class="et-seg"
+          role="tablist"
+          :aria-label="pt('tabs.label', '主导航', 'Main navigation')"
+        >
+          <button
+            v-for="tab in DESKTOP_TABS"
+            :key="tab.id"
+            type="button"
+            class="et-seg-item"
+            role="tab"
+            :aria-selected="desktopPanel === tab.id"
+            :class="{ 'is-active': desktopPanel === tab.id }"
+            @click="desktopPanel = tab.id"
+          >
+            {{ t(tab.labelKey) }}
+          </button>
+        </nav>
+
         <div class="d-flex align-center ga-1">
           <template v-if="!mobileUI">
             <div v-if="clientRunning" class="et-status-pill is-on">
@@ -767,7 +818,10 @@ function exitApp(): void {
               @click="I18nUtils.loadLanguageAsync(locale === 'en' ? 'cn' : 'en')"
             />
           </template>
+          <!-- 移动端不再有齿轮:设置是底部导航的一格,齿轮会变成第二个设置入口。
+               桌面端没有底部导航,齿轮仍然是设置的唯一入口。 -->
           <v-btn
+            v-if="!mobileUI"
             icon="mdi-cog-outline"
             variant="text"
             size="default"
@@ -961,15 +1015,16 @@ function exitApp(): void {
     <main class="et-main">
       <div class="et-main-body" :class="{ 'has-app-tabbar': mobileUI }">
         <!-- ================= phone =================
-             一级导航由 App 自己持有(组网/设备/配置/动态),不再有"高级控制台"这层壳。
-             之前那层折叠面板套 RemoteManagement 的写法有两个问题:
-               1) 导航套导航 —— 折叠面板一层、RemoteManagement 内建 tab bar 又一层;
-               2) 内建 tab bar 是 position:fixed,会从折叠容器里"逃出来"浮在屏幕底部,
-                  面板收起时底部仍挂着一条无主的 tab bar。
-             现在 RemoteManagement 只作为「面板」渲染(:hide-tab-bar + :panel),导航归 App。 -->
+             一级导航由 App 持有:首页 / 节点 / 配置 / 动态 / 设置。
+             不再有"高级控制台"这层壳:折叠面板一层 + RemoteManagement 内建 tab bar
+             一层等于导航套导航;而且内建 tab bar 是 position:fixed,折叠时被祖先的
+             display:none 摁住、展开时立刻按视口钉到屏幕底部 —— 看起来就是"展开才凭空
+             冒出四个 tab"。
+             现在 RemoteManagement 只作为「面板」渲染(:hide-tab-bar + :panel)。 -->
         <template v-if="mobileUI">
           <MeshHero
             v-if="appTab === 'mesh'"
+            class="et-animate-in"
             :client-running="clientRunning"
             :instance-id="instanceId"
             :busy="heroBusy || isModeSaving"
@@ -983,7 +1038,75 @@ function exitApp(): void {
             @retry="reconnectClient"
             @create="createNetworkDialogVisible = true"
             @open-notif-settings="openNotificationSettings"
+            @manage="appTab = 'config'"
           />
+
+          <!-- 设置:与客户端是否在运行无关,所以必须排在 clientRunning 判断之前,
+               否则后端没起来时设置页会变成"客户端未运行"。 -->
+          <section v-else-if="appTab === 'settings'" class="et-settings-page et-animate-in">
+            <h1 class="et-page-title">
+              {{ t('web.settings.title') }}
+            </h1>
+
+            <div class="et-group mb-3">
+              <button
+                v-for="item in visibleSettingsItems()"
+                :key="item.key"
+                type="button"
+                class="et-row et-row-pressable et-row-btn"
+                :aria-label="item.value ? `${item.label} · ${item.value}` : item.label"
+                @click="item.command()"
+              >
+                <div class="d-flex align-center ga-3 min-w-0">
+                  <div class="et-squircle" style="background: var(--et-surface-2);">
+                    <v-icon size="18" color="primary">
+                      {{ item.icon }}
+                    </v-icon>
+                  </div>
+                  <span class="font-weight-medium">{{ item.label }}</span>
+                </div>
+                <div class="d-flex align-center ga-1 flex-shrink-0">
+                  <span class="text-caption text-medium-emphasis">{{ item.value }}</span>
+                  <v-icon size="18" color="medium-emphasis">
+                    mdi-chevron-right
+                  </v-icon>
+                </div>
+              </button>
+            </div>
+
+            <div class="et-group mb-3">
+              <button
+                type="button"
+                class="et-row et-row-pressable et-row-btn"
+                :aria-label="t('about.title')"
+                @click="aboutVisible = true"
+              >
+                <div class="d-flex align-center ga-3">
+                  <div class="et-squircle" style="background: var(--et-surface-2);">
+                    <v-icon size="18" color="primary">
+                      mdi-information-outline
+                    </v-icon>
+                  </div>
+                  <span class="font-weight-medium">{{ t('about.title') }}</span>
+                </div>
+                <v-icon size="18" color="medium-emphasis">
+                  mdi-chevron-right
+                </v-icon>
+              </button>
+            </div>
+
+            <v-btn
+              block
+              color="error"
+              variant="tonal"
+              size="large"
+              rounded="pill"
+              prepend-icon="mdi-power"
+              @click="exitApp"
+            >
+              {{ t('exit') }}
+            </v-btn>
+          </section>
 
           <template v-else>
             <RemoteManagement
@@ -994,7 +1117,7 @@ function exitApp(): void {
               :connected-override="mobileStats.ready ? mobileStats.connected : undefined"
               :hide-power-toggle="true"
               :hide-tab-bar="true"
-              :panel="appTab"
+              :panel="remotePanel"
             />
             <div v-else class="et-empty d-flex flex-column align-center justify-center">
               <v-icon size="56" class="mb-4" color="medium-emphasis">
@@ -1010,7 +1133,7 @@ function exitApp(): void {
           </template>
         </template>
 
-        <!-- ============ desktop: full web console, unchanged path ============ -->
+        <!-- ============ desktop: full web console + 顶栏分段导航 ============ -->
         <template v-else>
           <RemoteManagement
             v-if="clientRunning"
@@ -1018,6 +1141,8 @@ function exitApp(): void {
             class="fill-height"
             :api="remoteClient"
             :pause-auto-refresh="isModeSaving"
+            :hide-tab-bar="true"
+            :panel="desktopPanel"
           />
           <div v-else class="et-empty d-flex flex-column align-center justify-center">
             <v-icon size="56" class="mb-4" color="medium-emphasis">
@@ -1059,9 +1184,13 @@ function exitApp(): void {
           color="primary"
           inline
         >
-          <v-icon size="22">{{ appTab === tab.id ? tab.iconOn : tab.iconOff }}</v-icon>
+          <v-icon size="22">
+            {{ appTab === tab.id ? tab.iconOn : tab.iconOff }}
+          </v-icon>
         </v-badge>
-        <v-icon v-else size="22">{{ appTab === tab.id ? tab.iconOn : tab.iconOff }}</v-icon>
+        <v-icon v-else size="22">
+          {{ appTab === tab.id ? tab.iconOn : tab.iconOff }}
+        </v-icon>
         <span>{{ t(tab.labelKey) }}</span>
       </button>
     </nav>
@@ -1161,5 +1290,62 @@ function exitApp(): void {
   min-height: var(--et-touch);
   width: var(--et-touch);
   height: var(--et-touch);
+}
+
+/* ---- 桌面端顶栏分段导航 ----
+   取代原来钉在窗口底部的手机 tab bar。分段控件不占内容高度、不遮挡内容,
+   选中态用背景+字重表达,不只靠颜色(色觉无障碍)。 */
+.et-seg {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-1);
+  padding: var(--et-space-1);
+  border-radius: var(--et-radius-pill);
+  background: var(--et-surface-2);
+}
+
+.et-seg-item {
+  border: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--et-font-body-sm);
+  color: var(--et-text-2);
+  min-height: calc(var(--et-touch) - var(--et-space-2));
+  padding: 0 var(--et-space-4);
+  border-radius: var(--et-radius-pill);
+  transition:
+    background-color var(--et-dur-fast) var(--et-ease-standard),
+    color var(--et-dur-fast) var(--et-ease-standard);
+}
+
+.et-seg-item:hover {
+  color: var(--et-text);
+}
+
+.et-seg-item.is-active {
+  background: var(--et-surface-1);
+  color: var(--et-text);
+  font-weight: var(--et-weight-semibold);
+  box-shadow: var(--et-shadow-1);
+}
+
+.et-seg-item:focus-visible {
+  outline: 2px solid var(--et-focus);
+  outline-offset: 2px;
+}
+
+/* ---- 设置页 ---- */
+/* 根页面标题是 28px,紧贴 sticky header 只留 8px 会显得被切掉;给它一档呼吸。 */
+.et-settings-page {
+  padding-top: var(--et-space-4);
+}
+
+.et-page-title {
+  font-size: var(--et-font-display);
+  font-weight: var(--et-weight-semibold);
+  letter-spacing: -0.02em;
+  margin-bottom: var(--et-space-4);
 }
 </style>

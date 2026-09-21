@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (e: 'retry'): void
   (e: 'create'): void
   (e: 'openNotifSettings'): void
+  (e: 'manage'): void
 }>()
 
 const { pt } = usePhoneText()
@@ -538,7 +539,19 @@ function onAction() {
       <!-- ============================== live hero ============================== -->
       <template v-else>
         <!-- identity: network name + virtual IP + the signal (colour/shape/text) -->
-        <div class="et-hero-card et-hero-head">
+        <!-- 整张卡片是「配置」页签的快捷入口(不是推入页 —— 配置本身就是一级页签)。
+             卡片里已经有一个复制 IP 的 <button>,嵌套 <button> 是非法 HTML,所以这里
+             跟 RemoteManagement 的网络卡片用同一套写法:role=button + tabindex +
+             键盘处理,内部按钮 @click.stop。 -->
+        <div
+          class="et-hero-card et-hero-head et-hero-head--link"
+          role="button"
+          tabindex="0"
+          :aria-label="t('hero.manage')"
+          @click="emit('manage')"
+          @keydown.enter.prevent="emit('manage')"
+          @keydown.space.prevent="emit('manage')"
+        >
           <div class="et-hero-id">
             <div class="et-hero-name truncate">
               {{ mobileStats.networkName || 'EasyTier' }}
@@ -561,6 +574,9 @@ function onAction() {
             <span class="et-signal-glyph" aria-hidden="true" />
             <span>{{ signalText }}</span>
           </span>
+          <v-icon class="et-hero-chevron" size="18" aria-hidden="true">
+            mdi-chevron-right
+          </v-icon>
         </div>
 
         <!-- the one number this screen answers with: latency to the mesh -->
@@ -745,6 +761,22 @@ function onAction() {
   flex: 1;
 }
 
+/* 整卡是「配置」页签的快捷入口:给可点提示 + 键盘焦点环,但不改变布局尺寸
+   (按压反馈只动颜色/背景,不移动相邻内容)。 */
+.et-hero-head--link {
+  cursor: pointer;
+}
+
+.et-hero-head--link:focus-visible {
+  outline: 2px solid var(--et-focus);
+  outline-offset: 2px;
+}
+
+.et-hero-chevron {
+  color: var(--et-text-3);
+  flex-shrink: 0;
+}
+
 .et-hero-name {
   font-size: var(--et-font-title);
   font-weight: var(--et-weight-semibold);
@@ -831,7 +863,7 @@ function onAction() {
   width: var(--et-space-3);
   height: var(--et-space-3);
   border-radius: var(--et-radius-xs);
-  animation: et-signal-breathe 1.4s var(--et-ease-standard) infinite;
+  animation: et-loop-breathe var(--et-loop-breathe) var(--et-ease-standard) infinite;
 }
 
 .sig-degraded {
@@ -869,7 +901,7 @@ function onAction() {
   border: 2px solid currentColor;
 }
 
-@keyframes et-signal-breathe {
+@keyframes et-loop-breathe {
   0%,
   100% {
     opacity: 1;
@@ -1200,10 +1232,10 @@ function onAction() {
   border-radius: 50%;
   border: 2px solid currentColor;
   border-top-color: transparent;
-  animation: et-cta-spin 700ms linear infinite;
+  animation: et-loop-spin var(--et-loop-spin) linear infinite;
 }
 
-@keyframes et-cta-spin {
+@keyframes et-loop-spin {
   to {
     transform: rotate(360deg);
   }
@@ -1311,10 +1343,10 @@ function onAction() {
     transparent 100%
   );
   transform: translateX(-100%);
-  animation: et-shimmer 1.4s var(--et-ease-standard) infinite;
+  animation: et-loop-shimmer var(--et-loop-shimmer) var(--et-ease-standard) infinite;
 }
 
-@keyframes et-shimmer {
+@keyframes et-loop-shimmer {
   100% {
     transform: translateX(100%);
   }
