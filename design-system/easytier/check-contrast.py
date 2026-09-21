@@ -48,6 +48,7 @@ CHECKS: list[tuple[str, str, float, str]] = [
     ("--et-control-border", "--et-surface-2", 3.0, "次级卡片上的控件边界"),
     ("--et-control-border", "--et-bg", 3.0, "画布上的控件边界"),
     ("--et-focus", "--et-surface-1", 3.0, "焦点环 on 卡片"),
+    ("--et-focus", "--et-surface-2", 3.0, "焦点环 on 次级卡片/分段控件轨道"),
     ("--et-focus", "--et-bg", 3.0, "焦点环 on 画布"),
 ]
 

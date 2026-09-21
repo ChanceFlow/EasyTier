@@ -25,7 +25,7 @@ step() {
 
 # ---- 静态门禁（零依赖，秒级）------------------------------------------------
 step "令牌副本未漂移" python3 design-system/easytier/sync-tokens.py --check
-step "对比度 60 项断言" python3 design-system/easytier/check-contrast.py
+step "对比度断言（WCAG 2.1）" python3 design-system/easytier/check-contrast.py
 step "设计规则 lint" python3 design-system/easytier/lint-design.py --quiet
 
 if [ "$GATES_ONLY" -eq 1 ]; then

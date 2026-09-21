@@ -51,7 +51,11 @@ RULES: list[Rule] = [
      "v-for 没有 :key —— 列表更新会错位复用 DOM"),
     ("key-index", "Medium", r":key=\"\s*(index|i|idx)\s*\"",
      "用数组下标当 key —— 动态列表增删时会渲染错内容"),
-    ("click-on-div", "High", r"<(div|span|li|section)[^>]*@click(?![^>]*(role=|tabindex))",
+    # 注意 lookahead 必须锚在标签名之后、@click 之前，扫描**整个开标签**：
+    # 原来的写法把 (?![^>]*(role=|tabindex)) 放在 @click 之后，只能看到 @click
+    # 右边的内容，于是判定结果取决于属性顺序 —— role/tabindex 写在 @click 前面
+    # 的写法（很常见）会被误报成阻断项。
+    ("click-on-div", "High", r"<(div|span|li|section)\b(?![^>]*(?:role=|tabindex))[^>]*@click",
      "非交互元素上绑 @click 且无 role/tabindex —— 键盘与读屏都到不了，改用 button"),
     ("transition-all", "Low", r"transition\s*:\s*all\b",
      "transition:all 会监听所有属性 —— 明确列出 transform/opacity，避免布局抖动"),
@@ -72,6 +76,29 @@ RULES: list[Rule] = [
     # 迁移进度指标：组件里写死的颜色应当逐个换成 --et-*。不阻断，用来看趋势。
     ("hardcoded-hex", "Low", r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b",
      "组件里写死颜色 —— 换成 --et-* 语义令牌（theme.ts 是唯一例外，它必须给 Vuetify 字面量）"),
+    # 动效漂移指标：transition/animation 简写里出现字面时长，而不是 var(--et-dur-* /
+    # --et-move-* / --et-loop-*)。字面时长正是"每个组件自己猜一个数字"的起点。
+    # 只查简写（transition:/animation:），不查 transition-delay/animation-delay ——
+    # 列表 stagger 的 delay 本来就是按 index 算出来的，允许字面量。
+    # 注意 lookahead 位置：这里不需要 role/tabindex 那种"同标签前视"，
+    # 但要确保匹配的是简写本身而不是 -webkit-transition: 的子串，
+    # 所以前置字符限定为行首/;/{/空白。
+    ("hardcoded-duration", "Medium",
+     r"(?:^|[;{\s])(?:transition|animation)\s*:[^;{}]*?\b\d+(?:\.\d+)?m?s\b",
+     "transition/animation 里写死时长 —— 用 --et-move-*（意图）或 --et-loop-*（持续）令牌"),
+    # 无限动画只允许属于 et-loop-* 家族：它只服务于"进度"和"语义信号"两件事。
+    # 假定动画名写在简写的第一位（本仓库的既有写法），名在末尾的写法查不到 ——
+    # 已知盲区，写在这里避免下次误以为覆盖完整。
+    ("loop-naming", "Medium",
+     r"animation\s*:\s*(?!et-loop-)[A-Za-z_][\w-]*[^;{}]*?\binfinite\b",
+     "无限动画必须用 et-loop-* 家族的 keyframes —— 装饰性循环一律禁止"),
+    # Vuetify 的工具类块里有 `.text-mono{font-family:monospace!important}`。
+    # 我们的 `.et-mono` 规则(0,2,0)永远赢不过 `!important`,于是凡是挂 .text-mono
+    # 的元素中文会掉到 generic monospace -> 豆腐块（实测桌面端「累计」两处整段变 □□，
+    # 而 --et-font-data 里其实已经配好了内嵌 CJK 回退，完全用不上）。
+    # 结论：我们自己的等宽类叫 .et-mono，绝不使用 Vuetify 的 .text-mono。
+    ("vuetify-mono-class", "High", r'class="[^"]*\btext-mono\b',
+     "用了 Vuetify 的 .text-mono —— 它带 font-family:monospace!important，会绕过我们的字体栈让中文变豆腐块；改用 .et-mono"),
 ]
 
 CATEGORY_OF = {
@@ -82,6 +109,8 @@ CATEGORY_OF = {
     "hardcoded-hex": "令牌化进度", "mono-with-cjk": "字体回退",
     "font-stack-cjk": "字体回退", "vuetify-font-override": "字体回退",
     "placeholder-only-label": "表单",
+    "hardcoded-duration": "动效", "loop-naming": "动效",
+    "vuetify-mono-class": "字体回退",
 }
 
 
@@ -122,11 +151,19 @@ def check_font_invariants() -> list[tuple[str, str, int, str, str]]:
     cjk = ("PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
            "Noto Sans CJK", "Source Han Sans")
     hits = []
+    line = css[:m.start()].count("\n") + 1
     if not any(f in stack for f in cjk):
-        line = css[:m.start()].count("\n") + 1
         hits.append(("font-stack-cjk", "High", line, "--et-font-data",
                      "等宽字体栈里没有 CJK 回退 —— 中英混排时中文会不可见，"
                      "请补 PingFang SC / Noto Sans SC / Microsoft YaHei 之一"))
+    # 只列**系统** CJK 字体名是不够的：装没装中文字体是用户环境的事，
+    # 而 ET Sans 是我们自己内嵌、带 CJK 切片的那一个。缺了它，无 CJK 字体的机器
+    # （实测本机 fc-list CJK 命中为 0）整段中文就是豆腐块 —— 桌面端概览的
+    # 「峰值:」「实时 · 上传 …」就是这样挂的，而旧版不变式因为只看系统名而放行。
+    if "ET Sans" not in stack:
+        hits.append(("font-stack-cjk", "High", line, "--et-font-data",
+                     "等宽栈里没有内嵌的 \"ET Sans\" —— 系统 CJK 字体缺失时中文会变豆腐块，"
+                     "必须让内嵌字体排在系统字体名之前兜底"))
 
     # Vuetify 把 font-family: Roboto 硬编码进 80 个排版工具类，且没有可覆盖的
     # CSS 变量。不覆写的话，凡是用 .text-* 的地方中文都会掉进系统字体。
@@ -198,17 +235,24 @@ def main() -> int:
     files = sources()
     findings: dict[str, list[tuple[Path, int, str, str]]] = defaultdict(list)
     sev_of = {rid: sev for rid, sev, _, _ in RULES}
-    # 不变式规则不在 RULES 里（没有正则 pattern），单独登记严重度
-    sev_of.setdefault("font-stack-cjk", "High")
-    sev_of.setdefault("vuetify-font-override", "High")
+    # 不变式规则不在 RULES 里（没有正则 pattern），严重度必须单独登记，
+    # 消息也一样 —— 否则下面按 rid 取消息会 KeyError（`--rule font-stack-cjk`
+    # 直接崩掉而不是报告，就是用这条规则验证时踩到的）。
+    INVARIANT_IDS = ("font-stack-cjk", "vuetify-font-override")
+    for _rid in INVARIANT_IDS:
+        sev_of.setdefault(_rid, "High")
     msg_of = {rid: msg for rid, _, _, msg in RULES}
 
     for f in files:
         for rid, _sev, line, snippet, _msg in scan(f, args.rule):
             findings[rid].append((f, line, snippet, ""))
 
-    for rid, sev, line, snip, msg in check_font_invariants():
-        findings[rid].append((ROOT / "design-system/easytier/tokens.css", line, snip, msg))
+    # --rule 指定具体规则时只跑那一条，不变式规则也不例外
+    if not args.rule or args.rule in INVARIANT_IDS:
+        for rid, sev, line, snip, msg in check_font_invariants():
+            if args.rule and rid != args.rule:
+                continue
+            findings[rid].append((ROOT / "design-system/easytier/tokens.css", line, snip, msg))
 
     total = sum(len(v) for v in findings.values())
     blocking = sum(len(v) for k, v in findings.items() if sev_of[k] in ("Critical", "High"))
@@ -220,7 +264,8 @@ def main() -> int:
         sev = sev_of[rid]
         mark = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "⚪"}[sev]
         print(f"{mark} [{sev}] {CATEGORY_OF.get(rid, rid)} · {rid} · {len(items)} 处")
-        print(f"   {msg_of[rid]}")
+        # 正则规则的消息在 msg_of 里；不变式规则的消息跟着每条 finding 一起回来
+        print(f"   {msg_of.get(rid) or next((t[3] for t in items if t[3]), rid)}")
         if not args.quiet:
             by_file: dict[Path, list[tuple[int, str, str]]] = defaultdict(list)
             for f, line, snip, _ in items:

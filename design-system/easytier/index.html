@@ -171,18 +171,21 @@
   .err{display:flex;gap:6px;align-items:center;color:var(--et-danger);
     font-size:var(--et-font-caption);margin-top:6px}
 
-  /* 配置分层 */
-  .tiers{display:flex;gap:var(--et-space-2);margin-bottom:var(--et-space-4);flex-wrap:wrap}
-  .tier{
-    all:unset;cursor:pointer;font-size:var(--et-font-caption);font-weight:500;
-    padding:7px 14px;border-radius:var(--et-radius-pill);
-    background:var(--et-surface-2);color:var(--et-text-2);
-    border:1px solid var(--et-border);min-height:36px;display:inline-flex;align-items:center;gap:6px;
+  /* 配置披露：一层折叠分区。用原生 details/summary —— 无需 JS，
+     键盘与读屏天然可达，也不会像第二层分段控件那样把字段藏进惰性渲染。 */
+  .cfg-sec{border:1px solid var(--et-border);border-radius:var(--et-radius-md);
+    margin-bottom:var(--et-space-3);overflow:hidden;background:var(--et-surface-1)}
+  .cfg-sec:last-child{margin-bottom:0}
+  .cfg-sec>summary{
+    cursor:pointer;list-style:none;padding:0 var(--et-space-4);
+    font-weight:600;color:var(--et-text);background:var(--et-surface-2);
+    display:flex;align-items:center;justify-content:space-between;min-height:var(--et-touch);
   }
-  .tier[aria-pressed="true"]{background:var(--et-accent-quiet);color:var(--et-accent);border-color:var(--et-accent)}
-  .tier .cnt{font-family:var(--et-font-data);font-size:var(--et-font-micro);opacity:.8}
-  [data-tier-panel]{display:none}
-  [data-tier-panel].on{display:block}
+  .cfg-sec>summary::-webkit-details-marker{display:none}
+  .cfg-sec>summary::after{content:"⌄";color:var(--et-text-3);font-size:18px;line-height:1}
+  .cfg-sec[open]>summary::after{content:"⌃"}
+  .cfg-sec>summary:focus-visible{outline:2px solid var(--et-focus);outline-offset:-2px}
+  .cfg-sec>.grid{padding:var(--et-space-4)}
 
   /* ---------- 手机 mock ---------- */
   .phone{
@@ -381,8 +384,8 @@
       <p>颜色 + 形状 + 文字同时表达。色盲用户、灰度截图、强光下的手机都还能读懂——颜色只是第三重。</p>
     </div></div>
     <div class="card principle"><div class="n">4</div><div>
-      <b>配置分三层，默认只露一层</b>
-      <p>基础 4 项（能连上就够）／高级 12 项（调优）／专家 全部。想深入的人点得到，普通人不被淹。</p>
+      <b>配置只用一层折叠，不藏字段</b>
+      <p>四段可折叠分区（基础设置默认展开，其余收起），44 个字段一个不删。不再叠第二层分层控件——想深入的人点得到，普通人不被一次铺开淹没。</p>
     </div></div>
   </div>
 
@@ -452,43 +455,36 @@
     </div>
   </div>
 
-  <h2>六、配置分层（旧版最大痛点）</h2>
-  <p class="sec-note">旧版一次性铺开全部字段。新版默认只给 4 项，其余按需展开——字段没删，只是不再同时出现。</p>
+  <h2>六、配置披露：只用一层折叠分区</h2>
+  <p class="sec-note">配置页有 44 个字段，但一次只铺开一段。用<b>可折叠分区</b>（基础设置默认展开，高级设置默认收起）——字段一个不删，靠折叠控制密度。</p>
   <div class="card">
-    <div class="tiers" role="group" aria-label="配置层级">
-      <button class="tier" aria-pressed="true" onclick="setTier(0)">基础 <span class="cnt">4</span></button>
-      <button class="tier" aria-pressed="false" onclick="setTier(1)">高级 <span class="cnt">12</span></button>
-      <button class="tier" aria-pressed="false" onclick="setTier(2)">专家 <span class="cnt">64</span></button>
-    </div>
-    <div data-tier-panel class="on">
+    <details class="cfg-sec" open>
+      <summary>基础设置</summary>
       <div class="grid g2">
         <label class="field"><span class="lbl">网络名称</span><input class="input" value="home-mesh"><span class="hint">同一名称的节点会自动互相发现</span></label>
         <label class="field"><span class="lbl">网络密钥</span><input class="input" type="password" value="secret123"><span class="hint">所有节点必须一致</span></label>
         <label class="field" style="margin-bottom:0"><span class="lbl">监听地址</span><input class="input" value="0.0.0.0:11010"></label>
         <label class="field" style="margin-bottom:0"><span class="lbl">对端地址</span><input class="input" value="tcp://public.easytier.cn:11010"><span class="hint">可留空，仅靠自动发现</span></label>
       </div>
-    </div>
-    <div data-tier-panel>
+    </details>
+    <details class="cfg-sec">
+      <summary>高级设置</summary>
       <div class="grid g2">
-        <label class="field"><span class="lbl">中继节点</span><input class="input" value=""></label>
-        <label class="field"><span class="lbl">子网代理 CIDR</span><input class="input" value="192.168.1.0/24"></label>
+        <label class="field"><span class="lbl">虚拟 IPv4</span><input class="input" value="10.0.0.100/24"></label>
         <label class="field"><span class="lbl">MTU</span><input class="input" value="1380"></label>
-        <label class="field"><span class="lbl">连接超时 (ms)</span><input class="input" value="3000"></label>
-        <label class="field"><span class="lbl">心跳间隔 (ms)</span><input class="input" value="2000"></label>
-        <label class="field"><span class="lbl">加密算法</span><input class="input" value="aes-gcm"></label>
+        <label class="field"><span class="lbl">子网代理 CIDR</span><input class="input" value="192.168.1.0/24"></label>
+        <label class="field"><span class="lbl">中继网络白名单</span><input class="input" value=""></label>
       </div>
-      <p class="sec-note" style="margin:0">+ 6 项，展开后可见</p>
-    </div>
-    <div data-tier-panel>
+    </details>
+    <details class="cfg-sec">
+      <summary>端口转发 / ACL</summary>
       <div class="grid g2">
         <label class="field"><span class="lbl">RPC 端口转发</span><input class="input" value="tcp:0.0.0.0:15888-10.126.126.1:15888"></label>
-        <label class="field"><span class="lbl">KCP 参数</span><input class="input" value="--window-size 1024"></label>
         <label class="field"><span class="lbl">ACL 规则组</span><input class="input" value="default"></label>
-        <label class="field"><span class="lbl">私有模式</span><input class="input" value="false"></label>
       </div>
-      <p class="sec-note" style="margin:0">+ 60 项。专家层保留全部能力，含底层协议开关。</p>
-    </div>
+    </details>
   </div>
+  <p class="sec-note">这里曾经又叠了一个「基础 4 / 高级 16 / 专家 24」分段控件，上面还压着一排「网络优化预设」卡片。<b>两个都已删除。</b>分段控件是在同一批字段上做<b>第二层</b>披露，找一个字段要展开两次，而 Vuetify 的折叠面板内容是惰性渲染的——收起的字段根本不在 DOM 里。预设卡片更糟：它会一次性改写 6 个协议开关，而那些组合没有任何权威依据，且实测点下去<b>不生效</b>（4 个按钮，0 个字段变化）。<b>披露只保留一层，判断留给用户。</b></p>
 
   <h2>七、移动端：新的首页</h2>
   <p class="sec-note">一个主操作，一个主数字，下面是可选的细节。点中间那颗按钮可切换状态看动效。</p>
@@ -744,7 +740,7 @@ secret: 5J7vQ2mXpR9tLkWzN4hYbC8dF1gA6sE0uI3oP</div>
       <h4>新版 (v2)</h4>
       <ul>
         <li>状态与操作分离，首页仅一个主操作</li>
-        <li>配置分基础 4 / 高级 12 / 专家 64 三层</li>
+        <li>配置改为四段可折叠分区，44 个字段全在，只用一层披露</li>
         <li>独立控件边界令牌，4.1:1（暗）/ 3.4:1（亮）</li>
         <li>全部机器数据等宽 + tabular-nums</li>
         <li>色 + 形 + 字三重编码</li>
@@ -846,10 +842,6 @@ function setDensity(d){
   document.documentElement.dataset.density = d === 'compact' ? 'compact' : 'comfort';
   for (const [k,v] of [['comfort','comfort'],['compact','compact']])
     document.getElementById('d-'+k).setAttribute('aria-pressed', String(v===d));
-}
-function setTier(i){
-  document.querySelectorAll('.tier').forEach((b,n)=>b.setAttribute('aria-pressed', String(n===i)));
-  document.querySelectorAll('[data-tier-panel]').forEach((p,n)=>p.classList.toggle('on', n===i));
 }
 
 // 首页状态机：只演示 已连接 <-> 连接中 <-> 已断开

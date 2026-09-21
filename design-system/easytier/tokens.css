@@ -26,10 +26,17 @@
   /* ⚠️ ET Mono 只内嵌了 latin 切片，**没有 CJK**。所以等宽栈末尾必须显式接上
    * CJK 字体，否则中英混排时中文会一路掉到 generic monospace（无 CJK 字形）
    * 而整段不可见。更稳的做法是把中文标签留在 UI 字体里，只给数字/ID 加 .mono
-   * ——lint-design.py 的 mono-with-cjk 规则会拦这个组合。 */
+   * ——lint-design.py 的 mono-with-cjk 规则会拦这个组合。
+   *
+   * ⚠️ 这里必须把**内嵌的 "ET Sans"** 排在系统 CJK 字体名之前。只列 PingFang /
+   * 雅黑 / Noto 这些**系统**名字是不够的：机器上没装任何 CJK 字体时（实测本机
+   * fc-list 的 CJK 命中数为 0）整条链会一路掉到 sans-serif 的 latin 字体，中文变
+   * 豆腐块。而 ET Sans 是我们自己出货的、带 CJK 切片的那一个 —— 用它兜底才能
+   * 做到跨设备一致，不再赌用户装没装中文字体。
+   * 踩过的实例：桌面端概览的「峰值:」「实时 · 上传 … · 下载 …」曾整段显示为 □□。 */
   --et-font-data: "ET Mono", "JetBrains Mono", "SF Mono", "Cascadia Mono",
     "Sarasa Mono SC", ui-monospace, "Roboto Mono", Menlo, Consolas,
-    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    "ET Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   /* 只有 400/500/600 三档被内嵌，font-synthesis:none 下 700 会解析到 600 */
 
   /* ---- 字阶（手机优先，1.125 邻近比）------------------------------------ */
@@ -108,6 +115,29 @@
   --et-ease-hover: cubic-bezier(0.25, 0.8, 0.25, 1);
   --et-hover-shift: -1px;
   --et-hover-dur: 180ms;
+
+  /* ---- 语义时长层 -------------------------------------------------------
+   * 组件不直接挑上面那四个数字，而是按**意图**取这一层。理由：`--et-dur-base`
+   * 本身不表达"这是进入还是离开"，于是每个组件都自己猜，最后就是"一个时长套所有
+   * 动效"。意图名字把决定权收回到这里。
+   * 缓动与意图绑定：到达减速(enter)、离开加速(exit)、匀速(linear) 给进度。 */
+  --et-move-feedback: var(--et-dur-instant);   /* 按压 / 悬停 / 开关 */
+  --et-move-enter: var(--et-dur-base);         /* 进入：减速到达 */
+  --et-move-exit: var(--et-dur-fast);          /* 离开：加速，必须快于进入 */
+  --et-move-state: var(--et-dur-slow);         /* 状态切换：连接态 / 主题 / 数值 */
+  --et-move-emphasis: var(--et-dur-fast);      /* 一次性强调：复制成功 / 校验失败 */
+
+  /* ---- 持续动画家族（唯一允许 infinite 的地方）---------------------------
+   * 周期各不相同是**故意的**：转圈和扫光的感知要求不同，强行统一成一个时长才是
+   * "一个时长套所有动效"的反模式。要点是每个周期都有名字，而不是散落的魔法数字。
+   * lint-design.py 的 loop-naming 规则强制 infinite 只出现在 et-loop-* 上。 */
+  --et-loop-spin: 700ms;      /* 转圈进度，linear */
+  --et-loop-sweep: 900ms;     /* 顶部刷新细线，linear */
+  --et-loop-shimmer: 1400ms;  /* 骨架屏扫光，linear */
+  --et-loop-breathe: 1400ms;  /* 「连接中」呼吸——语义信号，不是装饰 */
+  --et-loop-pulse: 1400ms;    /* 状态点脉冲 */
+  --et-loop-ring: 2000ms;     /* 状态环扩散 */
+  --et-loop-orb: 2800ms;      /* 状态球缓慢转动 */
 
   /* ---- 层级（z-index 语义化，禁止裸数字）------------------------------- */
   --et-z-base: 0;
@@ -337,6 +367,21 @@ body {
     --et-dur-base: 0ms;
     --et-dur-slow: 0ms;
     --et-hover-dur: 0ms;
+    /* 语义时长层跟着归零，避免有组件绕过 duration 直接读意图 token。 */
+    --et-move-feedback: 0ms;
+    --et-move-enter: 0ms;
+    --et-move-exit: 0ms;
+    --et-move-state: 0ms;
+    --et-move-emphasis: 0ms;
+    /* 持续动画归零。注意语义信号**不因此消失**：状态是"色 + 形 + 字"三重编码，
+       呼吸停下之后静态图形 + 文字仍然表意（见 MASTER.md §5.5）。 */
+    --et-loop-spin: 0ms;
+    --et-loop-sweep: 0ms;
+    --et-loop-shimmer: 0ms;
+    --et-loop-breathe: 0ms;
+    --et-loop-pulse: 0ms;
+    --et-loop-ring: 0ms;
+    --et-loop-orb: 0ms;
   }
   html {
     scroll-behavior: auto;
