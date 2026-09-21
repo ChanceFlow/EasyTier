@@ -770,7 +770,7 @@ function eventTimelineKey(item: any): string {
                                 </div>
                                 <div class="min-w-0">
                                     <div class="font-weight-bold truncate">{{ item.meta?.network_name ?? item.uuid }}</div>
-                                    <div class="text-caption text-mono text-medium-emphasis truncate">{{ item.uuid }}</div>
+                                    <div class="text-caption et-mono text-medium-emphasis truncate">{{ item.uuid }}</div>
                                 </div>
                             </div>
                             <div class="d-flex align-center ga-2 flex-shrink-0">
@@ -878,7 +878,7 @@ function eventTimelineKey(item: any): string {
                 </div>
 
                 <!-- Activity Tab View (when mobileTab === 'activity') -->
-                <div v-if="mobileTab === 'activity'" class="activity-tab-content">
+                <div v-if="mobileTab === 'activity'" class="activity-tab-content et-animate-in">
                     <div class="ios-section">
                         <div class="ios-section-header">{{ t('event_log') }}</div>
                         <div v-if="activityEvents.length" class="ios-group pa-3">
@@ -903,7 +903,7 @@ function eventTimelineKey(item: any): string {
                 </div>
 
                 <!-- Config Tab View (when mobileTab === 'config' or when disabled in test) -->
-                <div v-if="mobileTab === 'config'" class="config-tab-content">
+                <div v-if="mobileTab === 'config'" class="config-tab-content et-animate-in">
                     <div class="et-action-grid et-group mb-3" role="toolbar">
                         <v-btn
                             v-for="item in configActions"
@@ -1126,7 +1126,7 @@ button.et-row {
     transform: translateX(-100%);
 }
 
-@keyframes et-refresh-sweep {
+@keyframes et-loop-sweep {
     from { transform: translateX(-100%); }
     to { transform: translateX(100%); }
 }
@@ -1207,32 +1207,11 @@ button.et-row {
     }
 
     .et-refresh-bar.is-active::after {
-        animation: et-refresh-sweep 900ms linear infinite;
+        animation: et-loop-sweep var(--et-loop-sweep) linear infinite;
     }
 
-    /* 列表进出场:12px 位移 + opacity */
-    .et-list-fade-enter-active,
-    .et-list-fade-leave-active {
-        transition:
-            opacity var(--et-dur-base) var(--et-ease-standard),
-            transform var(--et-dur-base) var(--et-ease-standard);
-    }
-
-    .et-list-fade-enter-from,
-    .et-list-fade-leave-to {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-
-    .et-list-fade-leave-active {
-        position: absolute;
-        width: 100%;
-    }
-
-    .et-list-fade-move {
-        transition: transform var(--et-dur-base) var(--et-ease-standard);
-    }
-
+    /* 列表过渡类已上移到 style.css 的全局唯一定义（进入/离开分别计时）。
+       这里只留带布局的 wrap：RemoteManagement 的列表要 block。 */
     .et-list-wrap {
         position: relative;
         display: block;
@@ -1283,15 +1262,20 @@ button.et-row {
   text-overflow: ellipsis;
 }
 
-.text-mono {
+.et-mono {
   font-family: var(--et-font-data);
 }
 
+/* ≥600px 的紧凑间距只在没有底部 tab bar 时生效:
+   内建 tab bar 是 position:fixed 且高 54px,若这里仍把 scroller 的
+   底部留白压到 16px,最后一个元素会被 tab bar 永久遮住 18px。
+   用 :not(.has-tab-bar) 限定,保证有 tab bar 时基础规则的避让值继续生效;
+   选择器自身权重足够覆盖基础规则,无需额外提升优先级。 */
 @media (min-width: 600px) {
-    .network-content {
+    .device-management:not(.has-tab-bar) .network-content {
         padding-bottom: var(--et-space-4);
     }
-    .has-tab-bar :deep(.et-sticky-run) {
+    .device-management:not(.has-tab-bar) :deep(.et-sticky-run) {
         bottom: var(--et-space-4);
         padding-bottom: 0;
     }

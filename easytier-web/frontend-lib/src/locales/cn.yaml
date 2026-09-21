@@ -334,10 +334,16 @@ status:
   event_log_empty_hint: 实例开始上报后，事件会显示在这里
   vpn_portal_empty_hint: 在配置页启用 VPN Portal 以共享 WireGuard 接入
 tabs:
-  home: 组网
-  devices: 设备
+  home: 首页
+  devices: 节点
   config: 配置
   activity: 动态
+  overview: 概览
+  settings: 设置
+
+# 首页 hero:网络卡片同时是「配置」页签的快捷入口。
+hero:
+  manage: 管理此网络
 
 nat:
   unknown: 未知
@@ -357,18 +363,6 @@ flags_group:
   p2p: 节点连通
   stack: 网卡与协议栈
   security: 安全与隐私
-
-preset:
-  section_title: 网络优化预设
-  section_hint: 一键优化协议与路由特性
-  gaming_name: 低延迟 · 游戏
-  gaming_desc: 延迟优先 · 多线程 · 强制直连
-  compat_name: 极限穿透 · 漫游
-  compat_desc: KCP + QUIC 代理 · 广域中继
-  secure_name: 严格安全 · 私网
-  secure_desc: 严格 P2P · 私有模式 · 强加密
-  default_name: 标准均衡模式
-  default_desc: 推荐配置 · 平衡功耗与性能
 
 port_forwards_bind_port: 绑定端口
 port_forwards_dst_port: 目标端口
@@ -649,11 +643,6 @@ acl:
   empty_title: 访问控制未启用
   empty_hint: 启用 ACL 可定义哪些流量可以穿越网状网络
 
-config_tier:
-  label: 配置层级
-  basic: 基础
-  advanced: 高级
-  expert: 专家
 validation:
   summary: 运行前请先修正这些字段
   prefix_range: '前缀长度 {0} 超出 1-32'

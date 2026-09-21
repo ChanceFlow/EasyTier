@@ -49,9 +49,9 @@ const unknownEventText = computed(() => {
       <div v-if="event.DhcpIpv4Changed">
         {{ `${eventValue[0]} -> ${eventValue[1]}` }}
       </div>
-      <pre v-else class="text-mono text-caption">{{ eventValue }}</pre>
+      <pre v-else class="et-mono text-caption">{{ eventValue }}</pre>
     </div>
-    <pre v-else class="text-mono text-caption">{{ unknownEventText }}</pre>
+    <pre v-else class="et-mono text-caption">{{ unknownEventText }}</pre>
   </div>
 </template>
 
@@ -64,7 +64,7 @@ const unknownEventText = computed(() => {
   margin-top: 4px;
   color: var(--et-text-secondary);
 }
-.text-mono {
+.et-mono {
   font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;

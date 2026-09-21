@@ -262,7 +262,7 @@ const onProtoChange = (newProto: string | null) => {
                     class="url-compact-trigger"
                     @click="editing = true"
                 >
-                    <span class="truncate text-mono url-compact-text">{{ url }}</span>
+                    <span class="truncate et-mono url-compact-text">{{ url }}</span>
                 </button>
                 <div class="d-flex align-center shrink-0">
                     <v-btn icon="mdi-pencil" size="small" variant="text" :aria-label="t('web.common.edit')" @click="editing = true" />

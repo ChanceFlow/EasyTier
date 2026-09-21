@@ -334,10 +334,16 @@ status:
   event_log_empty_hint: Events will appear once the instance starts reporting
   vpn_portal_empty_hint: Enable VPN Portal in the config tab to share WireGuard access
 tabs:
-  home: Mesh
-  devices: Devices
+  home: Home
+  devices: Nodes
   config: Config
   activity: Activity
+  overview: Overview
+  settings: Settings
+
+# Home hero: the network card doubles as a shortcut into the Config tab.
+hero:
+  manage: Manage this network
 
 nat:
   unknown: Unknown
@@ -357,18 +363,6 @@ flags_group:
   p2p: Peer Connectivity
   stack: Interface & Stack
   security: Security & Privacy
-
-preset:
-  section_title: Network optimization presets
-  section_hint: One-tap tuning of protocol and routing features
-  gaming_name: Low latency / Gaming
-  gaming_desc: Latency first · Multi-thread · Force direct
-  compat_name: Max traversal / Roaming
-  compat_desc: KCP + QUIC proxy · Wide-area relay
-  secure_name: Strict security / Private
-  secure_desc: Strict P2P · Private mode · Strong encryption
-  default_name: Standard balanced
-  default_desc: Recommended · Balances power and performance
 
 port_forwards_bind_port: Bind Port
 port_forwards_dst_port: Destination Port
@@ -649,11 +643,6 @@ acl:
   empty_title: Access control is off
   empty_hint: Enable ACL to define which traffic may cross the mesh
 
-config_tier:
-  label: Configuration tier
-  basic: Basic
-  advanced: Advanced
-  expert: Expert
 validation:
   summary: Fix these fields before running
   prefix_range: 'Prefix length {0} is outside 1-32'

@@ -853,7 +853,7 @@ const heroHint = computed(() => {
                 </div>
                 <div class="d-flex justify-space-between py-1 text-body-2">
                   <span>{{ t('vpn_portal_listener') }}</span>
-                  <span class="text-mono font-weight-medium et-selectable">{{ vpnPortalInfo.listener }}</span>
+                  <span class="et-mono font-weight-medium et-selectable">{{ vpnPortalInfo.listener }}</span>
                 </div>
               </div>
 
@@ -978,7 +978,7 @@ const heroHint = computed(() => {
                 </div>
                 <div class="min-w-0">
                   <div class="text-caption text-medium-emphasis">{{ t('status.virtual_ip') }}</div>
-                  <div class="text-h6 font-weight-bold text-mono et-selectable" style="color: var(--et-accent); line-height: 1.2;">
+                  <div class="text-h6 font-weight-bold et-mono et-selectable" style="color: var(--et-accent); line-height: 1.2;">
                     {{ myVirtualIp || '—.—.—.—' }}
                   </div>
                 </div>
@@ -1016,16 +1016,16 @@ const heroHint = computed(() => {
                 <v-icon size="14" color="primary">mdi-arrow-up</v-icon>
                 <span>{{ t('upload') }}</span>
               </div>
-              <div class="speed-val text-mono et-num"><span :key="txRate" class="et-tick">{{ txRate }}</span>/s</div>
-              <div class="text-caption text-medium-emphasis text-mono et-num"><span :key="totalTxFormatted" class="et-tick">{{ totalTxFormatted }}</span> {{ t('status.total') }}</div>
+              <div class="speed-val et-mono et-num"><span :key="txRate" class="et-tick">{{ txRate }}</span>/s</div>
+              <div class="text-caption text-medium-emphasis"><span :key="totalTxFormatted" class="et-tick et-mono et-num">{{ totalTxFormatted }}</span> {{ t('status.total') }}</div>
             </div>
             <div class="speed-box">
               <div class="d-flex align-center ga-1 text-caption font-weight-bold" style="color: var(--et-info);">
                 <v-icon size="14" color="info">mdi-arrow-down</v-icon>
                 <span>{{ t('download') }}</span>
               </div>
-              <div class="speed-val text-mono et-num"><span :key="rxRate" class="et-tick">{{ rxRate }}</span>/s</div>
-              <div class="text-caption text-medium-emphasis text-mono et-num"><span :key="totalRxFormatted" class="et-tick">{{ totalRxFormatted }}</span> {{ t('status.total') }}</div>
+              <div class="speed-val et-mono et-num"><span :key="rxRate" class="et-tick">{{ rxRate }}</span>/s</div>
+              <div class="text-caption text-medium-emphasis"><span :key="totalRxFormatted" class="et-tick et-mono et-num">{{ totalRxFormatted }}</span> {{ t('status.total') }}</div>
             </div>
           </div>
           <div class="et-group pa-2">
@@ -1084,7 +1084,7 @@ const heroHint = computed(() => {
         </div>
       </div>
 
-      <div v-if="showDevices" class="devices-tab-content">
+      <div v-if="showDevices" class="devices-tab-content et-animate-in">
         <div class="et-search mb-3">
           <v-text-field
             v-model="peerSearch"
@@ -1185,7 +1185,7 @@ const heroHint = computed(() => {
           </div>
           <div class="min-w-0">
             <div class="text-subtitle-1 font-weight-bold truncate">{{ selectedPeer?.route?.hostname }}</div>
-            <div class="text-caption text-mono text-medium-emphasis et-selectable">{{ ipFormat(selectedPeer) }}</div>
+            <div class="text-caption et-mono text-medium-emphasis et-selectable">{{ ipFormat(selectedPeer) }}</div>
           </div>
           <v-spacer />
           <v-btn
@@ -1212,17 +1212,17 @@ const heroHint = computed(() => {
               </div>
               <div class="et-row">
                 <span>{{ t('status.ping') }}</span>
-                <span class="text-mono font-weight-bold" :style="{ color: selectedPeerOffline ? 'var(--et-text-3)' : 'var(--et-accent)' }">
+                <span class="et-mono font-weight-bold" :style="{ color: selectedPeerOffline ? 'var(--et-text-3)' : 'var(--et-accent)' }">
                   {{ selectedPeer && !selectedPeerOffline ? dash(latencyMs(selectedPeer)) : '—' }}
                 </span>
               </div>
               <div class="et-row">
                 <span>{{ t('status.packet_loss') }}</span>
-                <span class="text-mono">{{ selectedPeer && !selectedPeerOffline ? dash(lossRate(selectedPeer)) : '—' }}</span>
+                <span class="et-mono">{{ selectedPeer && !selectedPeerOffline ? dash(lossRate(selectedPeer)) : '—' }}</span>
               </div>
               <div class="et-row">
                 <span>{{ t('tunnel_proto') }}</span>
-                <span class="text-mono">{{ selectedPeer ? dash(tunnelProto(selectedPeer)) : '—' }}</span>
+                <span class="et-mono">{{ selectedPeer ? dash(tunnelProto(selectedPeer)) : '—' }}</span>
               </div>
               <div class="et-row">
                 <span>{{ t('nat_type') }}</span>
@@ -1230,7 +1230,7 @@ const heroHint = computed(() => {
               </div>
               <div class="et-row">
                 <span>{{ t('status.version') }}</span>
-                <span class="text-mono">{{ selectedPeer ? version(selectedPeer) : '—' }}</span>
+                <span class="et-mono">{{ selectedPeer ? version(selectedPeer) : '—' }}</span>
               </div>
             </div>
           </div>
@@ -1240,11 +1240,11 @@ const heroHint = computed(() => {
             <div class="et-group">
               <div class="et-row">
                 <span>{{ t('status.uploaded') }}</span>
-                <span class="text-mono">{{ selectedPeer ? txBytes(selectedPeer) : '—' }}</span>
+                <span class="et-mono">{{ selectedPeer ? txBytes(selectedPeer) : '—' }}</span>
               </div>
               <div class="et-row">
                 <span>{{ t('status.downloaded') }}</span>
-                <span class="text-mono">{{ selectedPeer ? rxBytes(selectedPeer) : '—' }}</span>
+                <span class="et-mono">{{ selectedPeer ? rxBytes(selectedPeer) : '—' }}</span>
               </div>
             </div>
           </div>
@@ -1407,7 +1407,7 @@ button.et-row {
 /* 呼吸动画只在"连接中"使用 */
 .et-power-orb.is-sync .et-orb-ring.r1 {
   box-shadow: 0 0 28px color-mix(in srgb, var(--et-info) 45%, transparent);
-  animation: et-orb 2.8s var(--et-ease-standard) infinite;
+  animation: et-loop-orb var(--et-loop-orb) var(--et-ease-standard) infinite;
 }
 
 /* ---------- 状态信号:色 + 形 + 字 ---------- */
@@ -1456,7 +1456,7 @@ button.et-row {
   width: 12px;
   height: 12px;
   border-radius: 3px;
-  animation: et-signal-pulse 1.4s var(--et-ease-standard) infinite;
+  animation: et-loop-pulse var(--et-loop-pulse) var(--et-ease-standard) infinite;
 }
 
 .et-signal.is-warn {
@@ -1497,7 +1497,7 @@ button.et-row {
   border: 2px solid currentColor;
 }
 
-@keyframes et-signal-pulse {
+@keyframes et-loop-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
@@ -1515,7 +1515,7 @@ button.et-row {
   transform: none;
 }
 
-@keyframes et-orb {
+@keyframes et-loop-orb {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.04); opacity: 0.85; }
 }
@@ -1746,7 +1746,7 @@ button.et-row {
   text-overflow: ellipsis;
 }
 
-.text-mono {
+.et-mono {
   font-family: var(--et-font-data);
 }
 
@@ -1808,7 +1808,7 @@ button.et-row {
 @media (prefers-reduced-motion: no-preference) {
   /* 数值刷新柔和过渡:key 触发重挂载 → 60ms fade */
   .et-tick {
-    animation: et-tick-in var(--et-dur-instant) var(--et-ease-standard);
+    animation: et-state-shift var(--et-move-state) var(--et-ease-standard);
   }
 
   .et-press-row,
@@ -1827,27 +1827,12 @@ button.et-row {
     transition: transform var(--et-dur-fast) var(--et-ease-standard);
   }
 
-  /* 列表进出场:12px 位移 + opacity,退出与进入同长(令牌已收敛) */
-  .et-list-fade-enter-active,
-  .et-list-fade-leave-active {
-    transition:
-      opacity var(--et-dur-base) var(--et-ease-standard),
-      transform var(--et-dur-base) var(--et-ease-standard);
-  }
-
-  .et-list-fade-enter-from,
-  .et-list-fade-leave-to {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  .et-list-fade-leave-active {
-    position: absolute;
-    width: 100%;
-  }
-
-  .et-list-fade-move {
-    transition: transform var(--et-dur-base) var(--et-ease-standard);
+  /* 列表过渡类已上移到 style.css 的全局唯一定义（进入减速、离开加速）。
+     这里只留 wrap 的定位：LeaveActive 把离开的项设成 position:absolute 脱离文档流，
+     需要一个定位祖先当锚点。Status 原来没有这条规则（static），离开的项会锚到更外层的
+     定位祖先上跳一下 —— 这是顺手修掉的既有缺陷，不是纯搬迁。 */
+  .et-list-wrap {
+    position: relative;
   }
 
   .et-skeleton :deep(.v-skeleton-loader__bone::after) {
@@ -1860,7 +1845,7 @@ button.et-row {
   }
 }
 
-@keyframes et-tick-in {
+@keyframes et-state-shift {
   from { opacity: 0.35; }
   to { opacity: 1; }
 }

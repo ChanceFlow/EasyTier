@@ -118,7 +118,7 @@ watch(tomlConfig, (newValue) => {
                     :readonly="props.readonly"
                     auto-grow
                     spellcheck="false"
-                    class="text-mono w-100 config-textarea"
+                    class="et-mono w-100 config-textarea"
                     variant="outlined"
                 />
             </v-card-text>
@@ -155,7 +155,8 @@ watch(tomlConfig, (newValue) => {
 @media (prefers-reduced-motion: no-preference) {
     .et-error-fade-enter-active,
     .et-error-fade-leave-active {
-        transition: opacity 180ms ease-out, transform 180ms ease-out;
+        /* 错误摘要"出现"(opacity + 上浮)属 MASTER.md enter-rise:用 --et-move-enter + --et-ease-enter;属性不变 */
+        transition: opacity var(--et-move-enter) var(--et-ease-enter), transform var(--et-move-enter) var(--et-ease-enter);
     }
 
     .et-error-fade-enter-from,

@@ -144,7 +144,7 @@ html, body, #app {
 
 /* Native-like: chrome is not selectable; IPs and fields are */
 body { user-select: none; }
-input, textarea, [contenteditable], .text-mono, .et-selectable {
+input, textarea, [contenteditable], .et-mono, .et-selectable {
   user-select: text;
   -webkit-user-select: text;
 }
@@ -157,9 +157,9 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
  * 中英文两套字形混排。
  *
  * 这里用 `:root` + `:is(...)` 把特异性提到 (0,2,0)，不依赖加载顺序地拿回 ET Sans。
- * 必须逐个列出、**不能用 [class*="text-"] 通配** —— 那会连带命中自家的 .text-mono，
+ * 必须逐个列出、**不能用 [class*="text-"] 通配** —— 那会连带命中自家的 .et-mono，
  * 而它经常和 .text-caption 出现在同一个元素上（Config / HumanEvent / RemoteManagement）。
- * 本条刻意写在 .text-mono 之前：两者同为 (0,2,0)，靠源码顺序让等宽胜出。 */
+ * 本条刻意写在 .et-mono 之前：两者同为 (0,2,0)，靠源码顺序让等宽胜出。 */
 :root :is(
   .text-h1, .text-h2, .text-h3, .text-h4, .text-h5, .text-h6,
   .text-subtitle-1, .text-subtitle-2, .text-body-1, .text-body-2,
@@ -184,10 +184,10 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   font-family: var(--et-font-ui);
 }
 
-/* Machine data (IPs, ports, latency) uses the data face. `.text-mono` is often
+/* Machine data (IPs, ports, latency) uses the data face. `.et-mono` is often
  * put on an element that a Vuetify component style also targets, so the class
  * is doubled to win on specificity rather than on `!important`. */
-.text-mono.text-mono,
+.et-mono.et-mono,
 .mono.mono {
   font-family: var(--et-font-data);
   font-variant-numeric: var(--et-numeric);
@@ -548,16 +548,16 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   box-shadow: 0 0 8px var(--et-danger);
 }
 .et-ping-dot.is-pulse {
-  animation: et-pulse-ring 2s infinite;
+  animation: et-loop-ring var(--et-loop-ring) infinite;
 }
 
-@keyframes et-pulse-ring {
+@keyframes et-loop-ring {
   0% { transform: scale(0.95); box-shadow: 0 0 0 0 var(--et-glow); }
   70% { transform: scale(1); box-shadow: 0 0 0 6px transparent; }
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 transparent; }
 }
 
-@keyframes et-fade-in-up {
+@keyframes et-enter-rise {
   from {
     opacity: 0;
     transform: translateY(8px);
@@ -568,8 +568,39 @@ input, textarea, [contenteditable], .text-mono, .et-selectable {
   }
 }
 
+/* 进入：减速到达。用于页签面板切换、列表项、对话框内容。 */
 .et-animate-in {
-  animation: et-fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: et-enter-rise var(--et-move-enter) var(--et-ease-enter) forwards;
+}
+
+/* ---- 列表进出场（全局，唯一的定义处）-----------------------------------
+ * 之前 RemoteManagement.vue 和 Status.vue 各自抄了一份、且进入与离开用同一个
+ * 时长和缓动 —— 这违反"退出快于进入"：删掉/关闭一项时界面会被动画拖住。
+ * 这里只放**过渡类**（瞬时类名，不属于任何布局），所以全局是安全的；
+ * `.et-list-wrap` 那种带 display 的规则留在各自 scoped 里，避免和 d-flex 抢优先级。 */
+.et-list-fade-enter-active {
+  transition:
+    opacity var(--et-move-enter) var(--et-ease-enter),
+    transform var(--et-move-enter) var(--et-ease-enter);
+}
+
+.et-list-fade-leave-active {
+  transition:
+    opacity var(--et-move-exit) var(--et-ease-exit),
+    transform var(--et-move-exit) var(--et-ease-exit);
+  /* 离开的项脱离文档流，否则它会让剩下的项在动画期间来回跳 */
+  position: absolute;
+  width: 100%;
+}
+
+.et-list-fade-enter-from,
+.et-list-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.et-list-fade-move {
+  transition: transform var(--et-move-enter) var(--et-ease-standard);
 }
 
 /* The previous blanket `*, *::before, *::after { … !important }` override is
