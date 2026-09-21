@@ -169,8 +169,18 @@ function confirmAccept() {
   confirmCallback = null
 }
 
+const showAutostartHint = ref(false)
+
 async function openModeDialog() {
   editingMode.value = JSON.parse(JSON.stringify(loadMode()))
+  showAutostartHint.value = false
+  modeDialogVisible.value = true
+}
+
+async function openAutostartDialog() {
+  editingMode.value = JSON.parse(JSON.stringify(loadMode()))
+  editingMode.value.mode = 'service'
+  showAutostartHint.value = true
   modeDialogVisible.value = true
 }
 
@@ -651,6 +661,19 @@ const settingsSheetItems = computed<SettingsSheetItem[]>(() => [
     visible: !isAndroid.value,
   },
   {
+    // 上游 #2579:自启实际由服务模式提供,但设置里原来没有任何叫「开机自启」的入口,
+    // 用户找不到。这里指到服务模式并带上说明。
+    key: 'autostart',
+    label: t('mode.autostart'),
+    icon: 'mdi-clock-start',
+    value: '',
+    command: () => {
+      settingsSheetOpen.value = false
+      void openAutostartDialog()
+    },
+    visible: !isAndroid.value,
+  },
+  {
     key: 'config-server',
     label: t('config-server.title'),
     icon: 'mdi-web',
@@ -971,6 +994,17 @@ function exitApp(): void {
     <v-dialog v-model="modeDialogVisible" max-width="540px" :fullscreen="mobileUI">
       <v-card :title="t('mode.switch_mode')" rounded="xl" class="et-dialog-card">
         <v-card-text>
+          <!-- 上游 #2579:从设置里点「开机自启」进来时,说明自启是由服务模式提供的,
+               否则用户找不到这个关联。 -->
+          <v-alert
+            v-if="showAutostartHint"
+            type="info"
+            variant="tonal"
+            rounded="xl"
+            class="mb-4"
+          >
+            {{ t('mode.autostart_hint') }}
+          </v-alert>
           <ModeSwitcher v-model="editingMode" @uninstall-service="onUninstallService" @stop-service="onStopService" />
         </v-card-text>
         <v-card-actions>
