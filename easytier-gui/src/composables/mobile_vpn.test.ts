@@ -106,11 +106,24 @@ beforeEach(() => {
   mocks.getVpnStatus.mockResolvedValue({ running: false })
   mocks.listNetworkInstanceIds.mockReset()
   mocks.listNetworkInstanceIds.mockResolvedValue({ running_inst_ids: [] })
-  mocks.prepareVpn.mockClear()
+  mocks.prepareVpn.mockReset()
+  mocks.prepareVpn.mockResolvedValue({ granted: true })
   mocks.setTunFd.mockClear()
-  mocks.startVpn.mockClear()
-  mocks.stopVpn.mockClear()
-  mocks.updateNotification.mockClear()
+  // start/stop are re-armed to their factory behaviour: `mockClear()` alone
+  // would let a per-test `mockImplementation` (e.g. the denied-permission case)
+  // leak into every later test in this file.
+  mocks.startVpn.mockReset()
+  mocks.startVpn.mockImplementation(async () => {
+    await mocks.listeners.get('vpn_service_start')?.({ fd: 1 })
+    return {}
+  })
+  mocks.stopVpn.mockReset()
+  mocks.stopVpn.mockImplementation(async () => {
+    await mocks.listeners.get('vpn_service_stop')?.({})
+    return {}
+  })
+  mocks.updateNotification.mockReset()
+  mocks.updateNotification.mockResolvedValue({})
 })
 
 describe('mobile VPN reconciliation ownership', () => {
@@ -468,5 +481,140 @@ describe('mobile VPN tile action delivery', () => {
 
     expect(await vpn.consumePendingMobileVpnTileAction()).toBe(true)
     expect(handler).toHaveBeenCalledWith('start')
+  })
+
+  it('retries the pending action when the native consume call is rejected instead of dropping it', async () => {
+    const vpn = await loadVpnModule()
+    const handler = vi.fn(async () => undefined)
+    vpn.setMobileVpnTileActionHandler(handler)
+
+    mocks.consumeVpnTileAction.mockResolvedValue({ action: 'start' })
+    mocks.consumeVpnTileAction.mockRejectedValueOnce(
+      new Error('plugin:vpnservice|consume_vpn_tile_action not allowed by ACL'),
+    )
+
+    // the rejected invoke must not bubble up as a lost action
+    expect(await vpn.consumePendingMobileVpnTileAction()).toBe(false)
+    expect(handler).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(mocks.consumeVpnTileAction).toHaveBeenCalledTimes(2)
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledWith('start')
+  })
+
+  it('defers consumption until a handler is registered, then drains the action', async () => {
+    const vpn = await loadVpnModule()
+    mocks.consumeVpnTileAction.mockResolvedValue({ action: 'stop' })
+
+    // no handler yet: the action stays pending on the native side
+    expect(await vpn.consumePendingMobileVpnTileAction()).toBe(false)
+    expect(mocks.consumeVpnTileAction).not.toHaveBeenCalled()
+
+    const handler = vi.fn(async () => undefined)
+    vpn.setMobileVpnTileActionHandler(handler)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(mocks.consumeVpnTileAction).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledWith('stop')
+  })
+
+  it('still drains a pending action when the plugin listener could not be registered', async () => {
+    // the `vpn_tile_action` listener is gone (e.g. the ACL rejected the plugin
+    // registration), so the retry chain is the only thing left that can consume
+    mocks.addPluginListener.mockRejectedValueOnce(new Error('plugin:vpnservice not allowed by ACL'))
+
+    await expect(loadVpnModule()).rejects.toThrow('not allowed by ACL')
+    const vpn = await import('./mobile_vpn')
+
+    const handler = vi.fn(async () => undefined)
+    mocks.consumeVpnTileAction.mockResolvedValue({ action: 'start' })
+    vpn.setMobileVpnTileActionHandler(handler)
+
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(handler).toHaveBeenCalledWith('start')
+  })
+})
+
+describe('notification degradation visibility', () => {
+  it('flags a rejected update_notification exactly once and clears the state after recovery', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+    setTraffic('A', 1000, 2000)
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const degradedLogs = () => errorSpy.mock.calls
+      .filter(call => String(call[0]).includes('notification degraded')).length
+
+    try {
+      mocks.updateNotification.mockRejectedValue(
+        new Error('plugin:vpnservice|update_notification not allowed by ACL'),
+      )
+      vpn.startMobileIoNotification()
+      // three consecutive failing ticks (2s cadence)
+      await vi.advanceTimersByTimeAsync(6000)
+
+      expect(mocks.updateNotification.mock.calls.length).toBeGreaterThanOrEqual(3)
+      expect(vpn.mobileStats.notificationDegraded).toMatchObject({
+        command: 'update_notification',
+        reason: expect.stringContaining('not allowed by ACL'),
+      })
+      // only the first failure is reported: the ticker must not spam
+      expect(degradedLogs()).toBe(1)
+      expect(vpn.mobileStats.notificationDegraded).not.toBeNull()
+
+      // once the command works again the degraded state is cleared
+      mocks.updateNotification.mockResolvedValue({})
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(vpn.mobileStats.notificationDegraded).toBeNull()
+      expect(degradedLogs()).toBe(1)
+    }
+    finally {
+      mocks.updateNotification.mockResolvedValue({})
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('records each failing command on its own and clears them independently', async () => {
+    const vpn = await loadVpnModule()
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(vpn.reportNotificationDegraded('update_notification', new Error('acl: denied'))).toBe(true)
+      // repeat failure of the same command: state and log stay unchanged
+      expect(vpn.reportNotificationDegraded('update_notification', new Error('acl: denied again'))).toBe(false)
+      expect(vpn.reportNotificationDegraded('set_ui_chrome', 'acl: denied')).toBe(true)
+
+      expect(vpn.mobileStats.notificationDegraded).toMatchObject({
+        command: 'update_notification',
+        reason: 'acl: denied',
+      })
+
+      // recovering one command keeps the other one exposed
+      expect(vpn.clearNotificationDegraded('update_notification')).toBe(true)
+      expect(vpn.mobileStats.notificationDegraded).toMatchObject({
+        command: 'set_ui_chrome',
+        reason: 'acl: denied',
+      })
+
+      // recovering the last command clears the state entirely
+      expect(vpn.clearNotificationDegraded('set_ui_chrome')).toBe(true)
+      expect(vpn.mobileStats.notificationDegraded).toBeNull()
+      expect(vpn.clearNotificationDegraded('set_ui_chrome')).toBe(false)
+
+      // two distinct commands -> exactly two degradation logs, no repeats
+      expect(errorSpy.mock.calls
+        .filter(call => String(call[0]).includes('notification degraded')).length).toBe(2)
+    }
+    finally {
+      errorSpy.mockRestore()
+    }
   })
 })

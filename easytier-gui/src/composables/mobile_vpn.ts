@@ -35,6 +35,25 @@ export interface MobileStatsSample {
   tx: number
 }
 
+/**
+ * A native notification / UI-chrome command that is currently failing.
+ *
+ * This exists because the client used to swallow every notification RPC error
+ * (`console.debug('io notification tick skipped', e)`), which hid real field
+ * breakage — a Tauri ACL rejection on `update_notification` looked exactly like
+ * "the notification bar is a bit off". The state is written on the first
+ * failure per command and cleared on the first success, so the 2s IO ticker
+ * cannot flood the console while the outage lasts.
+ */
+export interface NotificationDegradation {
+  /** the native command that failed, e.g. `update_notification` */
+  command: string
+  /** raw error message reported by the native side */
+  reason: string
+  /** epoch ms of the first failure of this outage */
+  at: number
+}
+
 export const mobileStats = reactive({
   rxRate: 0,
   txRate: 0,
@@ -49,14 +68,89 @@ export const mobileStats = reactive({
   lastError: '',
   /** Android VPN permission was denied/dismissed on the last start attempt */
   permissionDenied: false,
+  /**
+   * First notification/chrome command that is currently failing (ACL rejection,
+   * plugin absent, handler missing...), or null while all of them work. See
+   * reportNotificationDegraded()/clearNotificationDegraded().
+   */
+  notificationDegraded: null as NotificationDegradation | null,
   /** at least one collectNetworkInfo round-trip has completed since boot */
   ready: false,
   history: [] as MobileStatsSample[],
 })
 
+// command -> raw failure reason for every command currently known to be broken.
+// A Map (not a boolean) so the raw message survives until the command works
+// again; insertion order picks the one exposed on mobileStats.
+const notificationDegradations = new Map<string, { reason: string, at: number }>()
+
+function notificationErrorReason(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || String(error)
+  }
+  if (typeof error === 'string' && error.length > 0) {
+    return error
+  }
+  try {
+    return JSON.stringify(error) ?? String(error)
+  }
+  catch {
+    return String(error)
+  }
+}
+
+function syncNotificationDegraded() {
+  const first = notificationDegradations.entries().next()
+  mobileStats.notificationDegraded = first.done
+    ? null
+    : { command: first.value[0], reason: first.value[1].reason, at: first.value[1].at }
+}
+
+/**
+ * Record that a native notification/chrome command failed.
+ *
+ * Idempotent per command: only the first failure of an outage logs (once, with
+ * the command name and the raw message) and flips
+ * `mobileStats.notificationDegraded`; repeats are silently counted so the 2s IO
+ * ticker stays quiet. Call clearNotificationDegraded() on the first success.
+ *
+ * Returns true only when this call newly flipped the degraded state.
+ */
+export function reportNotificationDegraded(command: string, error: unknown): boolean {
+  if (notificationDegradations.has(command)) {
+    return false
+  }
+  const reason = notificationErrorReason(error)
+  notificationDegradations.set(command, { reason, at: Date.now() })
+  syncNotificationDegraded()
+  console.error(`notification degraded: ${command} failed`, JSON.stringify({ command, reason }))
+  return true
+}
+
+/**
+ * Mark a command as working again. Clears `mobileStats.notificationDegraded`
+ * once the last degraded command recovers. Returns true when something changed.
+ */
+export function clearNotificationDegraded(command: string): boolean {
+  if (!notificationDegradations.delete(command)) {
+    return false
+  }
+  syncNotificationDegraded()
+  console.info(`notification command recovered: ${command}`)
+  return true
+}
+
 let vpnReconcileTimer: ReturnType<typeof setTimeout> | null = null
 const VPN_RECONCILE_INTERVAL_MS = 2000
 const VPN_RECONCILE_MAX_ATTEMPTS = 60
+
+// The home-screen quick tile stores its pending action natively; the JS side
+// only drains it. If that drain cannot happen right now — the handler is not
+// registered yet, the plugin listener never came up, or the invoke itself is
+// rejected — the action must survive instead of being dropped, so it is retried
+// on a short bounded backoff.
+const TILE_ACTION_RETRY_INTERVAL_MS = 2000
+const TILE_ACTION_RETRY_MAX_ATTEMPTS = 15
 
 let desiredVpnInstanceId: string | undefined
 let activeVpnInstanceId: string | undefined
@@ -66,6 +160,10 @@ let vpnReconcileQueue: Promise<void> = Promise.resolve()
 let vpnPermissionRequest: Promise<boolean> | null = null
 let vpnTileActionHandler: ((action: VpnTileAction) => Promise<void>) | undefined
 let vpnTileActionQueue: Promise<void> = Promise.resolve()
+let vpnTileActionRetryTimer: ReturnType<typeof setTimeout> | null = null
+let vpnTileActionRetryAttempts = 0
+let vpnTileActionRetryReason = ''
+let vpnTileActionConsumeErrorLogged = false
 
 const curVpnStatus: vpnStatus = {
   running: false,
@@ -81,13 +179,84 @@ export function setMobileVpnTileActionHandler(
   vpnTileActionHandler = handler
 }
 
+function clearVpnTileActionRetry() {
+  if (vpnTileActionRetryTimer) {
+    clearTimeout(vpnTileActionRetryTimer)
+    vpnTileActionRetryTimer = null
+  }
+  vpnTileActionRetryAttempts = 0
+  vpnTileActionRetryReason = ''
+}
+
+function scheduleVpnTileActionRetry(reason: string) {
+  if (vpnTileActionRetryTimer) {
+    return
+  }
+
+  if (vpnTileActionRetryAttempts >= TILE_ACTION_RETRY_MAX_ATTEMPTS) {
+    console.error(
+      'vpn tile action consumption gave up',
+      JSON.stringify({
+        attempts: vpnTileActionRetryAttempts,
+        maxAttempts: TILE_ACTION_RETRY_MAX_ATTEMPTS,
+        reason: vpnTileActionRetryReason,
+        lastReason: reason,
+      }),
+    )
+    return
+  }
+
+  vpnTileActionRetryAttempts += 1
+  vpnTileActionRetryReason = reason
+  // only the first arming logs, so a long outage cannot spam the console
+  if (vpnTileActionRetryAttempts === 1) {
+    console.warn(
+      'vpn tile action consumption deferred',
+      JSON.stringify({
+        maxAttempts: TILE_ACTION_RETRY_MAX_ATTEMPTS,
+        delayMs: TILE_ACTION_RETRY_INTERVAL_MS,
+        reason,
+      }),
+    )
+  }
+
+  vpnTileActionRetryTimer = setTimeout(() => {
+    vpnTileActionRetryTimer = null
+    void consumePendingMobileVpnTileAction().catch((error) => {
+      console.error('deferred VPN tile action consumption failed', error)
+    })
+  }, TILE_ACTION_RETRY_INTERVAL_MS)
+}
+
 export async function consumePendingMobileVpnTileAction() {
   const handler = vpnTileActionHandler
   if (!handler) {
+    // Don't consume before the handler exists: the action stays pending on the
+    // native side, and the retry chain picks it up as soon as the page has
+    // registered its handler (index.vue does that during boot).
+    scheduleVpnTileActionRetry('handler_unavailable')
     return false
   }
 
-  const action = (await consume_vpn_tile_action())?.action
+  let action: VpnTileAction | undefined
+  try {
+    action = (await consume_vpn_tile_action())?.action
+  }
+  catch (error) {
+    // A rejected invoke (e.g. ACL denial) must not bubble up as a lost action:
+    // keep the pending action and retry, logging the failure only once.
+    if (!vpnTileActionConsumeErrorLogged) {
+      vpnTileActionConsumeErrorLogged = true
+      console.error('consume_vpn_tile_action failed', error)
+    }
+    scheduleVpnTileActionRetry('consume_failed')
+    return false
+  }
+
+  // the native round-trip worked: whatever was pending is drained (or empty)
+  clearVpnTileActionRetry()
+  vpnTileActionConsumeErrorLogged = false
+
   if (action !== 'start' && action !== 'stop') {
     return false
   }
@@ -561,7 +730,16 @@ async function findRunningTunInstanceId() {
 }
 
 export async function initMobileVpnService() {
-  await registerVpnServiceListener()
+  try {
+    await registerVpnServiceListener()
+  }
+  catch (error) {
+    // Without the native `vpn_tile_action` event the only drain left is the
+    // retry chain, so arm it before rethrowing (index.vue logs the failure).
+    console.error('register vpn service listener failed', error)
+    scheduleVpnTileActionRetry('listener_registration_failed')
+    throw error
+  }
 }
 
 export async function prepareVpnService(instanceId: string) {
@@ -659,6 +837,24 @@ async function resolveStatsInstanceId(): Promise<string> {
   return statsDiscovery.id
 }
 
+/**
+ * Push the live throughput to the Android ongoing notification.
+ *
+ * Never throws: a failure is recorded once in `mobileStats.notificationDegraded`
+ * (with the command name and the raw native message) instead of being swallowed,
+ * while a success clears the degradation again. Keeping the failure local also
+ * stops a broken notification RPC from aborting the rest of the stats tick.
+ */
+async function pushMobileNotification(rxRate: number, txRate: number, connected: boolean) {
+  try {
+    await update_notification(rxRate, txRate, connected)
+    clearNotificationDegraded('update_notification')
+  }
+  catch (error) {
+    reportNotificationDegraded('update_notification', error)
+  }
+}
+
 async function tickIoNotification() {
   const vpnInstanceId = activeVpnInstanceId
 
@@ -673,12 +869,7 @@ async function tickIoNotification() {
       // the tunnel dropped while hidden: still reset the ongoing notification
       // to its idle line so it does not keep showing stale throughput
       ioNotifyWasActive = false
-      try {
-        await update_notification(0, 0, false)
-      }
-      catch (e) {
-        console.debug('io notification idle update skipped', e)
-      }
+      await pushMobileNotification(0, 0, false)
     }
     return
   }
@@ -692,7 +883,7 @@ async function tickIoNotification() {
     // exactly as before — the hero stats below may track a non-VPN instance.
     if (!vpnInstanceId) {
       if (ioNotifyWasActive) {
-        await update_notification(0, 0, false)
+        await pushMobileNotification(0, 0, false)
         ioNotifyWasActive = false
       }
     }
@@ -777,12 +968,14 @@ async function tickIoNotification() {
 
     if (vpnInstanceId) {
       // connected=true: keep ↑/↓ visible even when this sample is idle.
-      await update_notification(rxRate, txRate, true)
+      await pushMobileNotification(rxRate, txRate, true)
     }
   }
   catch (e) {
     mobileStats.ready = true
-    console.debug('io notification tick skipped', e)
+    // Only stats/bookkeeping RPCs can land here: notification RPC failures are
+    // recorded (once) by pushMobileNotification() above.
+    console.debug('mobile stats tick skipped', e)
   }
 }
 

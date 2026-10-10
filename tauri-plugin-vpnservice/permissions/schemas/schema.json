@@ -319,6 +319,30 @@
           "markdownDescription": "Denies the get_vpn_status command without any pre-configured scope."
         },
         {
+          "description": "Enables the notification_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-notification-status",
+          "markdownDescription": "Enables the notification_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the notification_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-notification-status",
+          "markdownDescription": "Denies the notification_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_notification_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-notification-settings",
+          "markdownDescription": "Enables the open_notification_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_notification_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-notification-settings",
+          "markdownDescription": "Denies the open_notification_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the ping command without any pre-configured scope.",
           "type": "string",
           "const": "allow-ping",
@@ -355,16 +379,16 @@
           "markdownDescription": "Denies the registerListener command without any pre-configured scope."
         },
         {
-          "description": "Enables the register_listener command without any pre-configured scope.",
+          "description": "Enables the set_ui_chrome command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-register-listener",
-          "markdownDescription": "Enables the register_listener command without any pre-configured scope."
+          "const": "allow-set-ui-chrome",
+          "markdownDescription": "Enables the set_ui_chrome command without any pre-configured scope."
         },
         {
-          "description": "Denies the register_listener command without any pre-configured scope.",
+          "description": "Denies the set_ui_chrome command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-register-listener",
-          "markdownDescription": "Denies the register_listener command without any pre-configured scope."
+          "const": "deny-set-ui-chrome",
+          "markdownDescription": "Denies the set_ui_chrome command without any pre-configured scope."
         },
         {
           "description": "Enables the start_vpn command without any pre-configured scope.",
@@ -389,6 +413,18 @@
           "type": "string",
           "const": "deny-stop-vpn",
           "markdownDescription": "Denies the stop_vpn command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_notification command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-notification",
+          "markdownDescription": "Enables the update_notification command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_notification command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-notification",
+          "markdownDescription": "Denies the update_notification command without any pre-configured scope."
         },
         {
           "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-ping`\n- `allow-start-vpn`",

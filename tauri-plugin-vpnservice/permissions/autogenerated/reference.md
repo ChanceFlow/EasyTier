@@ -71,6 +71,58 @@ Denies the get_vpn_status command without any pre-configured scope.
 <tr>
 <td>
 
+`vpnservice:allow-notification-status`
+
+</td>
+<td>
+
+Enables the notification_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vpnservice:deny-notification-status`
+
+</td>
+<td>
+
+Denies the notification_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vpnservice:allow-open-notification-settings`
+
+</td>
+<td>
+
+Enables the open_notification_settings command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vpnservice:deny-open-notification-settings`
+
+</td>
+<td>
+
+Denies the open_notification_settings command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `vpnservice:allow-ping`
 
 </td>
@@ -149,12 +201,12 @@ Denies the registerListener command without any pre-configured scope.
 <tr>
 <td>
 
-`vpnservice:allow-register-listener`
+`vpnservice:allow-set-ui-chrome`
 
 </td>
 <td>
 
-Enables the register_listener command without any pre-configured scope.
+Enables the set_ui_chrome command without any pre-configured scope.
 
 </td>
 </tr>
@@ -162,12 +214,12 @@ Enables the register_listener command without any pre-configured scope.
 <tr>
 <td>
 
-`vpnservice:deny-register-listener`
+`vpnservice:deny-set-ui-chrome`
 
 </td>
 <td>
 
-Denies the register_listener command without any pre-configured scope.
+Denies the set_ui_chrome command without any pre-configured scope.
 
 </td>
 </tr>
@@ -220,6 +272,32 @@ Enables the stop_vpn command without any pre-configured scope.
 <td>
 
 Denies the stop_vpn command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vpnservice:allow-update-notification`
+
+</td>
+<td>
+
+Enables the update_notification command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`vpnservice:deny-update-notification`
+
+</td>
+<td>
+
+Denies the update_notification command without any pre-configured scope.
 
 </td>
 </tr>

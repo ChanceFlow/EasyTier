@@ -1,6 +1,7 @@
 import { type } from '@tauri-apps/plugin-os'
 import { notification_status, open_notification_settings, update_notification } from 'tauri-plugin-vpnservice-api'
 import { ref } from 'vue'
+import { clearNotificationDegraded, reportNotificationDegraded } from './mobile_vpn'
 
 /**
  * Android hides EVERYTHING — even foreground-service notifications — while
@@ -11,12 +12,24 @@ import { ref } from 'vue'
  */
 export const notificationsBlocked = ref(false)
 
+/** Re-post the idle keepalive note, reporting (once) if the command is broken. */
+async function repostIdleNotification(): Promise<void> {
+  try {
+    await update_notification(0, 0, false)
+    clearNotificationDegraded('update_notification')
+  }
+  catch (error) {
+    reportNotificationDegraded('update_notification', error)
+  }
+}
+
 export async function checkNotificationGate(): Promise<void> {
   if (type() !== 'android') {
     return
   }
   try {
     const st = await notification_status()
+    clearNotificationDegraded('notification_status')
     if (!st) {
       return
     }
@@ -24,16 +37,28 @@ export async function checkNotificationGate(): Promise<void> {
     if (!notificationsBlocked.value) {
       // allowed but possibly never shown (service posted before the grant,
       // or its start path hiccuped): re-post the idle keepalive note now
-      await update_notification(0, 0, false).catch(() => {})
+      await repostIdleNotification()
     }
   }
-  catch {
-    // plugin unavailable (e.g. non-tauri preview): never nag
+  catch (error) {
+    // NOT the same thing as the user having notifications turned off: the
+    // plugin is absent (non-tauri preview) or the command was rejected — a Tauri
+    // ACL denial on `notification_status` is exactly what kept this gate
+    // permanently silent in the field. The blocked card would be a lie, so leave
+    // `notificationsBlocked` untouched and record a diagnosable degraded state
+    // instead of swallowing the error with a bare catch.
+    reportNotificationDegraded('notification_status', error)
   }
 }
 
 export async function openNotificationSettings(): Promise<void> {
-  await open_notification_settings().catch(() => {})
+  try {
+    await open_notification_settings()
+    clearNotificationDegraded('open_notification_settings')
+  }
+  catch (error) {
+    reportNotificationDegraded('open_notification_settings', error)
+  }
   // coming back from the settings screen fires visibilitychange too, but the
   // return can be instant on some ROMs - re-probe once after a beat as well
   window.setTimeout(() => {
