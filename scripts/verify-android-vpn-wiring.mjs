@@ -80,7 +80,7 @@
  *          资源 lookup 本身是运行时的，故只判 WARN。
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve as pathResolve } from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -187,10 +187,35 @@ const walkKtFiles = (relDir) => {
   if (!existsSync(absDir)) return [];
   const out = [];
   const visit = (abs, rel) => {
-    for (const entry of readdirSync(abs)) {
+    let entries;
+    try {
+      entries = readdirSync(abs);
+    } catch {
+      return; // unreadable directory: nothing to scan
+    }
+    for (const entry of entries) {
       const a = join(abs, entry);
       const r = `${rel}/${entry}`;
-      if (statSync(a).isDirectory()) visit(a, r);
+      // lstat, never stat: an Android build leaves dangling symlinks behind
+      // (gen/android/app/src/main/jniLibs/<abi>/lib*.so -> the cargo target dir,
+      // which may be gone). Following one throws ENOENT and would turn this
+      // guard into a hard crash instead of a verdict.
+      let st;
+      try {
+        st = lstatSync(a);
+      } catch {
+        continue; // vanished between readdir and lstat
+      }
+      if (st.isSymbolicLink()) {
+        // Resolve it, but only if it actually points somewhere; a broken link
+        // is skipped rather than fatal.
+        try {
+          st = statSync(a);
+        } catch {
+          continue;
+        }
+      }
+      if (st.isDirectory()) visit(a, r);
       else if (entry.endsWith('.kt')) out.push(r);
     }
   };
