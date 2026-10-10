@@ -32,8 +32,15 @@ class TauriVpnService : VpnService() {
         /** Action for the notification "Disconnect" button. */
         const val ACTION_STOP_VPN = "com.kkrainbow.easytier.action.STOP_VPN"
 
-        private const val NOTIFICATION_CHANNEL_ID = "easytier_vpn_channel"
-        private const val NOTIFICATION_ID = 1356
+        /**
+         * Contract C2: the whole app keeps exactly ONE ongoing notification.
+         * Both values must match VpnServicePlugin.NOTIFY_CHANNEL_ID / NOTIFY_ID
+         * and the app module's MainForegroundService.CHANNEL_ID /
+         * NOTIFICATION_ID, so updateNotification() updates this very
+         * notification in place instead of stacking a second one.
+         */
+        private const val NOTIFICATION_CHANNEL_ID = "easytier_channel_v2"
+        private const val NOTIFICATION_ID = 1355
     }
 
     private lateinit var vpnInterface: ParcelFileDescriptor
@@ -110,8 +117,15 @@ class TauriVpnService : VpnService() {
     }
 
     private fun startVpnForegroundService() {
+        // Tear the no-TUN keepalive service down BEFORE claiming the shared
+        // notification id: bringing it down makes the system cancel whatever
+        // notification currently occupies id 1355, which would otherwise wipe
+        // the notification posted a few lines below under the same id.
+        setMainForegroundServiceEnabled(false)
+
         createNotificationChannel()
 
+        val smallIcon = resolveSmallIcon()
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
@@ -123,16 +137,39 @@ class TauriVpnService : VpnService() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         }
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_manage)
-            .setContentTitle("EasyTier VPN is running")
-            .setContentText("VPN connection is active")
+        val stopIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, TauriVpnService::class.java).setAction(ACTION_STOP_VPN),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        // Localized at runtime: this is a library module, so app_* strings come
+        // from the merged app resources (same helper contract as
+        // VpnServicePlugin.resolveString). No hard-coded user-visible copy.
+        val title = resolveString("app_name", "EasyTier")
+        val text = resolveString("notification_text_idle", "Network idle · Tunnel active")
+        val openText = resolveString("notification_action_open", "Open")
+        val disconnectText = resolveString("notification_action_disconnect", "Disconnect")
+
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(smallIcon)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setSilent(true)
+            .setShowWhen(false)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .apply { contentIntent?.let(::setContentIntent) }
-            .build()
+
+        contentIntent?.let {
+            builder.setContentIntent(it)
+            builder.addAction(NotificationCompat.Action(smallIcon, openText, it))
+        }
+        builder.addAction(NotificationCompat.Action(smallIcon, disconnectText, stopIntent))
+
+        val notification = builder.build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -143,10 +180,6 @@ class TauriVpnService : VpnService() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-
-        // A TUN-backed network is now protected by this foreground service, so the
-        // no-TUN keepalive service is redundant and would show a second notification.
-        setMainForegroundServiceEnabled(false)
     }
 
     private fun setMainForegroundServiceEnabled(enabled: Boolean) {
@@ -165,12 +198,42 @@ class TauriVpnService : VpnService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = resolveString("notification_channel_name", "EasyTier Notice")
+            val desc = resolveString(
+                "notification_channel_desc",
+                "Shows EasyTier tunnel status and real-time network traffic rate.",
+            )
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "EasyTier VPN",
+                name,
                 NotificationManager.IMPORTANCE_LOW,
-            )
+            ).apply {
+                description = desc
+                setShowBadge(false)
+            }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+    }
+
+    /**
+     * The app module owns res/drawable/ic_notification.xml; this library module
+     * cannot reference it at compile time, so resolve it at runtime and fall
+     * back to the stock wrench icon (same rule as VpnServicePlugin).
+     */
+    private fun resolveSmallIcon(): Int {
+        val id = resources.getIdentifier("ic_notification", "drawable", packageName)
+        return if (id != 0) id else android.R.drawable.ic_menu_manage
+    }
+
+    private fun resolveString(name: String, fallback: String): String {
+        val id = resources.getIdentifier(name, "string", packageName)
+        if (id == 0) {
+            return fallback
+        }
+        return try {
+            getString(id)
+        } catch (_: Exception) {
+            fallback
         }
     }
 

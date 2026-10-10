@@ -79,14 +79,39 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         private const val OLD_NOTIFY_CHANNEL_ID = "easytier_channel"
         private const val NOTIFY_ID = 1355
         private const val WATCHDOG_TIMEOUT_MS = 15000L
+
+        // Event consumed by guest-js (mobile_vpn.ts addPluginListener) to drain
+        // the tile's pending action.
+        private const val TILE_ACTION_EVENT = "vpn_tile_action"
     }
 
     private val implementation = Example()
+
+    // True while the Tauri WebView that owns this plugin is alive. A tile tap
+    // that cannot reach a live JS handler must report failure so
+    // EasyTierVpnTileService falls back to bringing the app up (the pending
+    // action is then drained by JS on boot) instead of silently dropping it.
+    @Volatile
+    private var webViewLoaded: Boolean = false
+
+    // Plugin.trigger() silently drops the event when no JS listener is
+    // registered for it (tauri-android Plugin.trigger), so "delivered" is only
+    // honest when a `vpn_tile_action` listener actually exists. hasListener()
+    // is the same check trigger() performs internally.
     private val tileActionHandler: (String) -> Boolean = { action ->
-        val data = JSObject()
-        data.put("action", action)
-        trigger("vpn_tile_action", data)
-        true
+        if (!webViewLoaded || !hasListener(TILE_ACTION_EVENT)) {
+            false
+        } else {
+            try {
+                val data = JSObject()
+                data.put("action", action)
+                trigger(TILE_ACTION_EVENT, data)
+                true
+            } catch (e: Exception) {
+                Log.e("VpnServicePlugin", "tile action dispatch failed", e)
+                false
+            }
+        }
     }
 
     private val watchdogHandler = Handler(Looper.getMainLooper())
@@ -106,10 +131,12 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
             println("vpn: triggerCallback $event $data")
             trigger(event, data)
         }
+        webViewLoaded = true
         tileActionCallback = tileActionHandler
     }
 
     override fun onDestroy() {
+        webViewLoaded = false
         if (tileActionCallback === tileActionHandler) {
             tileActionCallback = { false }
         }
@@ -494,6 +521,11 @@ class VpnServicePlugin(private val activity: Activity) : Plugin(activity) {
         return "$num ${units[i]}"
     }
 
+    // Command name mapping (contract C3): JS `consume_vpn_tile_action` ->
+    // lowerCamelCase `consumeVpnTileAction` -> this @Command method. Without
+    // the annotation the android side never registers a handler and every
+    // drain attempt is rejected, so the tile action can never be consumed.
+    @Command
     fun consumeVpnTileAction(invoke: Invoke) {
         val ret = JSObject()
         ret.put("action", EasyTierVpnTileService.consumePendingAction(activity))

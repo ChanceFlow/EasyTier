@@ -64,6 +64,26 @@ jobs:
           filters: |
             relevant: ${{ env.RELEVANT_PATHS }}
 
+  # Cheap, dependency-free static guard for the Android VPN plugin wiring.
+  # It exists because three silent cross-file drifts shipped once already:
+  #   * build.rs COMMANDS missing a command the webview calls -> Tauri ACL
+  #     rejects the invoke, which the JS callers swallowed;
+  #   * an Android @Command missing for a command the webview calls -> the
+  #     mobile dispatch fails with "Command ... not found";
+  #   * the foreground-service notification and the traffic notification
+  #     disagreeing on channel id / notification id, so the user only ever
+  #     saw the hard-coded English service note.
+  # Runs in seconds on the bare runner (no Android SDK, no pnpm install).
+  wiring-guard:
+    runs-on: ubuntu-latest
+    needs: pre_job
+    if: needs.pre_job.outputs.should_skip != 'true'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify Android VPN wiring (ACL ↔ permission files ↔ Kotlin handlers)
+        run: node scripts/verify-android-vpn-wiring.mjs
+
   build-mobile:
     strategy:
       fail-fast: true
@@ -154,7 +174,7 @@ jobs:
 
   mobile-result:
     runs-on: ubuntu-latest
-    needs: [ pre_job, build-mobile ]
+    needs: [ pre_job, wiring-guard, build-mobile ]
     if: needs.pre_job.result == 'success' && needs.pre_job.outputs.should_skip != 'true' && !cancelled()
     steps:
       - name: Mark result as failed
