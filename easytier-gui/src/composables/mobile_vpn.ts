@@ -69,6 +69,16 @@ export const mobileStats = reactive({
   /** Android VPN permission was denied/dismissed on the last start attempt */
   permissionDenied: false,
   /**
+   * Android took the VPN slot away from us (`VpnService.onRevoke`, normally
+   * because another VPN app connected) and we have not re-established since.
+   *
+   * Kept separate from `permissionDenied` because the cause and the fix
+   * differ: nothing about our config is wrong, the tunnel was preempted. The
+   * flag exists so the hero cannot keep claiming "connected" purely because
+   * the EasyTier instance is still running over RPC.
+   */
+  vpnRevoked: false,
+  /**
    * First notification/chrome command that is currently failing (ACL rejection,
    * plugin absent, handler missing...), or null while all of them work. See
    * reportNotificationDegraded()/clearNotificationDegraded().
@@ -460,6 +470,8 @@ async function doStartVpn(instanceId: string, ipv4Addr: string, cidr: number, ro
 async function onVpnServiceStart(payload: any) {
   console.log('vpn service start', JSON.stringify(payload))
   curVpnStatus.running = true
+  // A fresh tunnel supersedes any earlier preemption.
+  mobileStats.vpnRevoked = false
   if (payload.fd) {
     await setTunFd(payload.fd).catch((e) => {
       console.error('set tun fd failed', e)
@@ -472,6 +484,20 @@ async function onVpnServiceStop(payload: any) {
   curVpnStatus.running = false
   activeVpnInstanceId = undefined
   resetVpnConfigStatus()
+
+  // Android handed our VPN slot to someone else (another VPN app connecting
+  // calls VpnService.onRevoke). The native side already removed the ongoing
+  // notification and reset the tile, but the EasyTier instance itself keeps
+  // running, so the IO ticker would keep deriving `connected = true` from
+  // collectNetworkInfo and the hero would still show the tunnel as up while
+  // nothing carries traffic. Flag the reason and force the state down.
+  if (payload?.reason === 'revoked') {
+    mobileStats.vpnRevoked = true
+    mobileStats.connected = false
+    mobileStats.rxRate = 0
+    mobileStats.txRate = 0
+    mobileStats.peerCount = 0
+  }
 }
 
 async function registerVpnServiceListener() {
@@ -944,9 +970,13 @@ async function tickIoNotification() {
     ioNotifyLast = { inst: statsInstanceIdResolved, rx, tx, at: now }
 
     const failed = !!info.error_msg?.length
-    mobileStats.connected = !failed
-    mobileStats.rxRate = failed ? 0 : rxRate
-    mobileStats.txRate = failed ? 0 : txRate
+    // A preempted tunnel has to keep reporting down: the EasyTier instance is
+    // still healthy over RPC, so without this the hero would flip straight
+    // back to "connected" on the very next tick.
+    const tunnelDown = failed || mobileStats.vpnRevoked
+    mobileStats.connected = !tunnelDown
+    mobileStats.rxRate = tunnelDown ? 0 : rxRate
+    mobileStats.txRate = tunnelDown ? 0 : txRate
     mobileStats.peerCount = failed ? 0 : peers.length
     mobileStats.routeCount = failed ? 0 : ((info.routes?.length ?? 0) || (info.peer_route_pairs?.length ?? 0))
     mobileStats.lastError = info.error_msg ?? ''

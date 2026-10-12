@@ -618,3 +618,60 @@ describe('notification degradation visibility', () => {
     }
   })
 })
+
+describe('android vpn preemption (revoked by another VPN)', () => {
+  it('flags the preemption and keeps the ticker from claiming "connected"', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    // own the tunnel first, so this is a real preemption and not a cold start
+    await vpn.onNetworkInstanceChange('A')
+
+    // Android hands the VPN slot to another app
+    await mocks.listeners.get('vpn_service_stop')?.({ reason: 'revoked' })
+    expect(vpn.mobileStats.vpnRevoked).toBe(true)
+    expect(vpn.mobileStats.connected).toBe(false)
+
+    // The EasyTier instance is still healthy over RPC (collectNetworkInfo keeps
+    // answering), so without the flag the ticker would derive connected = true
+    // again and the hero would claim the tunnel is up while nothing flows.
+    mocks.listNetworkInstanceIds.mockResolvedValue({ running_inst_ids: ['A'] })
+    vpn.startMobileIoNotification()
+    await vi.advanceTimersByTimeAsync(4000)
+
+    expect(vpn.mobileStats.connected).toBe(false)
+    expect(vpn.mobileStats.vpnRevoked).toBe(true)
+    expect(vpn.mobileStats.rxRate).toBe(0)
+    expect(vpn.mobileStats.txRate).toBe(0)
+  })
+
+  it('clears the flag once a fresh tunnel is established', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await mocks.listeners.get('vpn_service_stop')?.({ reason: 'revoked' })
+    expect(vpn.mobileStats.vpnRevoked).toBe(true)
+
+    await mocks.listeners.get('vpn_service_start')?.({ fd: 1 })
+    expect(vpn.mobileStats.vpnRevoked).toBe(false)
+  })
+
+  it('does not treat a user-initiated stop as a preemption', async () => {
+    setConfig('A')
+    setReady('A', '10.0.0.1')
+    const vpn = await loadVpnModule()
+
+    await vpn.onNetworkInstanceChange('A')
+    await mocks.listeners.get('vpn_service_stop')?.({ reason: 'user' })
+    expect(vpn.mobileStats.vpnRevoked).toBe(false)
+  })
+
+  it('does not flag a stop event that carries no reason at all', async () => {
+    const vpn = await loadVpnModule()
+
+    await mocks.listeners.get('vpn_service_stop')?.({})
+    expect(vpn.mobileStats.vpnRevoked).toBe(false)
+  })
+})

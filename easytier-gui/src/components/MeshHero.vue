@@ -59,13 +59,17 @@ const notFound = computed(() => !props.clientRunning)
 // a denied VPN permission outranks the live hero: the instance may look
 // "connected" over RPC while no tunnel actually carries traffic
 const permissionState = computed(() => !!props.isAndroid && mobileStats.permissionDenied)
+// Android handed our VPN slot to another app (VpnService.onRevoke). The
+// EasyTier instance may still look healthy over RPC, so without this state the
+// hero would keep claiming the tunnel is up while nothing carries traffic.
+const revokedState = computed(() => !!props.isAndroid && mobileStats.vpnRevoked)
 const failedState = computed(() =>
   !running.value && !notFound.value && !!mobileStats.lastError,
 )
 // client is up but nothing is running yet — the classic "未运行" empty state
-const stoppedState = computed(() => !running.value && !notFound.value && !permissionState.value && !failedState.value)
+const stoppedState = computed(() => !running.value && !notFound.value && !permissionState.value && !revokedState.value && !failedState.value)
 const stoppedStateNoConfig = computed(() => stoppedState.value && !props.instanceId)
-const emptyState = computed(() => notFound.value || permissionState.value || failedState.value || stoppedState.value)
+const emptyState = computed(() => notFound.value || permissionState.value || revokedState.value || failedState.value || stoppedState.value)
 
 const isConnecting = computed(() => props.desired === 'connecting')
 const isDisconnecting = computed(() => props.desired === 'disconnecting')
@@ -76,6 +80,8 @@ const title = computed(() => {
     return t('client.not_running')
   if (permissionState.value)
     return pt('hero.permission_title', '需要 VPN 权限', 'VPN permission required')
+  if (revokedState.value)
+    return pt('hero.revoked_title', '隧道已被中断', 'Tunnel interrupted')
   if (failedState.value)
     return pt('hero.failed_title', '连接失败', 'Connection failed')
   if (isConnecting.value)
@@ -92,6 +98,8 @@ const subtitle = computed(() => {
     return pt('hero.notfound_sub', '无法连接本地服务，点重试重新接入。', 'The local service is unreachable. Tap retry to reconnect.')
   if (permissionState.value)
     return pt('hero.permission_sub', 'Android 需要授权后才能建立 VPN 通道，重试并在系统弹窗中点“允许”。', 'Android needs your approval before the tunnel can start. Tap retry and allow the system prompt.')
+  if (revokedState.value)
+    return pt('hero.revoked_sub', 'Android 的 VPN 通道被其他应用接管，隧道已断开。点“重新连接”重新建立（可能再次弹出授权）。', 'Another app took over Android\'s VPN slot, so the tunnel is down. Tap Reconnect to bring it back (you may be asked to allow it again).')
   if (failedState.value)
     return mobileStats.lastError
   if (isConnecting.value)
@@ -116,7 +124,7 @@ const signalState = computed<SignalState>(() => {
     return 'sync'
   if (running.value)
     return 'up'
-  if (permissionState.value)
+  if (permissionState.value || revokedState.value)
     return 'degraded'
   if (notFound.value || failedState.value)
     return 'down'
@@ -132,6 +140,8 @@ const signalText = computed(() => {
     return t('status.connected')
   if (permissionState.value)
     return pt('hero.permission_pill', '待授权', 'Permission needed')
+  if (revokedState.value)
+    return pt('hero.revoked_pill', '隧道被中断', 'Tunnel preempted')
   if (notFound.value)
     return t('client.not_running')
   if (failedState.value)
@@ -146,7 +156,7 @@ const orbIcon = computed(() => {
   if (signalState.value === 'up')
     return 'mdi-check'
   if (signalState.value === 'degraded')
-    return 'mdi-shield-key-outline'
+    return revokedState.value ? 'mdi-lan-disconnect' : 'mdi-shield-key-outline'
   if (signalState.value === 'down')
     return notFound.value ? 'mdi-server-network-off' : 'mdi-lan-disconnect'
   return 'mdi-power'
@@ -448,6 +458,8 @@ const actionLabel = computed(() => {
     return t('client.retry')
   if (permissionState.value)
     return pt('hero.action_grant', '重新授权', 'Grant permission')
+  if (revokedState.value)
+    return pt('hero.action_regrant', '重新连接', 'Reconnect')
   if (isConnecting.value)
     return pt('hero.action_connecting', '正在连接…', 'Connecting…')
   if (isDisconnecting.value)
@@ -465,6 +477,8 @@ const ctaIcon = computed(() => {
     return 'mdi-replay'
   if (permissionState.value)
     return 'mdi-shield-key-outline'
+  if (revokedState.value)
+    return 'mdi-lan-connect'
   if (actionIsDisconnect.value)
     return 'mdi-lan-disconnect'
   if (stoppedStateNoConfig.value)
@@ -481,6 +495,12 @@ function onAction() {
     return
   }
   if (permissionState.value) {
+    emit('grant')
+    return
+  }
+  if (revokedState.value) {
+    // same path as the permission case: re-runs the VPN reconcile, which
+    // re-asks the system for the slot before establishing the tunnel again
     emit('grant')
     return
   }

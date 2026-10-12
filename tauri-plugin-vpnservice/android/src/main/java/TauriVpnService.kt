@@ -33,6 +33,23 @@ class TauriVpnService : VpnService() {
         const val ACTION_STOP_VPN = "com.kkrainbow.easytier.action.STOP_VPN"
 
         /**
+         * Why the tunnel went down, forwarded to JS in the `vpn_service_stop`
+         * payload. Android hands the caller no reason, so the only place that
+         * knows the difference is the callback we came in through:
+         * `user` = notification "Disconnect" / in-app stop,
+         * `revoked` = the system took the VPN slot away (normally because
+         * another VPN app connected),
+         * `destroy` = the service is being torn down.
+         *
+         * JS needs the distinction to tell "we asked for this" from "it was
+         * taken from us": on revoke the EasyTier instance keeps running, so
+         * nothing else would ever clear the in-app "connected" state.
+         */
+        const val REASON_USER = "user"
+        const val REASON_REVOKED = "revoked"
+        const val REASON_DESTROY = "destroy"
+
+        /**
          * Contract C2: the whole app keeps exactly ONE ongoing notification.
          * Both values must match VpnServicePlugin.NOTIFY_CHANNEL_ID / NOTIFY_ID
          * and the app module's MainForegroundService.CHANNEL_ID /
@@ -52,7 +69,7 @@ class TauriVpnService : VpnService() {
         // bringing the app forward. Mirrors onRevoke() so `self` is cleared
         // before onDestroy and the JS stop callback fires exactly once.
         if (intent?.action == ACTION_STOP_VPN) {
-            disconnect()
+            disconnect(REASON_USER)
             stopForeground(STOP_FOREGROUND_REMOVE)
             self = null
             stopSelf()
@@ -84,7 +101,7 @@ class TauriVpnService : VpnService() {
 
     override fun onDestroy() {
         println("vpn on destroy")
-        disconnect()
+        disconnect(REASON_DESTROY)
         setMainForegroundServiceEnabled(true)
         stopForeground(STOP_FOREGROUND_REMOVE)
         self = null
@@ -94,7 +111,7 @@ class TauriVpnService : VpnService() {
 
     override fun onRevoke() {
         println("vpn on revoke")
-        disconnect()
+        disconnect(REASON_REVOKED)
         setMainForegroundServiceEnabled(true)
         stopForeground(STOP_FOREGROUND_REMOVE)
         self = null
@@ -102,9 +119,11 @@ class TauriVpnService : VpnService() {
         super.onRevoke()
     }
 
-    private fun disconnect() {
+    private fun disconnect(reason: String) {
         if (self == this && this::vpnInterface.isInitialized) {
-            triggerCallback("vpn_service_stop", JSObject())
+            val event_data = JSObject()
+            event_data.put("reason", reason)
+            triggerCallback("vpn_service_stop", event_data)
             vpnInterface.close()
         }
         clearStatus()
