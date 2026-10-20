@@ -1,3 +1,9 @@
+# DEPRECATED CLIENT BUILD — read before changing this workflow.
+#
+# This workflow builds the Android APKs of easytier-gui/, the legacy Tauri 2 +
+# Vue 3 client. It is kept only so Tauri artifacts keep shipping until the
+# Flutter client (easytier-flutter/) reaches feature parity; do not add features
+# here. See easytier-gui/DEPRECATED.md and docs/adr/0001-flutter-client.md.
 name: EasyTier Mobile
 
 on:
@@ -21,6 +27,33 @@ defaults:
     shell: bash
 
 jobs:
+  # Fork addition: surface the deprecation on every mobile run, at the top of
+  # the job list. Intentionally cheap (no checkout, no toolchain setup) and
+  # standalone: it never gates build-mobile or wiring-guard, and deleting it
+  # would not change a single artifact. Keep it until this workflow is retired.
+  deprecation-notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warn that the Tauri Android client is deprecated
+        run: |
+          echo "::warning::The easytier-gui Android client (Tauri 2 + Vue 3) is deprecated and maintenance-only. The Flutter replacement is easytier-flutter/; see easytier-gui/DEPRECATED.md."
+          {
+            echo "## :warning: This workflow builds a deprecated Android client"
+            echo ""
+            echo "It builds the Android APKs of \`easytier-gui\`, the legacy Tauri 2 +"
+            echo "Vue 3 client, through \`tauri-plugin-vpnservice\`. That client is"
+            echo "frozen: no new features, platforms or redesigns; only security,"
+            echo "data-loss, crash and build-breakage fixes are accepted."
+            echo ""
+            echo "The replacement is \`easytier-flutter/\` (Flutter), where the data"
+            echo "plane is a native \`VpnService\` whose fd is passed to"
+            echo "\`set_tun_fd\` in the core. It is still under construction, so these"
+            echo "APKs keep shipping until it reaches feature parity."
+            echo ""
+            echo "- Status, parity table, migration checklist: \`easytier-gui/DEPRECATED.md\`"
+            echo "- Decision record: \`docs/adr/0001-flutter-client.md\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   pre_job:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft

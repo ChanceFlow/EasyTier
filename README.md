@@ -11,6 +11,13 @@
 
 [简体中文](/README_CN.md) | [English](/README.md)
 
+> **Client migration in progress.** The native UI is moving from the Tauri client
+> ([`easytier-gui/`](easytier-gui/), now **deprecated** and maintenance-only) to the
+> Flutter client ([`easytier-flutter/`](easytier-flutter/)). The Flutter client is
+> still under construction, so the Tauri client remains the shipped GUI until
+> feature parity is reached. See [`easytier-gui/DEPRECATED.md`](easytier-gui/DEPRECATED.md)
+> and [`docs/adr/0001-flutter-client.md`](docs/adr/0001-flutter-client.md).
+
 > ✨ A simple, secure, decentralized virtual private network solution powered by Rust and Tokio
 
 <p align="center">

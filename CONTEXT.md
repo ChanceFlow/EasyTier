@@ -103,3 +103,10 @@ The Browser Adapter is an outbound-only EasyTier instance with a smoltcp TCP
 data plane. The Cloudflare Adapter is an inbound-only relay hosted by one named
 Durable Object. Their public configuration exposes only capabilities each Host
 can execute; guest ABI details and serialized TOML remain internal.
+
+## Native client presentation
+
+The native GUI presentation layer is migrating from the Tauri + Vue client
+(`easytier-gui/`, deprecated) to Flutter (`easytier-flutter/`); this does not
+change the core or Host contracts above, only how the client presents them. See
+`docs/adr/0001-flutter-client.md`.

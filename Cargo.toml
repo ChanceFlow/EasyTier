@@ -4,6 +4,11 @@ members = [
     "easytier-core",
     "easytier-proto",
     "easytier",
+    # DEPRECATED: the Tauri client. Kept as a workspace member so the legacy
+    # client still builds; it accepts maintenance fixes only. New client work
+    # goes to easytier-flutter/ (which links easytier-ffi instead of joining
+    # this workspace). See easytier-gui/DEPRECATED.md and
+    # docs/adr/0001-flutter-client.md.
     "easytier-gui/src-tauri",
     "easytier-web",
     "easytier-contrib/easytier-mini",

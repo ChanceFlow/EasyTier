@@ -11,6 +11,13 @@
 
 [简体中文](/README_CN.md) | [English](/README.md)
 
+> **客户端迁移进行中。** 原生界面正在从 Tauri 客户端
+> （[`easytier-gui/`](easytier-gui/)，已标记为**弃用**，仅接受维护性修复）迁移到
+> Flutter 客户端（[`easytier-flutter/`](easytier-flutter/)）。新客户端仍在构建中，
+> 因此在功能对齐之前，随发布提供的图形界面仍是 Tauri 客户端。详见
+> [`easytier-gui/DEPRECATED.md`](easytier-gui/DEPRECATED.md) 与
+> [`docs/adr/0001-flutter-client.md`](docs/adr/0001-flutter-client.md)。
+
 > ✨ 一个由 Rust 和 Tokio 驱动的简单、安全、去中心化的异地组网方案
 
 <p align="center">

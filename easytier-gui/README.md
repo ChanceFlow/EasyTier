@@ -1,5 +1,14 @@
 # GUI for EasyTier
 
+> **Deprecated — maintenance only.** This Tauri 2 + Vue 3 client is frozen: no new
+> features, platforms or redesigns; only security, data-loss, crash and
+> build-breakage fixes are accepted. The replacement is the Flutter client in
+> [`easytier-flutter/`](../easytier-flutter/). See
+> [`DEPRECATED.md`](DEPRECATED.md) for the feature-parity table, the migration
+> checklist and the upstream consequences, and
+> [`docs/adr/0001-flutter-client.md`](../docs/adr/0001-flutter-client.md) for the
+> decision record.
+
 this is a GUI implementation for EasyTier, based on Tauri2.
 
 ## Compile
