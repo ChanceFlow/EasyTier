@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings owned by this app module (the VPN data plane is not a library).
+     Notification copy follows the product voice: short, technical, no
+     exclamation marks. Channel/notification ids live in VpnNotification.kt. -->
+<resources>
+    <string name="app_name">EasyTier</string>
+
+    <!-- Ongoing VPN notification -->
+    <string name="notification_channel_name">EasyTier Notice</string>
+    <string name="notification_channel_desc">Shows the EasyTier tunnel state and live traffic rates.</string>
+    <string name="notification_title_connected">EasyTier · Connected</string>
+    <string name="notification_text_idle">Network idle · Tunnel active</string>
+    <string name="notification_text_background">Running in background · Tunnel active</string>
+    <!-- Platform notification text is single-typeface: rates stay plain even
+         though in-app data is set in ET Mono. -->
+    <string name="notification_text_rates">↑ %1$s · ↓ %2$s</string>
+    <string name="notification_action_open">Open</string>
+    <string name="notification_action_disconnect">Disconnect</string>
+
+    <!-- Quick-settings tile -->
+    <string name="vpn_tile_label">EasyTier VPN</string>
+    <string name="vpn_tile_state_on">Connected</string>
+    <string name="vpn_tile_state_off">Not connected</string>
+</resources>

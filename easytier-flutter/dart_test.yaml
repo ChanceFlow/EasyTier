@@ -1,0 +1,5 @@
+# Declares the tags used by the test suite so `flutter test --exclude-tags
+# golden` works without warnings. Goldens are verified in CI as committed
+# images; `--update-goldens` is a local, reviewed action.
+tags:
+  golden:

@@ -1,0 +1,27 @@
+name: easytier_flutter
+description: "EasyTier cross-platform client built with Flutter (replaces the deprecated Tauri GUI)."
+publish_to: 'none'
+version: 2.6.4+4
+
+environment:
+  sdk: ^3.13.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Google Material Symbols — the official Material 3 icon set.
+  material_symbols_icons: ^4.2960.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Text uses the platform's system UI font (Roboto on Android, SF on
+  # Apple, Segoe UI on Windows, system-ui on Linux). No text fonts are
+  # bundled: shipping a font would override the user's system typography.
+  # Machine data (IPs, latency, rates, ids) uses the platform monospace family.
+  # Icons use Material Symbols (their own icon font, part of the M3 spec).

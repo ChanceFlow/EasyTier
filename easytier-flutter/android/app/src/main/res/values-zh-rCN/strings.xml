@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EasyTier</string>
+
+    <!-- Ongoing VPN notification -->
+    <string name="notification_channel_name">EasyTier 服务通知</string>
+    <string name="notification_channel_desc">显示 EasyTier 隧道状态与实时收发速率。</string>
+    <string name="notification_title_connected">EasyTier · 已连接</string>
+    <string name="notification_text_idle">网络空闲 · 隧道守护中</string>
+    <string name="notification_text_background">后台运行中 · 隧道保持</string>
+    <string name="notification_text_rates">↑ %1$s · ↓ %2$s</string>
+    <string name="notification_action_open">打开</string>
+    <string name="notification_action_disconnect">断开</string>
+
+    <!-- Quick-settings tile -->
+    <string name="vpn_tile_label">EasyTier VPN</string>
+    <string name="vpn_tile_state_on">已连接</string>
+    <string name="vpn_tile_state_off">未连接</string>
+</resources>
