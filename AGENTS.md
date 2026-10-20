@@ -8,6 +8,7 @@
   - Gitea (`http://10.100.0.1:3000/ChanceFlow/easytier.git`) is the primary local forge.
   - GitHub fork (`https://github.com/ChanceFlow/EasyTier.git`) handles cross-platform multi-runner CI builds (Windows, macOS DMG, Linux AppImage/deb/rpm, Android APKs).
   - Artifacts can be monitored and downloaded automatically using `python3 scripts/monitor_and_download.py [tag]`.
+  - GitHub suppresses Actions for forks of high-usage upstreams (fork-scale policy). Release builds therefore run on the non-fork mirror `ChanceFlow/easytier-build`; the Gitea `github-bridge.yml` syncs `main` + tags there and `mirror-github-release.yml` copies the resulting release assets back to Gitea.
   - Downloaded release artifacts are stored in `./release-artifacts/` (which is git-ignored).
 
 ## Client architecture

@@ -35,7 +35,7 @@ on:
       source_repo:
         description: 'GitHub owner/repo that carries the release'
         type: string
-        default: 'ChanceFlow/EasyTier'
+        default: 'ChanceFlow/easytier-build'
         required: false
       overwrite:
         description: 'Replace same-named assets on the Gitea release instead of skipping'

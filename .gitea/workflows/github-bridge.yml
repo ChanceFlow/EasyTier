@@ -112,6 +112,28 @@ jobs:
           fi
           echo "==> fork up to date"
 
+          # GitHub suppresses Actions for forks of high-usage upstreams
+          # ("fork-scale" policy): a push to ChanceFlow/EasyTier never starts a
+          # run, so the fork cannot build releases. ChanceFlow/easytier-build is
+          # a non-fork mirror of this repo whose Actions do run; sync main and
+          # tags there so a release push builds the full matrix (see
+          # mirror-github-release.yml, which mirrors its release back to Gitea).
+          BUILD_REPO="ChanceFlow/easytier-build"
+          BUILD_URL=$(printf 'https://x-access-token:%s@github.com/%s.git' "$GH_PUSH_TOKEN" "$BUILD_REPO")
+          if ! git -C "$WORK/r" push "$BUILD_URL" main:main; then
+            echo "error: build mirror rejected the fast-forward" >&2
+            exit 1
+          fi
+          echo "==> build mirror up to date"
+          # Tags are required by assemble.yml (`git describe --tags`) and by the
+          # release workflow; clone --single-branch still fetches tags reachable
+          # from main, which includes the release tag being pushed.
+          if git -C "$WORK/r" push "$BUILD_URL" --tags >/dev/null 2>&1; then
+            echo "==> build mirror tags synced"
+          else
+            echo "warning: could not push tags to build mirror" >&2
+          fi
+
           if [[ "${DISPATCH_BUILDS:-false}" == "true" ]]; then
             API="https://api.github.com/repos/$GH_REPO/actions/workflows"
             for wf in core.yml gui.yml mobile.yml; do
