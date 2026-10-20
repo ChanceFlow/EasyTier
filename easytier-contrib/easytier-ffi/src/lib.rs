@@ -19,6 +19,10 @@
 //! - `stop_config_server_client`: stop the remote config client and its managed instances.
 //! - `is_config_server_client_connected`: report whether the client is connected.
 //!
+//! Instance event callback APIs:
+//! - `set_instance_event_callback`: push instance runtime events as JSON strings.
+//! - `clear_instance_event_callback`: stop event delivery and drop subscriptions.
+//!
 //! Data plane APIs, enabled by the `ffi-dataplane` feature:
 //! - `data_plane_session_open` / `data_plane_session_close`: own one instance session.
 //! - `data_plane_*_submit`: submit non-blocking TCP and UDP operations.
@@ -30,10 +34,12 @@
 //! Shared FFI helper APIs:
 //! - `get_error_msg`: copy the last FFI or config-server callback error message.
 //! - `free_string`: release strings allocated by this library.
+//! - `get_version`: copy the linked EasyTier core version string.
 
 mod config_server;
 mod data_plane;
 mod error;
+mod event_callback;
 mod instance_api;
 mod json_rpc;
 mod state;
@@ -45,10 +51,11 @@ mod tests;
 
 pub use config_server::{in_config_server_callback, validate_config_server_client_options};
 pub use types::{
-    ConfigServerEventCallback, DataPlaneCompletion, DataPlaneSocketAddr, KeyValuePair,
+    ConfigServerEventCallback, DataPlaneCompletion, DataPlaneSocketAddr, InstanceEventCallback,
+    KeyValuePair,
 };
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{CString, c_char, c_int, c_void};
 
 // ===== Network Management API =====
 
@@ -308,6 +315,62 @@ pub extern "C" fn is_config_server_client_connected() -> c_int {
     config_server::is_config_server_client_connected()
 }
 
+// ===== Instance Event Callback API =====
+
+/// Register a callback that receives instance runtime events as JSON strings.
+///
+/// One process-wide callback is active at a time; calling this function again
+/// replaces the previous callback and restarts subscriptions. Every instance
+/// that is already running is subscribed immediately, and instances started
+/// afterwards (through `run_network_instance` or a managed config-server run)
+/// are subscribed once they are registered.
+///
+/// Each invocation receives a JSON object such as:
+/// `{"instance_name":"net-1","instance_id":"<uuid>","event":"dhcp_ip_changed","detail":"..."}`.
+/// `event` is a stable snake_case name (`dhcp_ip_changed`,
+/// `proxy_cidrs_updated`, `peer_added`, `peer_removed`, `connection_error`,
+/// `tun_device_ready`, `event_lagged`, ...); `detail` carries the event specific
+/// payload as a string and may be `null`. Events are delivered on a tokio
+/// runtime worker: the callback must return promptly and must not call back
+/// into the blocking FFI APIs (`run_network_instance`, `delete_network_instance`,
+/// `collect_network_infos`, `call_json_rpc`, ...).
+///
+/// # Payload ownership
+/// The JSON string is allocated by this library and ownership is transferred to
+/// the callback. The callback must copy the contents and release the pointer
+/// with `free_string`. This differs from [`ConfigServerEventCallback`], whose
+/// string is only valid during the call: asynchronous hosts such as
+/// `dart:ffi`'s `NativeCallable.listener` run the callback on another thread
+/// after the native call has returned.
+///
+/// # Safety
+/// `callback` must be a valid C function pointer that stays callable until it
+/// is cleared. `user_data` is passed back to the callback unchanged and must
+/// remain valid until it is replaced or cleared.
+///
+/// # Return
+/// Returns `0` on success, or `-1` on failure. On failure, call `get_error_msg`
+/// on the same thread to retrieve details.
+#[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
+pub unsafe extern "C" fn set_instance_event_callback(
+    callback: InstanceEventCallback,
+    user_data: *mut c_void,
+) -> c_int {
+    event_callback::set_instance_event_callback(callback, user_data)
+}
+
+/// Remove the instance event callback and stop every event subscription.
+///
+/// Passing `NULL` to `set_instance_event_callback` has the same effect.
+///
+/// # Return
+/// Returns `0` on success, or `-1` on failure. On failure, call `get_error_msg`
+/// on the same thread to retrieve details.
+#[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
+pub extern "C" fn clear_instance_event_callback() -> c_int {
+    event_callback::clear_instance_event_callback()
+}
+
 // ===== Data Plane API =====
 
 #[cfg(feature = "ffi-dataplane")]
@@ -349,10 +412,30 @@ pub unsafe extern "C" fn get_error_msg(out: *mut *const c_char) {
 
 /// Release a C string allocated by this library.
 ///
-/// Use this for strings returned through `get_error_msg`,
-/// `collect_network_infos`, and data-plane address output parameters. Passing a
-/// null pointer is allowed and has no effect.
+/// Use this for strings returned through `get_error_msg`, `get_version`,
+/// `collect_network_infos`, data-plane address output parameters, and the JSON
+/// strings delivered to the instance event callback. Passing a null pointer is
+/// allowed and has no effect.
 #[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
 pub extern "C" fn free_string(s: *const c_char) {
     error::free_string(s)
+}
+
+/// Copy the linked EasyTier core version string.
+///
+/// The returned string is allocated by this library and must be released with
+/// `free_string`.
+///
+/// # Safety
+/// `out` must be a non-null pointer to writable storage for one C string
+/// pointer. A null `out` is ignored.
+#[cfg_attr(feature = "c-abi", unsafe(no_mangle))]
+pub unsafe extern "C" fn get_version(out: *mut *const c_char) {
+    unsafe {
+        if out.is_null() {
+            return;
+        }
+        let version = CString::new(easytier::VERSION).expect("EasyTier version contains no NUL");
+        *out = version.into_raw();
+    }
 }

@@ -251,6 +251,10 @@ impl WebClientHooks for ManagedConfigServerClientHooks {
 
         remove_data_plane_sessions_by_instance_ids(&[*id]);
 
+        // Remote config-server starts must push runtime events too, so the
+        // Flutter client observes them exactly like a local start.
+        crate::event_callback::subscribe_instance_events(*id);
+
         if let Err(err) = self.emit_event_with_delivery_locked("run_network_instance", *id) {
             self.note_callback_error(err);
         }
@@ -260,6 +264,7 @@ impl WebClientHooks for ManagedConfigServerClientHooks {
     async fn post_remove_network_instances(&self, ids: &[Uuid]) -> Result<(), String> {
         let removed_ids = self.remove_tracked_instance_ids(ids)?;
         remove_data_plane_sessions_by_instance_ids(&removed_ids);
+        crate::event_callback::unsubscribe_instances(&removed_ids);
 
         for id in removed_ids {
             if let Err(err) = self.emit_event("delete_network_instance", id) {

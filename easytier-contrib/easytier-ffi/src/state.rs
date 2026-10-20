@@ -16,6 +16,9 @@ impl easytier_core::management::InstanceMutationHooks for FfiOwnedInstanceHooks 
     ) -> Result<(), String> {
         crate::config_server::remove_config_server_tracked_instance_ids(instance_ids);
         crate::data_plane::remove_data_plane_sessions_by_instance_ids(instance_ids);
+        // Removed instances can no longer emit events, so stop their forwarding
+        // tasks instead of waiting for the broadcast channel to close.
+        crate::event_callback::unsubscribe_instances(instance_ids);
         Ok(())
     }
 }

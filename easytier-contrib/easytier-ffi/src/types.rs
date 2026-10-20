@@ -9,6 +9,12 @@ pub struct KeyValuePair {
 
 pub type ConfigServerEventCallback = Option<unsafe extern "C" fn(*const c_char, *mut c_void)>;
 
+/// Instance runtime event callback.
+///
+/// The first argument is a JSON event string owned by this library; see
+/// [`crate::set_instance_event_callback`] for the ownership contract.
+pub type InstanceEventCallback = Option<unsafe extern "C" fn(*const c_char, *mut c_void)>;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct DataPlaneSocketAddr {

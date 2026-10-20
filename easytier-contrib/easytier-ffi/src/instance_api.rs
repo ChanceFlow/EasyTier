@@ -77,14 +77,20 @@ pub(crate) unsafe fn run_network_instance(cfg_str: *const std::ffi::c_char) -> s
     };
 
     wait_for_config_server_delivery();
-    if let Err(e) = ffi_context().runtime.block_on(
+    let instance_id = match ffi_context().runtime.block_on(
         ffi_context()
             .process_management
             .run_owned_network_instance(cfg, ConfigFileControl::STATIC_CONFIG),
     ) {
-        set_error_msg(&format!("failed to start instance: {}", e));
-        return -1;
-    }
+        Ok(instance_id) => instance_id,
+        Err(e) => {
+            set_error_msg(&format!("failed to start instance: {}", e));
+            return -1;
+        }
+    };
+
+    // Start pushing runtime events for the new instance if a callback is set.
+    crate::event_callback::subscribe_instance_events(instance_id);
 
     0
 }
