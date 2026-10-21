@@ -1,7 +1,7 @@
 name: easytier_flutter
 description: "EasyTier cross-platform client built with Flutter (replaces the deprecated Tauri GUI)."
 publish_to: 'none'
-version: 2.6.4+5
+version: 2.6.4+6
 
 environment:
   sdk: ^3.13.1

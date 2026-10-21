@@ -199,6 +199,11 @@ v4 严格按 M3 baseline 实现，结果“正确但丑”：五个屏幕都是�
   section 的 leading icon badge（Basic accent / Advanced tertiary / Port forward
   info / ACL success）、校验错误数用 M3 `Badge.count` 骑在 badge 上；底部 action
   bar 只有**一个** filled `Save` + 一个安静 `Run with these settings`。
+- **Client logs**：Settings → Client logs 打开环形日志（500 行，Dart 层
+  lifecycle/RPC/config/event），All/Info+/Warnings/Errors 过滤 + 复制 + 清空；
+  由 Settings 的 Log level 偏好门控（off/error/warn/info/debug/trace）。
+- **Share network**：Config `⋮` 生成邀请文本（Network/Instance/Peer，secret 默认隐藏
+  可开关），一键复制；不伪造二维码。
 - **Config 源文件编辑**：顶栏 `<>` 打开全屏 TOML source editor（本地
   `networkConfigToToml` / `parseNetworkConfigToml` 往返，支持 `[[port_forward]]`
   与 `[[acl_rule]]`）；语法错误按行号提示并禁用 Apply，未知键降级为 warning；

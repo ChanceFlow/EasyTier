@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../client/core_client.dart';
+import 'log_bus.dart';
 import '../models/models.dart';
 import '../ui/et_shell.dart';
 import '../vpn/vpn_controller.dart';
@@ -53,6 +54,9 @@ class AppState extends ChangeNotifier {
   bool busy = false;
   String? lastError;
   int _unseenEvents = 0;
+
+  /// Client-side lifecycle log shown in Settings → Client logs.
+  final LogBus logs = LogBus();
   bool _polling = false;
   bool _selfStopping = false;
   Timer? _pollTimer;
@@ -75,6 +79,7 @@ class AppState extends ChangeNotifier {
   int get unseenEvents => _unseenEvents;
 
   Future<void> bootstrap() async {
+    _log(LogLevel.info, 'app', 'Client starting');
     await client.init();
     _eventSub = client.events.listen(_onEvent);
     instances = await client.listInstances();
@@ -83,6 +88,11 @@ class AppState extends ChangeNotifier {
       await refresh();
     }
     initialized = true;
+    _log(
+      LogLevel.info,
+      'app',
+      'Ready · ${instances.length} network${instances.length == 1 ? '' : 's'} configured',
+    );
     notifyListeners();
     final interval = pollInterval;
     if (interval != null) {
@@ -110,9 +120,28 @@ class AppState extends ChangeNotifier {
       }
     } catch (error) {
       lastError = error.toString();
+      if (lastError != _lastRefreshError) {
+        _lastRefreshError = lastError;
+        _log(LogLevel.warn, 'status', 'Status refresh failed: $error');
+      }
     } finally {
       _polling = false;
     }
+  }
+
+  String? _lastRefreshError;
+
+  /// Writes a client log line, gated by the Settings → Log level preference.
+  void _log(LogLevel level, String source, String message) {
+    final enabled = switch (logLevel) {
+      'off' => false,
+      'error' => level.index >= LogLevel.error.index,
+      'warn' => level.index >= LogLevel.warn.index,
+      'info' => level.index >= LogLevel.info.index,
+      _ => true, // debug, trace
+    };
+    if (!enabled) return;
+    logs.add(level, source, message);
   }
 
   Future<void> toggleConnection() async {
@@ -126,14 +155,21 @@ class AppState extends ChangeNotifier {
     if (instance == null || busy) return;
     busy = true;
     lastError = null;
+    _log(
+      LogLevel.info,
+      'tunnel',
+      'Connecting to ${instance.config.networkName} (${instance.config.instanceName})',
+    );
     notifyListeners();
     try {
       activeId = await client.runInstance(instance.config);
       await refresh();
       await _attachVpnIfNeeded(instance.config);
       await refresh();
+      _log(LogLevel.info, 'tunnel', 'Connected · ${status.peers.length} peers');
     } catch (error) {
       lastError = error.toString();
+      _log(LogLevel.error, 'tunnel', 'Connect failed: $error');
     } finally {
       busy = false;
       notifyListeners();
@@ -145,6 +181,7 @@ class AppState extends ChangeNotifier {
     if (id == null || busy) return;
     busy = true;
     lastError = null;
+    _log(LogLevel.info, 'tunnel', 'Disconnecting');
     notifyListeners();
     try {
       final vpn = vpnController;
@@ -155,8 +192,10 @@ class AppState extends ChangeNotifier {
       }
       await client.stopInstance(id);
       await refresh();
+      _log(LogLevel.info, 'tunnel', 'Disconnected');
     } catch (error) {
       lastError = error.toString();
+      _log(LogLevel.error, 'tunnel', 'Disconnect failed: $error');
     } finally {
       busy = false;
       notifyListeners();
@@ -167,6 +206,7 @@ class AppState extends ChangeNotifier {
     if (activeId == id) return;
     activeId = id;
     status = InstanceStatus.stopped;
+    _log(LogLevel.debug, 'profiles', 'Switched active profile to $id');
     notifyListeners();
     await refresh();
   }
@@ -190,9 +230,15 @@ class AppState extends ChangeNotifier {
         updated[index] = updated[index].copyWith(config: config);
         instances = updated;
       }
+      _log(
+        LogLevel.info,
+        'config',
+        'Saved "${config.networkName}" · ${config.instanceName}',
+      );
       return true;
     } catch (error) {
       lastError = error.toString();
+      _log(LogLevel.error, 'config', 'Save failed: $error');
       return false;
     } finally {
       busy = false;
@@ -211,11 +257,13 @@ class AppState extends ChangeNotifier {
     instances = await client.listInstances();
     final created = instances.where((i) => i.config.instanceName == config.instanceName);
     activeId = created.isEmpty ? activeId : created.first.id;
+    _log(LogLevel.info, 'config', 'Created network "${config.networkName}"');
     notifyListeners();
     await refresh();
   }
 
   Future<void> removeInstance(String id) async {
+    _log(LogLevel.info, 'config', 'Deleting network $id');
     await client.deleteInstance(id);
     instances = await client.listInstances();
     if (activeId == id) {
@@ -232,11 +280,13 @@ class AppState extends ChangeNotifier {
     if (value == EtDestination.activity && _unseenEvents != 0) {
       _unseenEvents = 0;
     }
+    _log(LogLevel.debug, 'ui', 'Destination → ${value.name}');
     notifyListeners();
   }
 
   void setThemeMode(ThemeMode mode) {
     themeMode = mode;
+    _log(LogLevel.debug, 'ui', 'Theme → ${mode.name}');
     notifyListeners();
   }
 
@@ -370,6 +420,13 @@ class AppState extends ChangeNotifier {
   void _onEvent(NetworkEvent event) {
     events.insert(0, event);
     if (events.length > 200) events.removeLast();
+    _log(
+      event.kind == EventKind.error || event.kind == EventKind.warning
+          ? LogLevel.warn
+          : LogLevel.info,
+      'event',
+      '${event.title}${event.detail == null ? '' : ' · ${event.detail}'}',
+    );
     if (destination != EtDestination.activity) _unseenEvents++;
     notifyListeners();
   }

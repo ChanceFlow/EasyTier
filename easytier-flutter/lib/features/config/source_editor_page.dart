@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -67,6 +70,62 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
     );
   }
 
+  /// Copies the source and, on desktop, also writes it to ~/Downloads so the
+  /// file can be edited/shared like a real config file.
+  Future<void> _export() async {
+    final text = _source;
+    await Clipboard.setData(ClipboardData(text: text));
+    String? savedPath;
+    if (!kIsWeb &&
+        !Platform.environment.containsKey('FLUTTER_TEST') &&
+        (Platform.isLinux || Platform.isMacOS || Platform.isWindows)) {
+      try {
+        final home =
+            Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+        if (home != null) {
+          final dir = Directory('$home/Downloads');
+          await dir.create(recursive: true);
+          final file = File(
+            '${dir.path}/easytier-${widget.initial.instanceName}.toml',
+          );
+          await file.writeAsString(text);
+          savedPath = file.path;
+        }
+      } catch (_) {
+        // File system unavailable: the clipboard copy above still succeeded.
+      }
+    }
+    if (!mounted) return;
+    EtHaptics.selection();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          savedPath == null
+              ? 'Source copied to clipboard.'
+              : 'Saved to $savedPath (also copied).',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _import() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (!mounted) return;
+    if (text == null || text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Clipboard is empty.')),
+      );
+      return;
+    }
+    setState(() {
+      _controller.text = text;
+      _controller.selection = TextSelection.collapsed(offset: text.length);
+      _result = parseNetworkConfigToml(text, base: widget.initial);
+    });
+    EtHaptics.selection();
+  }
+
   void _apply() {
     final config = _result.config;
     if (config == null) return;
@@ -107,6 +166,18 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
           ],
         ),
         actions: [
+          IconButton(
+            key: const Key('source-import'),
+            tooltip: 'Import from clipboard',
+            onPressed: _import,
+            icon: const Icon(Symbols.upload_file),
+          ),
+          IconButton(
+            key: const Key('source-export'),
+            tooltip: 'Export (copy + save file)',
+            onPressed: _export,
+            icon: const Icon(Symbols.download),
+          ),
           IconButton(
             tooltip: 'Copy source',
             onPressed: _copy,

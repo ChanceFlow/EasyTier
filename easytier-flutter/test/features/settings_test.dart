@@ -35,7 +35,7 @@ void main() {
     expect(page.title, 'Settings');
     expect(page.subtitle, 'Preferences & core runtime');
 
-    expect(_inSettings(find.text('2.6.4+5')), findsOneWidget);
+    expect(_inSettings(find.text('2.6.4+6')), findsOneWidget);
     expect(_inSettings(find.text('2.7.0-mock')), findsOneWidget);
     expect(_inSettings(find.text('Normal (in-process)')), findsOneWidget);
     expect(_inSettings(find.text('Documentation')), findsOneWidget);

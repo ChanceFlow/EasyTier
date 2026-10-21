@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
+import 'logs_page.dart';
 import 'settings_widgets.dart';
 
-const _appVersion = '2.6.4+5';
+const _appVersion = '2.6.4+6';
 const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
 /// Settings — global application preferences, core runtime diagnostics, and
@@ -191,6 +192,31 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
           ],
+        ),
+        const SettingsDivider(),
+        SettingsRow(
+          key: const Key('settings-logs-row'),
+          icon: Symbols.receipt_long,
+          tone: EtTone.neutral,
+          title: 'Client logs',
+          subtitle: 'Lifecycle, RPC and config lines',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListenableBuilder(
+                listenable: state.logs,
+                builder: (context, _) => EtBadge(
+                  label: '${state.logs.entries.length}',
+                  tone: EtTone.neutral,
+                ),
+              ),
+              const SizedBox(width: EtSpace.x1),
+              Icon(Symbols.chevron_right, size: 18, color: p.text2),
+            ],
+          ),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const LogsPage()),
+          ),
         ),
       ],
     );

@@ -13,6 +13,7 @@ import 'config_validation.dart';
 import 'config_widgets.dart';
 import 'port_forward_config_section.dart';
 import 'port_forward_sheet.dart';
+import 'share_network_sheet.dart';
 import 'source_editor_page.dart';
 
 /// Config: the expert form. Four one-level disclosure sections, every field of
@@ -487,9 +488,24 @@ class _ConfigPageState extends State<ConfigPage> {
           onSelected: (value) {
             if (value == 'delete' && !locked) {
               _confirmDeleteNetwork(active);
+            } else if (value == 'share') {
+              showEtSheet<void>(
+                context: context,
+                builder: (_) => ShareNetworkSheet(config: draft),
+              );
             }
           },
           itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'share',
+              child: Row(
+                children: const [
+                  Icon(Symbols.share, size: 18),
+                  SizedBox(width: EtSpace.x2),
+                  Text('Share network…'),
+                ],
+              ),
+            ),
             PopupMenuItem<String>(
               value: 'delete',
               enabled: !locked,
