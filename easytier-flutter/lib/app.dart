@@ -31,10 +31,23 @@ class EasytierApp extends StatelessWidget {
           darkTheme: buildEtTheme(brightness: Brightness.dark),
           themeMode: state.themeMode,
           // Keep the Android system bars in sync with the M3 surface (edge-to-edge).
-          builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-            value: etSystemUiOverlayStyle(Theme.of(context).brightness),
-            child: child ?? const SizedBox.shrink(),
-          ),
+          // `EASYTIER_DISABLE_ANIMATIONS` forces the reduced-motion rendering
+          // path (used for deterministic headless screenshots and as an
+          // accessibility override).
+          builder: (context, child) {
+            final disabled = const bool.fromEnvironment(
+              'EASYTIER_DISABLE_ANIMATIONS',
+            );
+            final content = AnnotatedRegion<SystemUiOverlayStyle>(
+              value: etSystemUiOverlayStyle(Theme.of(context).brightness),
+              child: child ?? const SizedBox.shrink(),
+            );
+            if (!disabled) return content;
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: true),
+              child: content,
+            );
+          },
           home: const AppRoot(),
         ),
       ),

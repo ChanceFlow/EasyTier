@@ -191,17 +191,56 @@ void main() {
     expect(inConfig(find.text('TRANSPORT')), findsNothing);
   });
 
-  testWidgets('TOML preview opens the read-only M3 sheet', (tester) async {
+  testWidgets('source editor applies edited TOML back to the draft', (tester) async {
     await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.config);
 
-    await tester.tap(find.byTooltip('Preview TOML'));
-    await pumpFrames(tester);
+    await tester.tap(find.byTooltip('Edit TOML source'));
+    await pumpFrames(tester, frames: 12);
 
-    expect(find.text('Effective configuration'), findsOneWidget);
-    expect(find.byType(SelectableText), findsOneWidget);
-    expect(find.text('Copy'), findsOneWidget);
-    expect(find.text('Secret is redacted.'), findsOneWidget);
+    expect(find.text('Edit source'), findsOneWidget);
+    final editorField = find.byKey(const Key('source-editor-field'));
+    expect(editorField, findsOneWidget);
+    final editor = tester.widget<TextField>(editorField);
+    expect(editor.controller!.text, contains('network_name = "EasyTier Home"'));
+
+    await tester.enterText(
+      editorField,
+      'network_name = "Renamed Net"\nhostname = "renamed-host"\n',
+    );
+    await pumpFrames(tester, frames: 12);
+    expect(find.text('Valid TOML'), findsOneWidget);
+
+    final applyButton = tester.widget<FilledButton>(
+      find.byKey(const Key('source-editor-apply')),
+    );
+    expect(applyButton.onPressed, isNotNull, reason: 'Apply must be enabled for valid TOML');
+    await tester.tap(find.byKey(const Key('source-editor-apply')));
+    await pumpFrames(tester, frames: 36);
+
+    expect(find.text('Edit source'), findsNothing);
+    expect(find.text('Unsaved changes'), findsOneWidget);
+    final name = tester.widget<TextField>(find.descendant(of: field('network-name'), matching: find.byType(TextField)));
+    expect(name.controller!.text, 'Renamed Net');
+    expect(find.text('Renamed Net'), findsOneWidget);
+  });
+
+  testWidgets('source editor blocks Apply on syntax errors', (tester) async {
+    await pumpPhoneApp(tester);
+    await openDestination(tester, EtDestination.config);
+
+    await tester.tap(find.byTooltip('Edit TOML source'));
+    await pumpFrames(tester, frames: 12);
+
+    final editorField = find.byKey(const Key('source-editor-field'));
+    await tester.enterText(editorField, 'mtu = not-a-number\n');
+    await pumpFrames(tester, frames: 12);
+
+    expect(find.textContaining('Line 1:'), findsOneWidget);
+    final apply = tester.widget<FilledButton>(
+      find.byKey(const Key('source-editor-apply')),
+    );
+    expect(apply.onPressed, isNull);
   });
 
   testWidgets('wide screens pair fields in two columns', (tester) async {

@@ -199,10 +199,16 @@ v4 严格按 M3 baseline 实现，结果“正确但丑”：五个屏幕都是�
   section 的 leading icon badge（Basic accent / Advanced tertiary / Port forward
   info / ACL success）、校验错误数用 M3 `Badge.count` 骑在 badge 上；底部 action
   bar 只有**一个** filled `Save` + 一个安静 `Run with these settings`。
-- **Settings**：每组一个 `EtIconBadge` 组头（36）+ `titleMedium` 标题；行 leading
-  是 32 的 icon badge；主题/语言是全宽 `SegmentedButton`（高 52）；机器数据放
-  `SettingsMonoChip`（`surfaceContainerHighest` pill）；About 组用一次
-  `surfaceGlow`；Danger 组卡边用 `error` 35% 描边。
+- **Config 源文件编辑**：顶栏 `<>` 打开全屏 TOML source editor（本地
+  `networkConfigToToml` / `parseNetworkConfigToml` 往返，支持 `[[port_forward]]`
+  与 `[[acl_rule]]`）；语法错误按行号提示并禁用 Apply，未知键降级为 warning；
+  Apply 只写回 draft，仍需 Save 才持久化；secret 在编辑时明文可见（本地文件语义）。
+- **Settings**：分组标题为 12sp w600 `onSurfaceVariant`（无图标徽章）；行 leading
+  是 36dp 中性 `surfaceContainerHighest` 圆角方块 + 彩色图标；主题/语言为行内
+  `SettingsSegmentedPill`（34dp）；机器数据放 `SettingsMonoChip`
+  （`surfaceContainerHighest` pill）；tappable 行尾部有 chevron。
+- **Home**：hero = 单点蓝色辉光 + 同心导轨环 + 状态胶囊/24sp 状态文案/LATENCY
+  数字/一个主操作；三个统计格合并为一张 segmented card（彩色仅出现在 26dp 图标块）。
 
 ### v5.6 Expressive 的验收标准
 

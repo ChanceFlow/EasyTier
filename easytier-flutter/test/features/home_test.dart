@@ -122,14 +122,14 @@ void main() {
     await pumpPhoneApp(tester);
 
     expect(_inHome(find.text('Connected')), findsOneWidget);
-    expect(_inHome(find.text('Latency')), findsOneWidget);
+    expect(_inHome(find.text('LATENCY')), findsOneWidget);
     expect(_inHome(find.text('Connected to EasyTier Home')), findsOneWidget);
     expect(_inHome(find.text('Disconnect')), findsOneWidget);
     expect(_inHome(find.text('Connect')), findsNothing);
     expect(_inHome(find.text('Virtual IP')), findsOneWidget);
     expect(_inHome(find.textContaining('10.144.0.')), findsWidgets);
     expect(_inHome(find.text('Traffic')), findsOneWidget);
-    expect(_inHome(find.text('last 60 s')), findsOneWidget);
+    expect(_inHome(find.text('60 s')), findsOneWidget);
     expect(_inHome(find.text('Down')), findsOneWidget);
     expect(_inHome(find.text('Up')), findsOneWidget);
     expect(_inHome(find.text('5 of 6 online')), findsOneWidget);
@@ -286,7 +286,7 @@ void main() {
     await pumpFrames(tester);
 
     expect(tester.takeException(), isNull);
-    expect(_inHome(find.text('Latency')), findsOneWidget);
+    expect(_inHome(find.text('LATENCY')), findsOneWidget);
   });
 
   testWidgets('desktop Home uses the two-column grid', (tester) async {

@@ -24,6 +24,7 @@ class EtEnter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (context.etReducedMotion) return child;
     final curved = CurvedAnimation(parent: animation, curve: interval);
     return FadeTransition(
       opacity: curved,

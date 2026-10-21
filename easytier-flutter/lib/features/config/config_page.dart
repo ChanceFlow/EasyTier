@@ -13,7 +13,7 @@ import 'config_validation.dart';
 import 'config_widgets.dart';
 import 'port_forward_config_section.dart';
 import 'port_forward_sheet.dart';
-import 'toml_preview_sheet.dart';
+import 'source_editor_page.dart';
 
 /// Config: the expert form. Four one-level disclosure sections, every field of
 /// [NetworkConfig] surfaced, no presets, no nested expansion.
@@ -373,11 +373,19 @@ class _ConfigPageState extends State<ConfigPage> {
     _onValuesChanged(form.values.copyWith(aclRules: next));
   }
 
-  void _openTomlPreview(NetworkConfig draft) {
-    showEtSheet<void>(
-      context: context,
-      builder: (_) => TomlPreviewSheet(config: draft),
+  Future<void> _openSourceEditor(NetworkConfig draft) async {
+    final next = await Navigator.of(context).push<NetworkConfig>(
+      MaterialPageRoute<NetworkConfig>(
+        builder: (_) => SourceEditorPage(initial: draft),
+      ),
     );
+    final form = _form;
+    if (next == null || form == null || !mounted) return;
+    setState(() {
+      form.reseed(next);
+      _saveError = null;
+    });
+    _showSnack('Source applied to the draft. Review the form, then Save.');
   }
 
   void _showSnack(String message) {
@@ -464,8 +472,8 @@ class _ConfigPageState extends State<ConfigPage> {
       actions: [
         EtIconButton(
           icon: Symbols.code,
-          tooltip: 'Preview TOML',
-          onPressed: () => _openTomlPreview(draft),
+          tooltip: 'Edit TOML source',
+          onPressed: () => _openSourceEditor(draft),
         ),
         EtIconButton(
           icon: Symbols.add,

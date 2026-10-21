@@ -913,21 +913,10 @@ class _SpeedGraphPainter extends CustomPainter {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              color.withValues(alpha: 0.28),
+              color.withValues(alpha: 0.16),
               color.withValues(alpha: 0.0),
             ],
           ).createShader(Offset.zero & size),
-      );
-      // Soft glow under the stroke gives the data a lit, expressive feel.
-      canvas.drawPath(
-        line,
-        Paint()
-          ..color = color.withValues(alpha: 0.45)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 5
-          ..strokeJoin = StrokeJoin.round
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
       canvas.drawPath(
         line,

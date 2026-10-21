@@ -112,66 +112,36 @@ class _HomeHeroState extends State<HomeHero>
       EtSignalState.off => (EtTone.neutral, Symbols.radio_button_unchecked, 'Not running'),
     };
     final statusText = widget.signalLabel ?? defaultLabel;
+    final (chipBg, chipFg) = tone.resolve(p);
 
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(EtRadius.hero),
-        border: Border.all(color: p.scheme.primary.withValues(alpha: 0.22)),
+        border: Border.all(
+          color: p.isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // Expressive aurora: layered radial glows over a tonal base. Screen
-          // blending keeps the colour vivid on dark; on light it would wash
-          // out, so the painter switches to source-over with lower alpha.
           Positioned.fill(
             child: CustomPaint(
               painter: _AuroraPainter(
                 base: p.isDark
-                    ? Color.alphaBlend(
-                        p.scheme.primary.withValues(alpha: 0.10),
-                        const Color(0xFF0E0D12),
-                      )
-                    : p.scheme.surfaceContainerLow,
+                    ? const Color(0xFF0C111D)
+                    : p.scheme.surfaceContainerLowest,
                 primary: EtAccent.blue,
                 tertiary: EtAccent.violet,
                 success: EtAccent.cyan,
                 dark: p.isDark,
                 intensity: switch (widget.signalState) {
                   EtSignalState.connected => 1.0,
-                  EtSignalState.connecting => 0.85,
-                  EtSignalState.degraded => 0.7,
-                  _ => 0.40,
+                  EtSignalState.connecting => 0.8,
+                  EtSignalState.degraded => 0.65,
+                  _ => 0.32,
                 },
-              ),
-            ),
-          ),
-          // Top inner highlight (1px glass edge) for depth.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Container(
-                height: 1,
-                color: p.scheme.onSurface.withValues(alpha: 0.16),
-              ),
-            ),
-          ),
-          // Calm lower half so text and the action always sit on a stable tone.
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.55, 1.0],
-                  colors: [
-                    Colors.transparent,
-                    p.scheme.surfaceContainerHigh.withValues(alpha: 0.10),
-                    p.scheme.surfaceContainerHigh.withValues(alpha: 0.34),
-                  ],
-                ),
               ),
             ),
           ),
@@ -189,16 +159,25 @@ class _HomeHeroState extends State<HomeHero>
                   animation: _slice(0.0, 0.55),
                   child: Row(
                     children: [
-                      EtBadge(label: statusText, tone: tone, icon: icon),
-                      const Spacer(),
-                      Text(
-                        widget.uptimeLabel,
-                        style: EtText.mono(size: EtType.caption, color: p.text2),
+                      _HeroStatusChip(
+                        label: statusText,
+                        icon: icon,
+                        fg: chipFg,
+                        bg: chipBg,
                       ),
+                      const Spacer(),
+                      if (widget.uptimeLabel != '—')
+                        Text(
+                          widget.uptimeLabel,
+                          style: EtText.mono(
+                            size: EtType.caption,
+                            color: p.text2,
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                const SizedBox(height: EtSpace.x2),
+                const SizedBox(height: EtSpace.x4),
                 EtEnter(
                   animation: _slice(0.08, 0.68),
                   interval: const Interval(0.08, 0.68, curve: EtCurves.enter),
@@ -206,11 +185,11 @@ class _HomeHeroState extends State<HomeHero>
                   child: Center(
                     child: EtConnectionOrb(
                       state: widget.signalState,
-                      size: 112,
+                      size: 100,
                     ),
                   ),
                 ),
-                const SizedBox(height: EtSpace.x1),
+                const SizedBox(height: EtSpace.x2),
                 EtEnter(
                   animation: _slice(0.16, 0.76),
                   child: Center(
@@ -225,15 +204,16 @@ class _HomeHeroState extends State<HomeHero>
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: text.titleLarge?.copyWith(
+                          fontSize: 24,
                           color: p.text,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
+                          letterSpacing: -0.3,
                         ),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: EtSpace.x2),
+                const SizedBox(height: EtSpace.x3),
                 EtEnter(
                   animation: _slice(0.24, 0.86),
                   child: Center(
@@ -241,9 +221,14 @@ class _HomeHeroState extends State<HomeHero>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Latency',
-                          style: text.labelLarge?.copyWith(color: p.text2),
+                          'LATENCY',
+                          style: text.labelSmall?.copyWith(
+                            color: p.text3,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.3,
+                          ),
                         ),
+                        const SizedBox(height: 2),
                         Semantics(
                           label: semantics,
                           child: ExcludeSemantics(
@@ -260,29 +245,36 @@ class _HomeHeroState extends State<HomeHero>
                                   Text(
                                     value,
                                     style: EtText.mono(
-                                      size: EtType.expressive,
+                                      size: 38,
                                       weight: FontWeight.w700,
-                                      color: latencyMs == null ? p.text2 : p.text,
+                                      color: latencyMs == null ? p.text3 : p.text,
                                       height: 1.05,
                                     ),
                                   ),
-                                  if (latencyMs != null) ...[
-                                    const SizedBox(width: EtSpace.x2),
-                                    Text(
-                                      'ms',
-                                      style: text.titleMedium?.copyWith(color: p.text2),
+                                  if (latencyMs != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 3,
+                                        bottom: 5,
+                                      ),
+                                      child: Text(
+                                        'ms',
+                                        style: text.labelMedium?.copyWith(
+                                          color: p.text2,
+                                        ),
+                                      ),
                                     ),
-                                  ],
                                 ],
                               ),
                             ),
                           ),
                         ),
-                        if (latencyMs != null)
-                          Text(
-                            'to nearest peer',
-                            style: text.bodySmall?.copyWith(color: p.text2),
-                          ),
+                        Text(
+                          latencyMs == null
+                              ? 'connect to measure'
+                              : 'to nearest peer',
+                          style: text.bodySmall?.copyWith(color: p.text2),
+                        ),
                       ],
                     ),
                   ),
@@ -293,6 +285,54 @@ class _HomeHeroState extends State<HomeHero>
                   child: EtPressScale(child: widget.action),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Restrained status pill for the hero: a coloured dot + label on a quiet
+/// tonal field, never a saturated badge on top of a gradient.
+class _HeroStatusChip extends StatelessWidget {
+  const _HeroStatusChip({
+    required this.label,
+    required this.icon,
+    required this.fg,
+    required this.bg,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color fg;
+  final Color bg;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.et;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(bg.withValues(alpha: 0.55), p.scheme.surface),
+        borderRadius: BorderRadius.circular(EtRadius.pill),
+        border: Border.all(color: fg.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: EtText.ui(
+              size: EtType.caption,
+              weight: FontWeight.w600,
+              color: fg,
             ),
           ),
         ],
@@ -323,29 +363,57 @@ class _AuroraPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     canvas.drawRect(rect, Paint()..color = base);
-    // On dark surfaces screen blending makes the glow luminous; on light it
-    // would clip to white, so paint normally with calmer alphas.
-    final blend = dark ? BlendMode.screen : BlendMode.srcOver;
-    final boost = (dark ? 1.0 : 0.55) * intensity;
 
-    void blob(Offset center, double radius, Color color, double alpha) {
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()
-          ..blendMode = blend
-          ..shader = RadialGradient(
-            colors: [color.withValues(alpha: alpha * boost), color.withValues(alpha: 0)],
-          ).createShader(Rect.fromCircle(center: center, radius: radius)),
-      );
+    final boost = (dark ? 1.0 : 0.6) * intensity;
+    final blend = dark ? BlendMode.screen : BlendMode.srcOver;
+
+    // One purposeful glow behind the orb instead of a muddy multi-blob aurora.
+    final center = Offset(size.width * 0.5, size.height * 0.30);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = blend
+        ..shader = RadialGradient(
+          colors: [
+            primary.withValues(alpha: 0.34 * boost),
+            primary.withValues(alpha: 0),
+          ],
+        ).createShader(
+          Rect.fromCircle(center: center, radius: size.width * 0.82),
+        ),
+    );
+    // A single cool counter-light keeps the lower half from going flat.
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..blendMode = blend
+        ..shader = RadialGradient(
+          center: const Alignment(-0.9, 0.95),
+          radius: 0.9,
+          colors: [
+            success.withValues(alpha: 0.10 * boost),
+            success.withValues(alpha: 0),
+          ],
+        ).createShader(rect),
+    );
+
+    // Concentric guide rings anchor the orb without decoration noise.
+    final ring = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = (dark ? Colors.white : Colors.black)
+          .withValues(alpha: dark ? 0.055 : 0.045);
+    for (final radius in const [66.0, 84.0, 104.0]) {
+      canvas.drawCircle(center, radius, ring);
     }
 
-    blob(Offset(size.width * 0.08, size.height * 0.06), size.width * 0.72, primary, 0.95);
-    blob(Offset(size.width * 0.98, size.height * 0.55), size.width * 0.80, tertiary, 0.85);
-    blob(Offset(size.width * 0.95, size.height * 0.02), size.width * 0.34, success, 0.34);
-    blob(Offset(size.width * 0.05, size.height * 0.92), size.width * 0.46, tertiary, 0.45);
-    // Fine top highlight for depth.
-    blob(Offset(size.width * 0.5, -size.height * 0.14), size.width * 0.7, primary, dark ? 0.28 : 0.16);
+    // Fine top edge highlight.
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, 1),
+      Paint()
+        ..color = (dark ? Colors.white : Colors.black)
+            .withValues(alpha: dark ? 0.10 : 0.05),
+    );
   }
 
   @override
@@ -354,8 +422,9 @@ class _AuroraPainter extends CustomPainter {
       old.success != success || old.dark != dark || old.intensity != intensity;
 }
 
-/// Three tonal bento stats under the hero. Tapping Peers or Routes navigates
-/// directly to the Devices tab so the dashboard is connected to the peer table.
+/// Three quiet stat cells in one segmented card. Colour lives in the icon
+/// tile only; the rest is typography, which reads calmer than three saturated
+/// blocks and keeps the dashboard scannable.
 class HomeStatsRow extends StatelessWidget {
   const HomeStatsRow({
     super.key,
@@ -376,37 +445,123 @@ class HomeStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: EtStatTile(
-            label: 'Peers',
-            value: up ? '$onlinePeers / $peerCount' : '—',
-            icon: Symbols.devices,
-            tone: up ? EtTone.accent : EtTone.neutral,
-            onTap: onOpenDevices,
-          ),
+    final p = context.et;
+    final tiles = <Widget>[
+      _HomeStatCell(
+        label: 'Peers',
+        value: up ? '$onlinePeers / $peerCount' : '—',
+        icon: Symbols.devices,
+        tone: EtTone.accent,
+        onTap: onOpenDevices,
+      ),
+      _HomeStatCell(
+        label: 'Routes',
+        value: up ? '$routeCount' : '—',
+        icon: Symbols.alt_route,
+        tone: EtTone.warn,
+        onTap: onOpenDevices,
+      ),
+      _HomeStatCell(
+        label: 'Downlink',
+        value: up ? formatRate(rxBps) : '—',
+        icon: Symbols.arrow_downward,
+        tone: EtTone.success,
+      ),
+    ];
+
+    return EtSurface(
+      padding: EdgeInsets.zero,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < tiles.length; i++) ...[
+              if (i > 0)
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: p.border.withValues(alpha: 0.55),
+                ),
+              Expanded(child: tiles[i]),
+            ],
+          ],
         ),
-        const SizedBox(width: EtSpace.x3),
-        Expanded(
-          child: EtStatTile(
-            label: 'Routes',
-            value: up ? '$routeCount' : '—',
-            icon: Symbols.alt_route,
-            tone: up ? EtTone.warn : EtTone.neutral,
-            onTap: onOpenDevices,
-          ),
+      ),
+    );
+  }
+}
+
+class _HomeStatCell extends StatelessWidget {
+  const _HomeStatCell({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.tone,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final EtTone tone;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.et;
+    final text = Theme.of(context).textTheme;
+    final (bg, fg) = tone.resolve(p);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: p.scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 15, color: fg),
+                ),
+                const Spacer(),
+                if (onTap != null)
+                  Icon(
+                    Symbols.chevron_right,
+                    size: 14,
+                    color: p.textDisabled,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: EtText.mono(
+                size: EtType.title,
+                weight: FontWeight.w600,
+                color: p.text,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              label.toUpperCase(),
+              style: text.labelSmall?.copyWith(
+                color: p.text2,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: EtSpace.x3),
-        Expanded(
-          child: EtStatTile(
-            label: 'Downlink',
-            value: up ? formatRate(rxBps) : '—',
-            icon: Symbols.arrow_downward,
-            tone: up ? EtTone.success : EtTone.neutral,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -570,8 +725,8 @@ class HomeTrafficCard extends StatelessWidget {
             title: 'Traffic',
             trailing: live
                 ? Text(
-                    'last 60 s',
-                    style: text.bodySmall?.copyWith(color: p.text2),
+                    '60 s',
+                    style: EtText.mono(size: EtType.micro, color: p.text2),
                   )
                 : null,
           ),
@@ -581,12 +736,12 @@ class HomeTrafficCard extends StatelessWidget {
             child: live
                 ? EtSpeedGraph(history: history, height: graphHeight)
                 : SizedBox(
-                    height: graphHeight,
+                    height: 96,
                     child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Symbols.monitoring, size: 28, color: p.text2),
+                          Icon(Symbols.monitoring, size: 24, color: p.text2),
                           const SizedBox(height: EtSpace.x2),
                           Text(
                             emptyMessage!,

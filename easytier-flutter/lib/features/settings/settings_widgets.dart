@@ -38,10 +38,11 @@ class SettingsGroup extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: text.labelLarge?.copyWith(
+                  style: text.labelMedium?.copyWith(
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: p.accent,
-                    letterSpacing: 0.2,
+                    color: p.text2,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ),
@@ -97,10 +98,19 @@ class SettingsRow extends StatelessWidget {
         horizontal: EtSpace.x4,
         vertical: 2,
       ),
-      leading: EtIconBadge(
-        icon: icon,
-        tone: destructive ? EtTone.danger : tone,
-        size: 36,
+      leading: Builder(
+        builder: (context) {
+          final (_, fg) = (destructive ? EtTone.danger : tone).resolve(p);
+          return Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: p.scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 19, color: fg),
+          );
+        },
       ),
       title: Text(
         title,

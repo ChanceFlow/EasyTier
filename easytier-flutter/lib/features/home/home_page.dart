@@ -104,10 +104,33 @@ class HomePage extends StatelessWidget {
               tonal: true,
               loading: true,
             )
-          : EtPrimaryButton(
-              label: 'Disconnect',
-              icon: Symbols.power_settings_new,
-              onPressed: () => unawaited(state.disconnect()),
+          : SizedBox(
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  EtHaptics.impact();
+                  unawaited(state.disconnect());
+                },
+                style: OutlinedButton.styleFrom(
+                  shape: const StadiumBorder(),
+                  side: BorderSide(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.22),
+                  ),
+                  foregroundColor: context.et.text,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.surface.withValues(alpha: 0.16),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                icon: const Icon(Symbols.power_settings_new, size: 18),
+                label: const Text('Disconnect'),
+              ),
             ),
     };
 
