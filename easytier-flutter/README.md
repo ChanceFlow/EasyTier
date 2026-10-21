@@ -1,8 +1,7 @@
 # EasyTier Flutter client
 
 The cross-platform EasyTier client. It replaces the Tauri GUI
-([`../easytier-gui/`](../easytier-gui/), deprecated — see
-[`DEPRECATED.md`](../easytier-gui/DEPRECATED.md)) and is the only place where
+(removed from this repo) and is the only place where
 new client work happens.
 
 Status: **active development**. The app runs the full five-destination UI against

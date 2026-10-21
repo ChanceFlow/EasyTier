@@ -4,13 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'easytier-gui/**'
       - 'easytier-web/frontend-lib/**'
       - 'design-system/**'
   pull_request:
     branches: [main]
     paths:
-      - 'easytier-gui/**'
       - 'easytier-web/frontend-lib/**'
       - 'design-system/**'
   workflow_dispatch:

@@ -11,12 +11,11 @@
 
 [简体中文](/README_CN.md) | [English](/README.md)
 
-> **Client migration in progress.** The native UI is moving from the Tauri client
-> ([`easytier-gui/`](easytier-gui/), now **deprecated** and maintenance-only) to the
-> Flutter client ([`easytier-flutter/`](easytier-flutter/)). The Flutter client is
-> still under construction, so the Tauri client remains the shipped GUI until
-> feature parity is reached. See [`easytier-gui/DEPRECATED.md`](easytier-gui/DEPRECATED.md)
-> and [`docs/adr/0001-flutter-client.md`](docs/adr/0001-flutter-client.md).
+> **Native client: Flutter.** The native UI is
+> [`easytier-flutter/`](easytier-flutter/) (Google Material 3 + Expressive).
+> The old Tauri client (`easytier-gui/`) and its Android plugin have been
+> **removed from this repo**, and release artifacts no longer include it.
+> See [`docs/adr/0001-flutter-client.md`](docs/adr/0001-flutter-client.md).
 
 > ✨ A simple, secure, decentralized virtual private network solution powered by Rust and Tokio
 
@@ -60,11 +59,6 @@ Linux (Recommended):
 curl -fsSL "https://github.com/EasyTier/EasyTier/blob/main/script/install.sh?raw=true" | sudo bash -s install
 ```
 
-Homebrew (MacOS/Linux):
-```bash
-brew tap brewforge/chinese
-brew install --cask easytier-gui
-```
 
 Windows (Recommended, run with administrator privileges):
 ```powershell

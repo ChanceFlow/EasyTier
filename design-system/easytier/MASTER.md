@@ -235,15 +235,15 @@ v2.1 曾把「配置」从底部导航拿掉，降级成「网络详情」推入
 |---|---|
 | `easytier-web/frontend-lib/src/theme.ts` | Vuetify 主题色映射到 `--et-*` 等价色；密度分档 |
 | `easytier-web/frontend-lib/src/style.css` | 引入 tokens；清理 27 处 `!important` |
-| `easytier-gui/src/styles.css` | 同上；裸 `z-index:100` 换 `--et-z-*` |
+
 | `frontend-lib/components/Status.vue` (1476) | 拆掉内嵌开关 → 纯状态；`:key="i"` 换稳定 id；sheet-grabber 加 role |
 | `frontend-lib/components/Config.vue` (1359) | 配置三层；端口转发 `:key="index"` 换稳定 id；`z-index:10` 语义化 |
 | `frontend-lib/components/RemoteManagement.vue` (1278) | 节点表按 PeerRow 契约重排；4 处可点 div → button |
 | `frontend-lib/components/NetworkChart.vue` (531) | 色板读令牌；加暂停；补当前值与状态文字 |
 | `frontend-lib/components/UrlListInput.vue` / `acl/AclChainEditor.vue` | `:key="index"` 换稳定 id；可点 div → button |
-| `easytier-gui/pages/index.vue` (1104) | 首页 = 一主数字 + 一主操作 + 摘要；5 处可点 div → button |
-| `easytier-gui/components/MeshHero.vue` (841) | 改造成 Signal + Orb |
-| `easytier-gui/components/OnboardingDialog.vue` | 去掉 ⚙ emoji，换 Phosphor `Gear` |
+
+
+
 
 ## 10. 反模式（`lint-design.py` 会拦）
 

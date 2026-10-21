@@ -40,8 +40,6 @@ easytier-web/config-generator/src/generated/
 
 .vite
 
-easytier-gui/src-tauri/*.dll
-easytier-gui/src-tauri/*.sys
 /easytier-contrib/easytier-ohrs/dist/
 
 .direnv

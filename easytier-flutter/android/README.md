@@ -4,7 +4,7 @@ This directory is the Android side of the Flutter client. The only part that is
 not stock `flutter create` output is the VPN data plane, which owns Android's
 process-wide TUN slot and hands the raw TUN fd to the Rust core.
 
-Ported from the deprecated Tauri client (`tauri-plugin-vpnservice/android`);
+Ported from the removed Tauri client (`tauri-plugin-vpnservice/android`);
 the behaviour is preserved, the Tauri plugin runtime is not.
 
 > **Status:** compiles and packages in this repo's podman toolchain

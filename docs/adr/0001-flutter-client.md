@@ -40,14 +40,16 @@ Three problems drove this decision:
 ## Decision
 
 The native client is rewritten in **Flutter** in `easytier-flutter/`, and the
-Tauri client in `easytier-gui/` is **deprecated into maintenance-only mode**.
+Tauri client in `easytier-gui/` is **removed**. The Flutter client is the only
+native client in this repo; the Tauri crate and its Android plugin no longer
+build or ship here.
 
 - New client work — features, platforms, redesigns — happens only in
   `easytier-flutter/`.
-- The Tauri client accepts only security, data-loss, crash and
-  build-breakage fixes while it still ships. See `easytier-gui/DEPRECATED.md`.
+- Tauri client sources, its Android plugin, GUI/mobile workflows and release
+  assets were deleted; upstream can still carry its own GUI, this fork does not.
 - Both clients coexist until the Flutter client reaches feature parity; only
-  then are Tauri artifacts and the Tauri CI jobs retired.
+  were Tauri artifacts and Tauri CI jobs; both are now retired.
 - The web console (`easytier-web/frontend-lib`) and its design system
   (`design-system/easytier/`) are unaffected; they are not deprecated.
 - The Flutter client follows `design-system/easytier-flutter/`.
@@ -189,7 +191,7 @@ Flutter UI (Android / Linux / Windows / macOS / iOS)
 
 - **A full rewrite.** No Vue screen can be reused; every feature must be
   reimplemented and re-reviewed against the parity table.
-- **A dual-maintenance window.** Two clients exist until parity; the Tauri
+- **A short dual-maintenance window** (historical). Two clients existed until the Tauri
   client still needs security and build fixes, and the Flutter client needs to
   catch up. This is the largest cost of the decision.
 - **Larger binaries** than the system-webview Tauri app, and a new toolchain
@@ -229,7 +231,8 @@ compatibility at the cost of the client architecture we actually need.
 - **iOS tunnel** needs a NetworkExtension Packet Tunnel Provider and App Store
   review; that design does not exist yet and is the least-proven target.
 - **Parity may slip** while the Tauri client is frozen; the parity table in
-  `easytier-gui/DEPRECATED.md` is the tracking artifact, not a guarantee.
+  removed Tauri client was the tracking artifact; parity is now tracked in
+  `easytier-flutter/README.md`.
 
 ## Follow-up decisions (not settled by this ADR)
 
@@ -245,7 +248,7 @@ compatibility at the cost of the client architecture we actually need.
 
 ## References
 
-- `easytier-gui/DEPRECATED.md` — status, feature parity table, migration checklist.
+- `easytier-flutter/README.md` — current client status and known gaps.
 - `easytier-flutter/lib/core/client/core_client.dart` — the `CoreClient` seam.
 - `easytier-contrib/easytier-ffi/` — the C ABI and `DATA_PLANE_ABI.md`.
 - `design-system/easytier-flutter/` — the client design system.

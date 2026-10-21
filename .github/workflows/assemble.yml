@@ -1,19 +1,19 @@
-# Auto-assemble the mobile/desktop/core products into a GitHub Release once
-# the full build trio (Core + GUI + Mobile) has finished green on main.
+# Auto-assemble the core matrix into a GitHub Release once the Core build has
+# finished green on main. Client installers are no longer part of this repo:
+# the old Tauri GUI/APK is removed, and the Flutter client is built separately.
 #
 # Purely event-driven (workflow_run), so this works even though fork push
-# events never fire normal runs. When all three latest-completed main runs
-# share one commit and no release exists for the current tag, it dispatches
-# upstream's release.yml with the three run ids; when that assembly run
-# finishes, the publish job un-drafts it (upstream creates drafts).
+# events never fire normal runs. When the latest completed Core run on main
+# carries artifacts and no release exists for the current tag, it dispatches
+# release.yml with that run id; the release workflow publishes the release.
 #
-# Manual override stays available: dispatch release.yml yourself with run ids.
+# Manual override stays available: dispatch release.yml yourself with a run id.
 
 name: Assemble Release
 
 on:
   workflow_run:
-    workflows: ["EasyTier Core", "EasyTier GUI", "EasyTier Mobile", "EasyTier Release"]
+    workflows: ["EasyTier Core", "EasyTier Release"]
     types: [completed]
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Dispatch release.yml when the trio is green on one sha
+      - name: Dispatch release.yml when the core matrix is green on main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,12 +56,8 @@ jobs:
               fi
             done
           }
-          C=$(latest core.yml); G=$(latest gui.yml); M=$(latest mobile.yml)
-          if [ -z "$C" ] || [ -z "$G" ] || [ -z "$M" ]; then echo "trio incomplete yet"; exit 0; fi
-          SC=${C#* }; SG=${G#* }; SM=${M#* }
-          if [ "$SC" != "$SG" ] || [ "$SG" != "$SM" ]; then
-            echo "trio shas differ ($SC $SG $SM) - a build is stale or pending, waiting"; exit 0
-          fi
+          C=$(latest core.yml)
+          if [ -z "$C" ]; then echo "core build not ready yet"; exit 0; fi
           # 同样不能用 releases/tags/{tag} 判存在：对草稿返回 404，会让这道闸门
           # 失效 —— 某条构建重跑一次就会再派发一次 release.yml。改用列表过滤。
           existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
@@ -69,8 +65,6 @@ jobs:
           if [ -n "$existing" ]; then
             echo "release $V already exists (id $existing); re-assembly: dispatch release.yml manually"; exit 0
           fi
-          gh workflow run release.yml \
-            -f core_run_id="${C%% *}" -f gui_run_id="${G%% *}" -f mobile_run_id="${M%% *}" \
-            -f version="$V" -f make_latest=true
-          echo "==> dispatched release.yml for $V (run ids ${C%% *}/${G%% *}/${M%% *})"
+          gh workflow run release.yml -f core_run_id="${C%% *}" -f version="$V" -f make_latest=true
+          echo "==> dispatched release.yml for $V (core run ${C%% *})"
 

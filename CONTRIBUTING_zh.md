@@ -99,7 +99,6 @@ sudo apt install -y bridge-utils
 ```
 easytier/          # 核心功能和库
 easytier-web/      # Web 仪表盘和前端
-easytier-gui/      # 桌面 GUI 应用
 .github/workflows/ # CI/CD 配置文件
 ```
 
@@ -120,44 +119,6 @@ cargo build --release --target x86_64-pc-windows-msvc        # Windows x86_64
 ```
 
 构建产物位置：`target/[target-triple]/release/`
-
-### 构建桌面应用
-
-```bash
-# 1. 构建前端
-pnpm -r build
-
-# 2. 构建 GUI 应用
-cd easytier-gui
-
-# Linux
-pnpm tauri build --target x86_64-unknown-linux-gnu
-
-# macOS
-pnpm tauri build --target x86_64-apple-darwin      # Intel
-pnpm tauri build --target aarch64-apple-darwin     # Apple Silicon
-
-# Windows
-pnpm tauri build --target x86_64-pc-windows-msvc   # x64
-```
-
-构建产物位置：`easytier-gui/src-tauri/target/release/bundle/`
-
-### 构建移动应用
-
-```bash
-# 1. 安装 Android 目标平台
-rustup target add aarch64-linux-android
-rustup target add armv7-linux-androideabi
-rustup target add i686-linux-android
-rustup target add x86_64-linux-android
-
-# 2. 构建 Android 应用
-cd easytier-gui
-pnpm tauri android build
-```
-
-构建产物位置：`easytier-gui/src-tauri/gen/android/app/build/outputs/apk/universal/release/`
 
 ### 构建注意事项
 

@@ -106,7 +106,7 @@ can execute; guest ABI details and serialized TOML remain internal.
 
 ## Native client presentation
 
-The native GUI presentation layer is migrating from the Tauri + Vue client
-(`easytier-gui/`, deprecated) to Flutter (`easytier-flutter/`); this does not
-change the core or Host contracts above, only how the client presents them. See
-`docs/adr/0001-flutter-client.md`.
+The native GUI presentation layer is Flutter (`easytier-flutter/`). The old
+Tauri + Vue client (`easytier-gui/`) and its Android plugin were removed; this
+does not change the core or Host contracts above, only how the client presents
+them. See `docs/adr/0001-flutter-client.md`.

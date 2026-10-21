@@ -196,9 +196,6 @@ RUN mkdir -p /opt/macos-sdk/System/Library/Frameworks \
 # Warm the cargo registry AND the pnpm store with the repo's locked
 # dependency set so job runs download nothing. The repo tree comes from a
 # named build context (docker/build-image.sh archives the committed HEAD).
-# easytier-gui + tauri-plugin-vpnservice are warmed too: the APK job runs
-# `pnpm tauri android build` inside easytier-gui, and a cold store made
-# pnpm download through a flaky egress and hang.
 COPY --from=repo / /tmp/warmup/repo
 RUN cd /tmp/warmup/repo \
  && cargo fetch \

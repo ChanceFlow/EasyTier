@@ -1,12 +1,12 @@
 # GitHub Release Bridge (Gitea -> GitHub)
 #
-# This repo's canonical home is the Gitea instance; the public GitHub fork
-# exists so the FULL product matrix (Windows/macOS/GUI/APK) builds on free
-# GitHub-hosted runners. Pushing this branch's main to the fork natively
-# triggers Core/GUI/Mobile runs there, so on push this job only has to
-# fast-forward the fork. (dispatch_builds exists solely as a fallback if
-# GitHub push triggers ever go silent again - do not enable it together
-# with a working push trigger, it would double-schedule via concurrency.)
+# This repo's canonical home is the Gitea instance; the public GitHub build
+# mirror exists so the FULL core matrix builds on free GitHub-hosted runners.
+# Pushing this branch's main to the build mirror natively triggers Core runs
+# there, so on push this job only has to fast-forward the mirror.
+# (dispatch_builds exists solely as a fallback if GitHub push triggers ever go
+# silent again - do not enable it together with a working push trigger, it would
+# double-schedule via concurrency.)
 #
 # No server addresses or tokens in this file:
 #   secrets.ET_SERVER_URL   Gitea base url
@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       dispatch_builds:
-        description: 'also force-dispatch Core/GUI/Mobile on the fork (fallback only)'
+        description: 'also force-dispatch Core on the build mirror (fallback only)'
         type: boolean
         default: false
 
@@ -135,8 +135,8 @@ jobs:
           fi
 
           if [[ "${DISPATCH_BUILDS:-false}" == "true" ]]; then
-            API="https://api.github.com/repos/$GH_REPO/actions/workflows"
-            for wf in core.yml gui.yml mobile.yml; do
+            API="https://api.github.com/repos/$BUILD_REPO/actions/workflows"
+            for wf in core.yml flutter.yml; do
               curl -fsS -X POST -H "Authorization: Bearer $GH_PUSH_TOKEN" \
                 -H "Content-Type: application/json" \
                 -d '{"ref":"main"}' "$API/$wf/dispatches" \

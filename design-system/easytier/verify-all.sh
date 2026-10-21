@@ -37,8 +37,6 @@ fi
 # ---- 构建与测试 -------------------------------------------------------------
 step "frontend-lib 构建" pnpm --dir easytier-web/frontend-lib build
 step "frontend-lib 单测" pnpm --dir easytier-web/frontend-lib exec vitest run
-step "easytier-gui 构建" pnpm --dir easytier-gui build
-step "mobile-vpn 单测" pnpm --dir easytier-gui test:mobile-vpn
 
 printf '\n%s\n' "────────────────────────────────────────"
 if [ ${#FAILED[@]} -eq 0 ]; then

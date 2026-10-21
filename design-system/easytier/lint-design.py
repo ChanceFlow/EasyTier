@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """把 UX 指南里可静态检查的规则变成 CI 断言。
 
-扫描 easytier-gui 与 frontend-lib 的手写源码（跳过 generated/ 与 .d.ts），
+扫描 frontend-lib 的手写源码（跳过 generated/ 与 .d.ts），
 按规则报告违规。退出码非零表示存在 Critical/High 违规。
 
     python3 design-system/easytier/lint-design.py            # 全量报告
@@ -18,7 +18,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = [
-    ROOT / "easytier-gui" / "src",
     ROOT / "easytier-web" / "frontend-lib" / "src",
 ]
 SKIP_PARTS = {"generated", "node_modules", "dist", "__pycache__"}

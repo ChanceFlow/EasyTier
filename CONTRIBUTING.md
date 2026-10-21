@@ -91,7 +91,6 @@ sudo apt install -y bridge-utils
 ```
 easytier/          # Core functionality and libraries
 easytier-web/      # Web dashboard and frontend
-easytier-gui/      # Desktop GUI application
 .github/workflows/ # CI/CD configuration files
 ```
 
@@ -123,44 +122,6 @@ This builds the `easytier-core` Go-host profile for `wasm32-wasip1`, then
 optimizes it with the pinned official Binaryen release. Binaryen is downloaded
 once into `target/binaryen/` and verified by SHA-256; set `WASM_OPT` to use an
 existing matching binary.
-
-### Building GUI
-
-```bash
-# 1. Build frontend
-pnpm -r build
-
-# 2. Build GUI application
-cd easytier-gui
-
-# Linux
-pnpm tauri build --target x86_64-unknown-linux-gnu
-
-# macOS
-pnpm tauri build --target x86_64-apple-darwin      # Intel
-pnpm tauri build --target aarch64-apple-darwin     # Apple Silicon
-
-# Windows
-pnpm tauri build --target x86_64-pc-windows-msvc   # x64
-```
-
-Build artifacts: `easytier-gui/src-tauri/target/release/bundle/`
-
-### Building Mobile
-
-```bash
-# 1. Install Android targets
-rustup target add aarch64-linux-android
-rustup target add armv7-linux-androideabi
-rustup target add i686-linux-android
-rustup target add x86_64-linux-android
-
-# 2. Build Android application
-cd easytier-gui
-pnpm tauri android build
-```
-
-Build artifacts: `easytier-gui/src-tauri/gen/android/app/build/outputs/apk/universal/release/`
 
 ### Build Notes
 
