@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
@@ -20,9 +22,9 @@ enum _DevicePathFilter { all, direct, relayed, offline }
 
 extension on _DeviceSort {
   String get label => switch (this) {
-    _DeviceSort.latency => 'Latency',
+    _DeviceSort.latency => I18n.t('Latency'),
     _DeviceSort.name => 'Name',
-    _DeviceSort.status => 'Status',
+    _DeviceSort.status => I18n.t('Status'),
   };
 }
 
@@ -119,9 +121,9 @@ class _DevicesPageState extends State<DevicesPage> {
 
   String _subtitle(InstanceStatus status) {
     final phase = status.phase;
-    if (phase == ConnectionPhase.connecting) return 'Connecting…';
-    if (phase == ConnectionPhase.error) return 'Connection failed';
-    if (!phase.isUp) return 'Not connected';
+    if (phase == ConnectionPhase.connecting) return I18n.t('Connecting…');
+    if (phase == ConnectionPhase.error) return I18n.t('Connection failed');
+    if (!phase.isUp) return I18n.t('Not connected');
     final peers = status.peers;
     final online = peers.where((peer) => peer.online).length;
     return '$online of ${peers.length} online · ${status.routeCount} routes';
@@ -153,14 +155,14 @@ class _DevicesPageState extends State<DevicesPage> {
     final entries = _entries(online, offline);
 
     return EtPage(
-      title: 'Devices',
+      title: I18n.t('Devices'),
       subtitle: _subtitle(status),
       actions: [
         _sortButton(),
         EtIconButton(
           key: const Key('devices-search-toggle'),
           icon: _searchOpen ? Symbols.close : Symbols.search,
-          tooltip: _searchOpen ? 'Close search' : 'Search devices',
+          tooltip: _searchOpen ? 'Close search' : I18n.t('Search devices'),
           onPressed: _toggleSearch,
         ),
       ],
@@ -175,8 +177,8 @@ class _DevicesPageState extends State<DevicesPage> {
           if (up && status.phase == ConnectionPhase.degraded && status.peers.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: EtSpace.x3),
-              child: const EtBanner(
-                title: 'All peers are relayed',
+              child: EtBanner(
+                title: I18n.t('All peers are relayed'),
                 message: 'No direct path is available right now; latency includes relay hops.',
                 tone: EtTone.warn,
               ),
@@ -185,7 +187,7 @@ class _DevicesPageState extends State<DevicesPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: EtSpace.x3),
               child: EtBanner(
-                title: 'Connection failed',
+                title: I18n.t('Connection failed'),
                 message: state.lastError!,
                 tone: EtTone.danger,
               ),
@@ -218,7 +220,7 @@ class _DevicesPageState extends State<DevicesPage> {
   Widget _sortButton() {
     return PopupMenuButton<_DeviceSort>(
       key: const Key('devices-sort'),
-      tooltip: 'Sort devices',
+      tooltip: I18n.t('Sort devices'),
       icon: const Icon(Symbols.sort),
       onSelected: _setSort,
       itemBuilder: (context) => [
@@ -241,7 +243,7 @@ class _DevicesPageState extends State<DevicesPage> {
       key: const Key('devices-search-field'),
       controller: _searchController,
       focusNode: _searchFocus,
-      hintText: 'Filter by hostname or IP',
+      hintText: I18n.t('Filter by hostname or IP'),
       leading: const Icon(Symbols.search),
       backgroundColor: WidgetStatePropertyAll<Color?>(
         Color.alphaBlend(
@@ -253,7 +255,7 @@ class _DevicesPageState extends State<DevicesPage> {
         if (_query.isNotEmpty)
           IconButton(
             icon: const Icon(Symbols.close),
-            tooltip: 'Clear search',
+            tooltip: I18n.t('Clear search'),
             onPressed: _clearSearch,
           ),
       ],
@@ -276,9 +278,9 @@ class _DevicesPageState extends State<DevicesPage> {
 
     if (phase == ConnectionPhase.connecting) {
       return _emptyScroll(
-        const EtEmptyState(
+        EtEmptyState(
           icon: Symbols.monitor_heart,
-          title: 'Connecting…',
+          title: I18n.t('Connecting…'),
           message: 'Devices appear as soon as peers answer on the mesh.',
         ),
       );
@@ -297,17 +299,17 @@ class _DevicesPageState extends State<DevicesPage> {
       return _emptyScroll(
         EtEmptyState(
           icon: Symbols.devices,
-          title: 'Connect to see peers',
+          title: I18n.t('Connect to see peers'),
           message: 'The full device list appears here once the network is up.',
-          action: _connectButton(state, label: 'Connect'),
+          action: _connectButton(state, label: I18n.t('Connect')),
         ),
       );
     }
     if (status.peers.isEmpty) {
       return _emptyScroll(
-        const EtEmptyState(
+        EtEmptyState(
           icon: Symbols.devices,
-          title: 'No peers yet',
+          title: I18n.t('No peers yet'),
           message: 'This device is alone on the network. Peers show up here as they join.',
         ),
       );
@@ -316,12 +318,12 @@ class _DevicesPageState extends State<DevicesPage> {
       return _emptyScroll(
         EtEmptyState(
           icon: Symbols.search,
-          title: 'No devices match',
+          title: I18n.t('No devices match'),
           message: 'Nothing matches “${_query.trim()}”. Try a hostname or a virtual IP.',
           action: OutlinedButton.icon(
             onPressed: _clearSearch,
             icon: const Icon(Symbols.close, size: 18),
-            label: const Text('Clear search'),
+            label: Text(I18n.t('Clear search')),
           ),
         ),
       );
@@ -343,10 +345,10 @@ class _DevicesPageState extends State<DevicesPage> {
   /// `ListView.builder` renders headers and rows together (no nested scrollables,
   /// no plain `Column` of rows).
   List<_ListEntry> _entries(List<Peer> online, List<Peer> offline) => [
-    if (online.isNotEmpty) _ListEntry.header('Online', online.length),
+    if (online.isNotEmpty) _ListEntry.header(I18n.t('Online'), online.length),
     for (var i = 0; i < online.length; i++)
       _ListEntry.peer(online[i], firstInGroup: i == 0),
-    if (offline.isNotEmpty) _ListEntry.header('Offline', offline.length),
+    if (offline.isNotEmpty) _ListEntry.header(I18n.t('Offline'), offline.length),
     for (var i = 0; i < offline.length; i++)
       _ListEntry.peer(offline[i], firstInGroup: i == 0),
   ];
@@ -449,16 +451,16 @@ class _DevicesPageState extends State<DevicesPage> {
           dataTextStyle: theme.textTheme.bodyMedium?.copyWith(color: p.text),
           columns: [
             DataColumn(
-              label: const Text('Status'),
+              label: Text(I18n.t('Status')),
               onSort: (_, _) => _setSort(_DeviceSort.status),
             ),
             DataColumn(
-              label: const Text('Device'),
+              label: Text(I18n.t('Device')),
               onSort: (_, _) => _setSort(_DeviceSort.name),
             ),
-            const DataColumn(label: Text('Path')),
+            DataColumn(label: Text(I18n.t('Path'))),
             DataColumn(
-              label: const Text('Latency'),
+              label: Text(I18n.t('Latency')),
               numeric: true,
               onSort: (_, _) => _setSort(_DeviceSort.latency),
             ),
@@ -574,7 +576,7 @@ class _DeviceCell extends StatelessWidget {
                     const SizedBox(width: EtSpace.x2),
                     EtBadge(
                       label: peer.lastSeen == null
-                          ? 'offline'
+                          ? I18n.t('offline')
                           : 'offline ${peerLastSeenLabel(peer).replaceAll(' ago', '')}',
                       tone: EtTone.neutral,
                     ),
@@ -606,7 +608,7 @@ class _PathCell extends StatelessWidget {
       return Text('—', style: EtText.ui(size: EtType.caption, color: p.textDisabled));
     }
     if (peer.path == 'relay') {
-      return const EtBadge(label: 'Relay', tone: EtTone.warn, icon: Symbols.alt_route);
+      return EtBadge(label: I18n.t('Relay'), tone: EtTone.warn, icon: Symbols.alt_route);
     }
     return Text(peer.pathLabel, style: EtText.ui(size: EtType.caption, color: p.text2));
   }
@@ -632,10 +634,10 @@ class _DeviceFilterBar extends StatelessWidget {
     final offline = peers.where((p) => !p.online).length;
 
     final items = [
-      (_DevicePathFilter.all, 'All', peers.length, Symbols.devices),
-      (_DevicePathFilter.direct, 'Direct', direct, Symbols.bolt),
-      (_DevicePathFilter.relayed, 'Relayed', relayed, Symbols.alt_route),
-      (_DevicePathFilter.offline, 'Offline', offline, Symbols.link_off),
+      (_DevicePathFilter.all, I18n.t('All'), peers.length, Symbols.devices),
+      (_DevicePathFilter.direct, I18n.t('Direct'), direct, Symbols.bolt),
+      (_DevicePathFilter.relayed, I18n.t('Relayed'), relayed, Symbols.alt_route),
+      (_DevicePathFilter.offline, I18n.t('Offline'), offline, Symbols.link_off),
     ];
 
     return Wrap(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/ui/ui.dart';
 import 'config_form.dart';
@@ -48,7 +50,7 @@ class AdvancedConfigSection extends StatelessWidget {
 
     return ConfigStack(
       children: [
-        const ConfigSubhead(label: 'Transport'),
+        ConfigSubhead(label: I18n.t('Transport')),
         ConfigTwoColumn(
           children: [
             toggle(
@@ -60,15 +62,15 @@ class AdvancedConfigSection extends StatelessWidget {
             ),
             toggle(
               id: 'disable-encryption',
-              title: 'Disable encryption',
+              title: I18n.t('Disable encryption'),
               subtitle: 'Plaintext transport. Only for closed test labs.',
               value: values.disableEncryption,
               apply: (next) => values.copyWith(disableEncryption: next),
             ),
             toggle(
               id: 'disable-ipv6',
-              title: 'Disable IPv6',
-              subtitle: 'Do not assign or route IPv6 addresses.',
+              title: I18n.t('Disable IPv6'),
+              subtitle: I18n.t('Do not assign or route IPv6 addresses.'),
               value: values.disableIpv6,
               apply: (next) => values.copyWith(disableIpv6: next),
             ),
@@ -88,7 +90,7 @@ class AdvancedConfigSection extends StatelessWidget {
             ),
             toggle(
               id: 'bind-device',
-              title: 'Bind to device',
+              title: I18n.t('Bind to device'),
               subtitle: 'Pin the tunnel to the physical interface.',
               value: values.bindDevice,
               apply: (next) => values.copyWith(bindDevice: next),
@@ -99,7 +101,7 @@ class AdvancedConfigSection extends StatelessWidget {
           children: [
             EtTextField(
               key: const Key('config-field-mtu'),
-              label: 'MTU',
+              label: I18n.t('MTU'),
               controller: form.mtu,
               mono: true,
               enabled: enabled,
@@ -122,7 +124,7 @@ class AdvancedConfigSection extends StatelessWidget {
             ),
           ],
         ),
-        const ConfigSubhead(label: 'Routing'),
+        ConfigSubhead(label: I18n.t('Routing')),
         ConfigTwoColumn(
           children: [
             toggle(
@@ -134,7 +136,7 @@ class AdvancedConfigSection extends StatelessWidget {
             ),
             toggle(
               id: 'disable-p2p',
-              title: 'Disable P2P',
+              title: I18n.t('Disable P2P'),
               subtitle: 'Relay everything through the selected peer.',
               value: values.disableP2p,
               apply: (next) => values.copyWith(disableP2p: next),

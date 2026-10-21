@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/ui/ui.dart';
 import 'config_form.dart';
@@ -37,7 +39,7 @@ class BasicConfigSection extends StatelessWidget {
           children: [
             EtTextField(
               key: const Key('config-field-instance-name'),
-              label: 'Instance name',
+              label: I18n.t('Instance name'),
               controller: form.instanceName,
               mono: true,
               enabled: enabled,
@@ -47,7 +49,7 @@ class BasicConfigSection extends StatelessWidget {
             ),
             EtTextField(
               key: const Key('config-field-hostname'),
-              label: 'Hostname',
+              label: I18n.t('Hostname'),
               controller: form.hostname,
               mono: true,
               enabled: enabled,
@@ -61,7 +63,7 @@ class BasicConfigSection extends StatelessWidget {
           children: [
             EtTextField(
               key: const Key('config-field-network-name'),
-              label: 'Network name',
+              label: I18n.t('Network name'),
               controller: form.networkName,
               enabled: enabled,
               hint: 'EasyTier Home',
@@ -70,7 +72,7 @@ class BasicConfigSection extends StatelessWidget {
             ),
             EtTextField(
               key: const Key('config-field-network-secret'),
-              label: 'Network secret',
+              label: I18n.t('Network secret'),
               controller: form.networkSecret,
               mono: true,
               obscure: !revealSecret,
@@ -90,8 +92,8 @@ class BasicConfigSection extends StatelessWidget {
         ),
         EtSwitchRow(
           key: const Key('config-switch-dhcp'),
-          title: 'DHCP',
-          subtitle: 'Ask the network for a virtual IPv4 address.',
+          title: I18n.t('DHCP'),
+          subtitle: I18n.t('Ask the network for a virtual IPv4 address.'),
           value: values.dhcp,
           enabled: enabled,
           onChanged: (next) => onValuesChanged(values.copyWith(dhcp: next)),
@@ -132,7 +134,7 @@ class BasicConfigSection extends StatelessWidget {
           ),
         EtTextField(
           key: const Key('config-field-peer-urls'),
-          label: 'Peer URLs',
+          label: I18n.t('Peer URLs'),
           controller: form.peerUrls,
           mono: true,
           maxLines: 3,
@@ -144,7 +146,7 @@ class BasicConfigSection extends StatelessWidget {
         ),
         EtTextField(
           key: const Key('config-field-listener-urls'),
-          label: 'Listener URLs',
+          label: I18n.t('Listener URLs'),
           controller: form.listenerUrls,
           mono: true,
           maxLines: 3,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
@@ -71,19 +73,19 @@ class _PeerDetailSheet extends StatelessWidget {
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Symbols.alt_route),
-              title: const Text('Path'),
+              title: Text(I18n.t('Path')),
               trailing: peer.online && peer.path == 'relay'
                   ? EtBadge(label: peer.pathLabel, tone: EtTone.warn)
                   : Text(pathValue, style: EtText.ui(size: EtType.bodySm, color: p.text)),
             ),
             ListTile(
               leading: const Icon(Symbols.speed),
-              title: const Text('Latency'),
+              title: Text(I18n.t('Latency')),
               trailing: LatencyPill(peer: peer),
             ),
             ListTile(
               leading: const Icon(Symbols.schedule),
-              title: const Text('Last seen'),
+              title: Text(I18n.t('Last seen')),
               trailing: Text(
                 lastSeen,
                 style: EtText.mono(size: EtType.bodySm, color: p.text2),
@@ -91,7 +93,7 @@ class _PeerDetailSheet extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Symbols.fingerprint),
-              title: const Text('Peer ID'),
+              title: Text(I18n.t('Peer ID')),
               trailing: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 200),
                 child: Text(
@@ -106,7 +108,7 @@ class _PeerDetailSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(EtSpace.x6, EtSpace.x4, EtSpace.x6, 0),
               child: EtPrimaryButton(
-                label: 'Copy IP',
+                label: I18n.t('Copy IP'),
                 icon: Symbols.content_copy,
                 onPressed: () => _copyIp(context, peer),
               ),

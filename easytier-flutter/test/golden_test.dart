@@ -66,4 +66,5 @@ void main() {
     await openDestination(tester, EtDestination.config);
     await expectAppGolden(tester, 'config_desktop');
   });
+
 }

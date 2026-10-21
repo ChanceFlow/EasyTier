@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/state/app_state.dart';
@@ -10,9 +12,9 @@ enum _LogFilter { all, info, warn, error }
 
 extension on _LogFilter {
   String get label => switch (this) {
-    _LogFilter.all => 'All',
-    _LogFilter.info => 'Info+',
-    _LogFilter.warn => 'Warnings',
+    _LogFilter.all => I18n.t('All'),
+    _LogFilter.info => I18n.t('Info+'),
+    _LogFilter.warn => I18n.t('Warnings'),
     _LogFilter.error => 'Errors',
   };
 
@@ -65,7 +67,7 @@ class _LogsPageState extends State<LogsPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Client logs',
+              I18n.t('Client logs'),
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
@@ -80,13 +82,13 @@ class _LogsPageState extends State<LogsPage> {
         actions: [
           IconButton(
             key: const Key('logs-copy'),
-            tooltip: 'Copy logs',
+            tooltip: I18n.t('Copy logs'),
             onPressed: () => _copy(state),
             icon: const Icon(Symbols.content_copy),
           ),
           IconButton(
             key: const Key('logs-clear'),
-            tooltip: 'Clear logs',
+            tooltip: I18n.t('Clear logs'),
             onPressed: () => _clear(state),
             icon: const Icon(Symbols.delete_sweep),
           ),
@@ -125,9 +127,9 @@ class _LogsPageState extends State<LogsPage> {
               ),
               Expanded(
                 child: entries.isEmpty
-                    ? const EtEmptyState(
+                    ? EtEmptyState(
                         icon: Symbols.receipt_long,
-                        title: 'No logs yet',
+                        title: I18n.t('No logs yet'),
                         message:
                             'Connect a network or save a config and lifecycle lines appear here. Log level is set in Settings.',
                       )

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/theme.dart';
@@ -8,11 +10,11 @@ enum EtDestination { home, devices, config, activity, settings }
 
 extension EtDestinationInfo on EtDestination {
   String get label => switch (this) {
-    EtDestination.home => 'Home',
-    EtDestination.devices => 'Devices',
-    EtDestination.config => 'Config',
-    EtDestination.activity => 'Activity',
-    EtDestination.settings => 'Settings',
+    EtDestination.home => I18n.t('Home'),
+    EtDestination.devices => I18n.t('Devices'),
+    EtDestination.config => I18n.t('Config'),
+    EtDestination.activity => I18n.t('Activity'),
+    EtDestination.settings => I18n.t('Settings'),
   };
 
   IconData get icon => switch (this) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../client/core_client.dart';
+import '../i18n/i18n.dart';
 import 'log_bus.dart';
 import '../models/models.dart';
 import '../ui/et_shell.dart';
@@ -296,6 +297,7 @@ class AppState extends ChangeNotifier {
 
   void setLocale(Locale value) {
     locale = value;
+    I18n.locale = value;
     notifyListeners();
   }
 

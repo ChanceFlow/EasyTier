@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
@@ -60,17 +62,17 @@ class PortForwardConfigSection extends StatelessWidget {
           onChanged: (_) => onTextChanged(ConfigField.proxyCidrs),
         ),
         ConfigListHeader(
-          title: 'Port forwards',
-          addLabel: 'Add port forward',
+          title: I18n.t('Port forwards'),
+          addLabel: I18n.t('Add port forward'),
           count: forwards.length,
           onAdd: enabled ? onAdd : null,
         ),
         if (forwards.isEmpty)
-          const EtBanner(
+          EtBanner(
             tone: EtTone.neutral,
             icon: Symbols.swap_horiz,
             title: 'No port forwards',
-            message: 'Add a rule to publish a local service on the mesh.',
+            message: I18n.t('Add a rule to publish a local service on the mesh.'),
           )
         else
           Column(
@@ -139,7 +141,7 @@ class _PortForwardTile extends StatelessWidget {
       ),
       trailing: IconButton(
         icon: const Icon(Symbols.delete),
-        tooltip: 'Delete port forward',
+        tooltip: I18n.t('Delete port forward'),
         onPressed: enabled ? onDelete : null,
       ),
     );

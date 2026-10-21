@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
@@ -54,26 +56,35 @@ class HomePage extends StatelessWidget {
       _HomeView.stopped => (EtSignalState.off, null),
       _HomeView.connecting => (EtSignalState.connecting, null),
       _HomeView.connected => (EtSignalState.connected, null),
-      _HomeView.degraded => (EtSignalState.degraded, 'Degraded — relay only'),
+      _HomeView.degraded => (EtSignalState.degraded, I18n.t('Degraded — relay only')),
       _HomeView.error => (EtSignalState.disconnected, null),
     };
 
     final stateLine = switch (view) {
-      _HomeView.stopped => 'Not connected',
-      _HomeView.connecting => 'Connecting to $networkName…',
-      _HomeView.connected => 'Connected to $networkName',
-      _HomeView.degraded => 'Connected to $networkName · relay path',
-      _HomeView.error => 'Connection failed',
+      _HomeView.stopped => I18n.t('Not connected'),
+      _HomeView.connecting => I18n.tv(
+        'Connecting to {name}…',
+        {'name': networkName},
+      ),
+      _HomeView.connected => I18n.tv(
+        'Connected to {name}',
+        {'name': networkName},
+      ),
+      _HomeView.degraded => I18n.tv(
+        'Connected to {name} · relay path',
+        {'name': networkName},
+      ),
+      _HomeView.error => I18n.t('Connection failed'),
     };
 
     final Widget? banner = switch (view) {
       _HomeView.degraded => _degradedBanner(status),
       _HomeView.error => EtBanner(
           tone: EtTone.danger,
-          title: 'Connection failed',
+          title: I18n.t('Connection failed'),
           message: status.error ??
               state.lastError ??
-              'The core could not start this network.',
+              I18n.t('The core could not start this network.'),
         ),
       _ => null,
     };
@@ -82,25 +93,25 @@ class HomePage extends StatelessWidget {
     // up", tonal for "take it down" — never a second filled button.
     final Widget action = switch (view) {
       _HomeView.stopped => EtPrimaryButton(
-          label: 'Connect',
+          label: I18n.t('Connect'),
           icon: Symbols.cable,
           onPressed: () {
             EtHaptics.impact();
             unawaited(state.connect());
           },
         ),
-      _HomeView.connecting => const EtPrimaryButton(
-          label: 'Connecting…',
+      _HomeView.connecting => EtPrimaryButton(
+          label: I18n.t('Connecting…'),
           loading: true,
         ),
       _HomeView.error => EtPrimaryButton(
-          label: 'Reconnect',
+          label: I18n.t('Reconnect'),
           icon: Symbols.refresh,
           onPressed: () => unawaited(state.connect()),
         ),
       _HomeView.connected || _HomeView.degraded => state.busy
-          ? const EtPrimaryButton(
-              label: 'Disconnecting…',
+          ? EtPrimaryButton(
+              label: I18n.t('Disconnecting…'),
               tonal: true,
               loading: true,
             )
@@ -129,15 +140,15 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Symbols.power_settings_new, size: 18),
-                label: const Text('Disconnect'),
+                label: Text(I18n.t('Disconnect')),
               ),
             ),
     };
 
     final trafficEmptyMessage = switch (view) {
-      _HomeView.stopped => 'Traffic starts when you connect.',
-      _HomeView.connecting => 'Waiting for the tunnel…',
-      _HomeView.error => 'Traffic stopped.',
+      _HomeView.stopped => I18n.t('Traffic starts when you connect.'),
+      _HomeView.connecting => I18n.t('Waiting for the tunnel…'),
+      _HomeView.error => I18n.t('Traffic stopped.'),
       _ => null,
     };
 
@@ -146,7 +157,8 @@ class HomePage extends StatelessWidget {
       signalLabel: signalLabel,
       latencyMs: latencyMs,
       stateLine: stateLine,
-      uptimeLabel: up ? 'up ${formatUptime(status.uptime)}' : '—',
+      uptimeLabel:
+          up ? '${I18n.t('up')} ${formatUptime(status.uptime)}' : '—',
       action: action,
     );
 
@@ -184,7 +196,7 @@ class HomePage extends StatelessWidget {
     );
 
     return EtPage(
-      title: 'Home',
+      title: I18n.t('Home'),
       subtitle: networkName,
       actions: [
         _NetworkSwitcherAction(
@@ -266,10 +278,10 @@ class HomePage extends StatelessWidget {
         online.isNotEmpty && online.every((peer) => peer.path == 'relay');
     return EtBanner(
       tone: EtTone.warn,
-      title: relayOnly ? 'Relay-only path' : 'Network degraded',
+      title: relayOnly ? I18n.t('Relay-only path') : I18n.t('Network degraded'),
       message: relayOnly
-          ? 'All online peers are reached through a relay. Direct paths are unavailable right now.'
-          : 'Some peers are unreachable or relayed. Open Devices for the per-peer paths.',
+          ? I18n.t('All online peers are reached through a relay. Direct paths are unavailable right now.')
+          : I18n.t('Some peers are unreachable or relayed. Open Devices for the per-peer paths.'),
     );
   }
 
@@ -299,7 +311,7 @@ class HomePage extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Network profiles',
+                        I18n.t('Network profiles'),
                         style: text.titleLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: p.text,
@@ -312,7 +324,7 @@ class HomePage extends StatelessWidget {
                         unawaited(state.addInstance());
                       },
                       icon: const Icon(Symbols.add, size: 18),
-                      label: const Text('New'),
+                      label: Text(I18n.t('New')),
                     ),
                   ],
                 ),
@@ -339,8 +351,8 @@ class HomePage extends StatelessWidget {
                     style: EtText.mono(size: EtType.caption, color: p.text2),
                   ),
                   trailing: instance.id == state.activeId
-                      ? const EtBadge(
-                          label: 'Active',
+                      ? EtBadge(
+                          label: I18n.t('Active'),
                           tone: EtTone.success,
                           icon: Symbols.check_circle,
                         )
@@ -357,7 +369,7 @@ class HomePage extends StatelessWidget {
                   state.setDestination(EtDestination.config);
                 },
                 icon: const Icon(Symbols.tune, size: 18),
-                label: const Text('Edit active configuration'),
+                label: Text(I18n.t('Edit active configuration')),
               ),
             ],
           ),
@@ -430,7 +442,7 @@ class _NoNetworkHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EtPage(
-      title: 'Home',
+      title: I18n.t('Home'),
       subtitle: 'No network',
       child: EtScrollBody(
         top: EtSpace.x6,
@@ -440,7 +452,7 @@ class _NoNetworkHome extends StatelessWidget {
             title: 'No networks yet',
             message: 'Add a network to start routing peers.',
             action: EtPrimaryButton(
-              label: 'Add network',
+              label: I18n.t('Add network'),
               icon: Symbols.add,
               expanded: false,
               onPressed: () => unawaited(state.addInstance()),

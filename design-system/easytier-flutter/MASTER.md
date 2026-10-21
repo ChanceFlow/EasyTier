@@ -590,6 +590,17 @@ M3 用 **elevation level + surface container role** 表达高度，取消 v3 的
 
 ---
 
+## 6.8 本地化（i18n）
+
+- 英文文案直接留在控件里（可读性优先），`I18n.t('English')` 在 `zh` 时查词典；
+  未翻译的字符串自然回退英文，不出现 key。
+- `AppState.setLocale` 同步 `I18n.locale` 并 notify；`MaterialApp` 接入
+  `flutter_localizations` 的 en/zh delegate 与 `supportedLocales`。
+- 语言切换会以 `AppRoot(key: ValueKey(locale))` 重建整棵子树（避免 const 子树
+  不刷新），各页状态由 `AppState` 持有，不受影响。
+- 覆盖：导航、Home、Devices、Activity、Settings、Config 主要文案与错误；
+  剩余长句校验文案待补。
+
 ## 6.9 品牌 mark 与启动图标
 
 - 统一 mark：**M3 蓝 (#1A73E8) 圆角方块 + 白色三节点 mesh（三角连接）**；

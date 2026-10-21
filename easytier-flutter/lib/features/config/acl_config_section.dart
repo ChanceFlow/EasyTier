@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
@@ -44,17 +46,17 @@ class AclConfigSection extends StatelessWidget {
           ),
         ),
         ConfigListHeader(
-          title: 'ACL rules',
-          addLabel: 'Add ACL rule',
+          title: I18n.t('ACL rules'),
+          addLabel: I18n.t('Add ACL rule'),
           count: rules.length,
           onAdd: enabled ? onAdd : null,
         ),
         if (rules.isEmpty)
-          const EtBanner(
+          EtBanner(
             tone: EtTone.neutral,
             icon: Symbols.shield,
             title: 'No ACL rules',
-            message: 'Both chains currently allow all traffic.',
+            message: I18n.t('Both chains currently allow all traffic.'),
           )
         else
           Column(
@@ -145,7 +147,7 @@ class _AclRuleTile extends StatelessWidget {
             ),
       trailing: IconButton(
         icon: const Icon(Symbols.delete),
-        tooltip: 'Delete ACL rule',
+        tooltip: I18n.t('Delete ACL rule'),
         onPressed: enabled ? onDelete : null,
       ),
     );

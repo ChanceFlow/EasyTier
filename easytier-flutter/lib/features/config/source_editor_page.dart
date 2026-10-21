@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
@@ -66,7 +68,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
     if (!mounted) return;
     EtHaptics.selection();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Source copied to clipboard.')),
+      SnackBar(content: Text(I18n.t('Source copied to clipboard.'))),
     );
   }
 
@@ -101,7 +103,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
       SnackBar(
         content: Text(
           savedPath == null
-              ? 'Source copied to clipboard.'
+              ? I18n.t('Source copied to clipboard.')
               : 'Saved to $savedPath (also copied).',
         ),
       ),
@@ -114,7 +116,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
     if (!mounted) return;
     if (text == null || text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Clipboard is empty.')),
+        SnackBar(content: Text(I18n.t('Clipboard is empty.'))),
       );
       return;
     }
@@ -151,7 +153,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Edit source',
+              I18n.t('Edit source'),
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.2,
@@ -168,23 +170,23 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
         actions: [
           IconButton(
             key: const Key('source-import'),
-            tooltip: 'Import from clipboard',
+            tooltip: I18n.t('Import from clipboard'),
             onPressed: _import,
             icon: const Icon(Symbols.upload_file),
           ),
           IconButton(
             key: const Key('source-export'),
-            tooltip: 'Export (copy + save file)',
+            tooltip: I18n.t('Export (copy + save file)'),
             onPressed: _export,
             icon: const Icon(Symbols.download),
           ),
           IconButton(
-            tooltip: 'Copy source',
+            tooltip: I18n.t('Copy source'),
             onPressed: _copy,
             icon: const Icon(Symbols.content_copy),
           ),
           IconButton(
-            tooltip: 'Revert to current draft',
+            tooltip: I18n.t('Revert to current draft'),
             onPressed: _revert,
             icon: const Icon(Symbols.restart_alt),
           ),
@@ -215,7 +217,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
             _SourceBanner(
               tone: EtTone.success,
               icon: Symbols.check_circle,
-              title: 'Valid TOML',
+              title: I18n.t('Valid TOML'),
               message: 'Applied to the draft only; press Save in Config to persist.',
             ),
           Expanded(
@@ -370,7 +372,7 @@ class _SourceActionBar extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onCancel,
-                child: const Text('Cancel'),
+                child: Text(I18n.t('Cancel')),
               ),
               const SizedBox(width: EtSpace.x2),
               FilledButton(
@@ -380,7 +382,7 @@ class _SourceActionBar extends StatelessWidget {
                   shape: const StadiumBorder(),
                   padding: const EdgeInsets.symmetric(horizontal: EtSpace.x5),
                 ),
-                child: const Text('Apply'),
+                child: Text(I18n.t('Apply')),
               ),
             ],
           ),

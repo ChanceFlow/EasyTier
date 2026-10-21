@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
@@ -411,8 +413,8 @@ class ConfigInstanceCard extends StatelessWidget {
                       icon: Symbols.lan,
                     ),
                     if (active)
-                      const EtBadge(
-                        label: 'Active',
+                      EtBadge(
+                        label: I18n.t('Active'),
                         tone: EtTone.success,
                         icon: Symbols.check_circle,
                       )

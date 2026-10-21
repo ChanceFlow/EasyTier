@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/state/app_state.dart';
@@ -7,7 +9,7 @@ import '../../core/ui/ui.dart';
 import 'logs_page.dart';
 import 'settings_widgets.dart';
 
-const _appVersion = '2.6.4+7';
+const _appVersion = '2.6.4+8';
 const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
 /// Settings — global application preferences, core runtime diagnostics, and
@@ -40,8 +42,8 @@ class _SettingsPageState extends State<SettingsPage> {
     final state = AppScope.of(context);
 
     return EtPage(
-      title: 'Settings',
-      subtitle: 'Preferences & core runtime',
+      title: I18n.t('Settings'),
+      subtitle: I18n.t('Preferences & core runtime'),
       child: EtScrollBody(
         children: [
           LayoutBuilder(
@@ -73,17 +75,17 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _appearanceGroup(AppState state) {
     final reduced = context.etReducedMotion;
     return SettingsGroup(
-      title: 'Appearance',
+      title: I18n.t('Appearance'),
       children: [
         SettingsSegmentedRow<ThemeMode>(
           icon: Symbols.palette,
           tone: EtTone.accent,
-          title: 'Theme',
+          title: I18n.t('Theme'),
           value: state.themeMode,
-          options: const [
-            (ThemeMode.dark, 'Dark'),
-            (ThemeMode.light, 'Light'),
-            (ThemeMode.system, 'System'),
+          options: [
+            (ThemeMode.dark, I18n.t('Dark')),
+            (ThemeMode.light, I18n.t('Light')),
+            (ThemeMode.system, I18n.t('System')),
           ],
           onChanged: state.setThemeMode,
         ),
@@ -91,11 +93,11 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsSegmentedRow<Locale>(
           icon: Symbols.language,
           tone: EtTone.info,
-          title: 'Language',
+          title: I18n.t('Language'),
           value: state.locale,
-          options: const [
-            (Locale('en'), 'English'),
-            (Locale('zh'), '中文'),
+          options: [
+            (Locale('en'), I18n.t('English')),
+            (Locale('zh'), I18n.t('中文')),
           ],
           onChanged: state.setLocale,
         ),
@@ -103,10 +105,10 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsRow(
           icon: Symbols.animation,
           tone: EtTone.tertiary,
-          title: 'Reduced motion',
-          subtitle: 'System accessibility',
+          title: I18n.t('Reduced motion'),
+          subtitle: I18n.t('System accessibility'),
           trailing: EtBadge(
-            label: reduced ? 'Reduced' : 'Standard',
+            label: reduced ? I18n.t('Reduced') : I18n.t('Standard'),
             tone: reduced ? EtTone.info : EtTone.neutral,
           ),
         ),
@@ -118,15 +120,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final p = context.et;
     final hasServer = state.configServerUrl.isNotEmpty;
     return SettingsGroup(
-      title: 'Core & Networking',
+      title: I18n.t('Core & Networking'),
       children: [
-        const SettingsRow(
+        SettingsRow(
           icon: Symbols.memory,
           tone: EtTone.success,
-          title: 'Execution mode',
-          subtitle: 'In-process FFI tunnel',
+          title: I18n.t('Execution mode'),
+          subtitle: I18n.t('In-process FFI tunnel'),
           trailing: EtBadge(
-            label: 'Normal (in-process)',
+            label: I18n.t('Normal (in-process)'),
             tone: EtTone.success,
           ),
         ),
@@ -135,10 +137,10 @@ class _SettingsPageState extends State<SettingsPage> {
           key: const Key('settings-config-server-row'),
           icon: Symbols.cloud_sync,
           tone: EtTone.info,
-          title: 'Config server',
+          title: I18n.t('Config server'),
           subtitle: hasServer
               ? state.configServerUrl
-              : 'Remote profile sync',
+              : I18n.t('Remote profile sync'),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -150,7 +152,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 switchOutCurve: EtCurves.exit,
                 child: EtBadge(
                   key: ValueKey<bool>(hasServer),
-                  label: hasServer ? 'Configured' : 'Off',
+                  label: hasServer ? I18n.t('Configured') : I18n.t('Off'),
                   tone: hasServer ? EtTone.accent : EtTone.neutral,
                 ),
               ),
@@ -166,8 +168,8 @@ class _SettingsPageState extends State<SettingsPage> {
             key: const Key('settings-log-level-row'),
             icon: Symbols.terminal,
             tone: EtTone.warn,
-            title: 'Log level',
-            subtitle: 'Core event verbosity',
+            title: I18n.t('Log level'),
+            subtitle: I18n.t('Core event verbosity'),
             trailing: SettingsMonoChip(
               text: state.logLevel,
               icon: Symbols.expand_more,
@@ -198,8 +200,8 @@ class _SettingsPageState extends State<SettingsPage> {
           key: const Key('settings-logs-row'),
           icon: Symbols.receipt_long,
           tone: EtTone.neutral,
-          title: 'Client logs',
-          subtitle: 'Lifecycle, RPC and config lines',
+          title: I18n.t('Client logs'),
+          subtitle: I18n.t('Lifecycle, RPC and config lines'),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -225,13 +227,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _aboutGroup() {
     final p = context.et;
     return SettingsGroup(
-      title: 'About',
+      title: I18n.t('About'),
       children: [
-        const SettingsRow(
+        SettingsRow(
           icon: Symbols.verified_user,
           tone: EtTone.accent,
-          title: 'App version',
-          subtitle: 'Flutter client',
+          title: I18n.t('App version'),
+          subtitle: I18n.t('Flutter client'),
           trailing: SettingsMonoChip(text: _appVersion),
         ),
         const SettingsDivider(),
@@ -242,8 +244,8 @@ class _SettingsPageState extends State<SettingsPage> {
             return SettingsRow(
               icon: Symbols.build,
               tone: EtTone.tertiary,
-              title: 'Core version',
-              subtitle: 'Embedded Rust FFI',
+              title: I18n.t('Core version'),
+              subtitle: I18n.t('Embedded Rust FFI'),
               trailing: SettingsMonoChip(text: version ?? 'Loading…'),
             );
           },
@@ -252,7 +254,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsRow(
           icon: Symbols.menu_book,
           tone: EtTone.info,
-          title: 'Documentation',
+          title: I18n.t('Documentation'),
           subtitle: 'easytier.cn',
           trailing: Icon(Symbols.content_copy, size: 18, color: p.text2),
           onTap: () => _copyLink('https://easytier.cn'),
@@ -261,7 +263,7 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsRow(
           icon: Symbols.code,
           tone: EtTone.neutral,
-          title: 'Source repository',
+          title: I18n.t('Source repository'),
           subtitle: 'github.com/EasyTier/EasyTier',
           trailing: Icon(Symbols.content_copy, size: 18, color: p.text2),
           onTap: () => _copyLink('https://github.com/EasyTier/EasyTier'),
@@ -309,7 +311,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Config server',
+                          I18n.t('Config server'),
                           style: text.titleLarge?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: p.text,
@@ -340,18 +342,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (state.configServerUrl.isNotEmpty)
                     TextButton(
                       onPressed: () => Navigator.of(sheetContext).pop(''),
-                      child: const Text('Clear'),
+                      child: Text(I18n.t('Clear')),
                     ),
                   const SizedBox(width: EtSpace.x2),
                   TextButton(
                     onPressed: () => Navigator.of(sheetContext).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(I18n.t('Cancel')),
                   ),
                   const SizedBox(width: EtSpace.x2),
                   FilledButton(
                     onPressed: () =>
                         Navigator.of(sheetContext).pop(controller.text.trim()),
-                    child: const Text('Save'),
+                    child: Text(I18n.t('Save')),
                   ),
                 ],
               ),

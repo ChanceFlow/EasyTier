@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
@@ -69,7 +71,7 @@ class _ShareNetworkSheetState extends State<ShareNetworkSheet> {
               const SizedBox(width: EtSpace.x3),
               Expanded(
                 child: Text(
-                  'Share network',
+                  I18n.t('Share network'),
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -88,7 +90,7 @@ class _ShareNetworkSheetState extends State<ShareNetworkSheet> {
             contentPadding: EdgeInsets.zero,
             value: _includeSecret,
             onChanged: (value) => setState(() => _includeSecret = value),
-            title: const Text('Include network secret'),
+            title: Text(I18n.t('Include network secret')),
             subtitle: Text(
               'Only share with people you trust.',
               style: theme.textTheme.bodySmall?.copyWith(color: p.text2),
@@ -117,7 +119,7 @@ class _ShareNetworkSheetState extends State<ShareNetworkSheet> {
               shape: const StadiumBorder(),
             ),
             icon: const Icon(Symbols.content_copy, size: 18),
-            label: const Text('Copy invitation'),
+            label: Text(I18n.t('Copy invitation')),
           ),
         ],
       ),

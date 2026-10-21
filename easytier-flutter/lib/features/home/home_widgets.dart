@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
@@ -105,11 +107,11 @@ class _HomeHeroState extends State<HomeHero>
         : 'Latency $latencyMs milliseconds';
 
     final (tone, icon, defaultLabel) = switch (widget.signalState) {
-      EtSignalState.connected => (EtTone.success, Symbols.check_circle, 'Connected'),
-      EtSignalState.connecting => (EtTone.info, Symbols.sync, 'Connecting'),
-      EtSignalState.degraded => (EtTone.warn, Symbols.warning, 'Degraded'),
-      EtSignalState.disconnected => (EtTone.danger, Symbols.link_off, 'Disconnected'),
-      EtSignalState.off => (EtTone.neutral, Symbols.radio_button_unchecked, 'Not running'),
+      EtSignalState.connected => (EtTone.success, Symbols.check_circle, I18n.t('Connected')),
+      EtSignalState.connecting => (EtTone.info, Symbols.sync, I18n.t('Connecting')),
+      EtSignalState.degraded => (EtTone.warn, Symbols.warning, I18n.t('Degraded')),
+      EtSignalState.disconnected => (EtTone.danger, Symbols.link_off, I18n.t('Disconnected')),
+      EtSignalState.off => (EtTone.neutral, Symbols.radio_button_unchecked, I18n.t('Not running')),
     };
     final statusText = widget.signalLabel ?? defaultLabel;
     final (chipBg, chipFg) = tone.resolve(p);
@@ -221,7 +223,7 @@ class _HomeHeroState extends State<HomeHero>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'LATENCY',
+                          I18n.t('LATENCY'),
                           style: text.labelSmall?.copyWith(
                             color: p.text3,
                             fontWeight: FontWeight.w600,
@@ -271,8 +273,8 @@ class _HomeHeroState extends State<HomeHero>
                         ),
                         Text(
                           latencyMs == null
-                              ? 'connect to measure'
-                              : 'to nearest peer',
+                              ? I18n.t('connect to measure')
+                              : I18n.t('to nearest peer'),
                           style: text.bodySmall?.copyWith(color: p.text2),
                         ),
                       ],
@@ -448,21 +450,21 @@ class HomeStatsRow extends StatelessWidget {
     final p = context.et;
     final tiles = <Widget>[
       _HomeStatCell(
-        label: 'Peers',
+        label: I18n.t('Peers'),
         value: up ? '$onlinePeers / $peerCount' : '—',
         icon: Symbols.devices,
         tone: EtTone.accent,
         onTap: onOpenDevices,
       ),
       _HomeStatCell(
-        label: 'Routes',
+        label: I18n.t('Routes'),
         value: up ? '$routeCount' : '—',
         icon: Symbols.alt_route,
         tone: EtTone.warn,
         onTap: onOpenDevices,
       ),
       _HomeStatCell(
-        label: 'Downlink',
+        label: I18n.t('Downlink'),
         value: up ? formatRate(rxBps) : '—',
         icon: Symbols.arrow_downward,
         tone: EtTone.success,
@@ -597,7 +599,7 @@ class HomeNetworkCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
             child: HomeCardHeader(
-              title: 'Network',
+              title: I18n.t('Network'),
               trailing: onConfigure == null
                   ? null
                   : TextButton.icon(
@@ -609,13 +611,13 @@ class HomeNetworkCard extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Symbols.tune, size: 16),
-                      label: const Text('Configure'),
+                      label: Text(I18n.t('Configure')),
                     ),
             ),
           ),
           const SizedBox(height: EtSpace.x1),
           _DetailTile(
-            label: 'Virtual IP',
+            label: I18n.t('Virtual IP'),
             value: virtualIp ?? '—',
             mono: true,
             onTap: virtualIp != null ? onCopyIp : null,
@@ -626,14 +628,14 @@ class HomeNetworkCard extends StatelessWidget {
             endIndent: EtSpace.x4,
             color: p.border.withValues(alpha: 0.5),
           ),
-          _DetailTile(label: 'Instance', value: instanceName, mono: true),
+          _DetailTile(label: I18n.t('Instance'), value: instanceName, mono: true),
           Divider(
             height: 1,
             indent: EtSpace.x4,
             endIndent: EtSpace.x4,
             color: p.border.withValues(alpha: 0.5),
           ),
-          _DetailTile(label: 'Network', value: networkName),
+          _DetailTile(label: I18n.t('Network'), value: networkName),
         ],
       ),
     );
@@ -722,10 +724,10 @@ class HomeTrafficCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           HomeCardHeader(
-            title: 'Traffic',
+            title: I18n.t('Traffic'),
             trailing: live
                 ? Text(
-                    '60 s',
+                    I18n.t('60 s'),
                     style: EtText.mono(size: EtType.micro, color: p.text2),
                   )
                 : null,
@@ -798,7 +800,7 @@ class HomePeersCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
             child: HomeCardHeader(
-              title: 'Peers',
+              title: I18n.t('Peers'),
               trailing: InkWell(
                 borderRadius: BorderRadius.circular(EtRadius.sm),
                 onTap: onOpenDevices,
@@ -813,7 +815,7 @@ class HomePeersCard extends StatelessWidget {
                       Text(
                         up
                             ? '${online.length} of ${peers.length} online'
-                            : '0 peers',
+                            : I18n.t('0 peers'),
                         style: text.bodySmall?.copyWith(color: p.text2),
                       ),
                       if (onOpenDevices != null) ...[

@@ -2,6 +2,8 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
@@ -18,10 +20,10 @@ enum _ActivityFilter { all, connection, peers, warnings }
 
 extension on _ActivityFilter {
   String get label => switch (this) {
-    _ActivityFilter.all => 'All',
-    _ActivityFilter.connection => 'Connection',
-    _ActivityFilter.peers => 'Peers',
-    _ActivityFilter.warnings => 'Warnings',
+    _ActivityFilter.all => I18n.t('All'),
+    _ActivityFilter.connection => I18n.t('Connection'),
+    _ActivityFilter.peers => I18n.t('Peers'),
+    _ActivityFilter.warnings => I18n.t('Warnings'),
   };
 
   bool matches(NetworkEvent event) => switch (this) {
@@ -67,7 +69,7 @@ class _ActivityPageState extends State<ActivityPage> {
     final confirmed = await showDialog<bool>(
       context: pageContext,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear activity?'),
+        title: Text(I18n.t('Clear activity?')),
         content: const Text(
           'This clears the local event timeline on this device only. '
           'The core keeps its own logs, and nothing on the network changes.',
@@ -75,7 +77,7 @@ class _ActivityPageState extends State<ActivityPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(I18n.t('Cancel')),
           ),
           FilledButton(
             key: const Key('activity-clear-confirm'),
@@ -84,7 +86,7 @@ class _ActivityPageState extends State<ActivityPage> {
               foregroundColor: p.onDanger,
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear'),
+            child: Text(I18n.t('Clear')),
           ),
         ],
       ),
@@ -110,13 +112,13 @@ class _ActivityPageState extends State<ActivityPage> {
     final entries = _entries(filtered);
 
     return EtPage(
-      title: 'Activity',
+      title: I18n.t('Activity'),
       subtitle: _subtitle(all.length, visible.length, filtered.length),
       actions: [
         EtIconButton(
           key: const Key('activity-clear'),
           icon: Symbols.delete_outline,
-          tooltip: 'Clear activity',
+          tooltip: I18n.t('Clear activity'),
           onPressed: visible.isEmpty ? null : () => _confirmClear(context, state),
         ),
       ],
@@ -162,7 +164,7 @@ class _ActivityPageState extends State<ActivityPage> {
       return _emptyScroll(
         EtEmptyState(
           icon: cleared ? Symbols.history : Symbols.monitor_heart,
-          title: cleared ? 'Activity cleared' : 'No activity yet',
+          title: cleared ? I18n.t('Activity cleared') : I18n.t('No activity yet'),
           message: cleared
               ? 'New events appear here as the network changes. The core keeps its own logs.'
               : 'Connect a network and the local timeline starts here. Events stay on this device.',
@@ -181,7 +183,7 @@ class _ActivityPageState extends State<ActivityPage> {
           },
           message: 'Nothing in ${_plural(visible.length, 'event')} matches this filter.',
           action: EtPrimaryButton(
-            label: 'Show all',
+            label: I18n.t('Show all'),
             icon: Symbols.restart_alt,
             tonal: true,
             expanded: false,
@@ -239,8 +241,8 @@ class _ActivityPageState extends State<ActivityPage> {
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(at.year, at.month, at.day);
     final delta = today.difference(day).inDays;
-    if (delta == 0) return 'Today';
-    if (delta == 1) return 'Yesterday';
+    if (delta == 0) return I18n.t('Today');
+    if (delta == 1) return I18n.t('Yesterday');
     return '${_months[at.month - 1]} ${at.day}';
   }
 

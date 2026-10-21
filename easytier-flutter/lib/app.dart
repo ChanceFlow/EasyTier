@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 
+import 'core/i18n/i18n.dart';
 import 'core/state/app_state.dart';
 import 'core/system_ui.dart';
 import 'core/theme/theme.dart';
@@ -20,6 +22,7 @@ class EasytierApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    I18n.locale = state.locale;
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => AppScope(
@@ -30,6 +33,13 @@ class EasytierApp extends StatelessWidget {
           theme: buildEtTheme(brightness: Brightness.light),
           darkTheme: buildEtTheme(brightness: Brightness.dark),
           themeMode: state.themeMode,
+          locale: state.locale,
+          supportedLocales: const [Locale('en'), Locale('zh')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           // Keep the Android system bars in sync with the M3 surface (edge-to-edge).
           // `EASYTIER_DISABLE_ANIMATIONS` forces the reduced-motion rendering
           // path (used for deterministic headless screenshots and as an
@@ -48,7 +58,7 @@ class EasytierApp extends StatelessWidget {
               child: content,
             );
           },
-          home: const AppRoot(),
+          home: AppRoot(key: ValueKey(state.locale.languageCode)),
         ),
       ),
     );

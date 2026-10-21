@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/i18n.dart';
+
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
@@ -327,7 +329,7 @@ class _ConfigPageState extends State<ConfigPage> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: p.danger),
-            child: const Text('Discard'),
+            child: Text(I18n.t('Discard')),
           ),
         ],
       ),
@@ -386,7 +388,7 @@ class _ConfigPageState extends State<ConfigPage> {
       form.reseed(next);
       _saveError = null;
     });
-    _showSnack('Source applied to the draft. Review the form, then Save.');
+    _showSnack(I18n.t('Source applied to the draft. Review the form, then Save.'));
   }
 
   void _showSnack(String message) {
@@ -430,7 +432,7 @@ class _ConfigPageState extends State<ConfigPage> {
           actions: [
             IconButton(
               icon: const Icon(Symbols.close),
-              tooltip: 'Dismiss',
+              tooltip: I18n.t('Dismiss'),
               onPressed: () => setState(() => _saveError = null),
             ),
           ],
@@ -456,29 +458,29 @@ class _ConfigPageState extends State<ConfigPage> {
         EtBanner(
           tone: EtTone.warn,
           icon: Symbols.edit,
-          title: 'Unsaved changes',
+          title: I18n.t('Unsaved changes'),
           message: 'The draft differs from the saved configuration.',
           actions: [
             TextButton(
               onPressed: locked ? null : _resetDraft,
-              child: const Text('Reset'),
+              child: Text(I18n.t('Reset')),
             ),
           ],
         ),
     ];
 
     return EtPage(
-      title: 'Config',
+      title: I18n.t('Config'),
       subtitle: active.config.networkName,
       actions: [
         EtIconButton(
           icon: Symbols.code,
-          tooltip: 'Edit TOML source',
+          tooltip: I18n.t('Edit TOML source'),
           onPressed: () => _openSourceEditor(draft),
         ),
         EtIconButton(
           icon: Symbols.add,
-          tooltip: 'Add network',
+          tooltip: I18n.t('Add network'),
           onPressed: locked ? null : () => _addNetwork(),
         ),
         PopupMenuButton<String>(
@@ -499,10 +501,10 @@ class _ConfigPageState extends State<ConfigPage> {
             PopupMenuItem<String>(
               value: 'share',
               child: Row(
-                children: const [
+                children: [
                   Icon(Symbols.share, size: 18),
                   SizedBox(width: EtSpace.x2),
-                  Text('Share network…'),
+                  Text(I18n.t('Share network…')),
                 ],
               ),
             ),
@@ -513,7 +515,7 @@ class _ConfigPageState extends State<ConfigPage> {
                 children: [
                   Icon(Symbols.delete_outline, size: 18, color: context.et.danger),
                   const SizedBox(width: EtSpace.x2),
-                  Text('Delete network', style: TextStyle(color: context.et.danger)),
+                  Text(I18n.t('Delete network'), style: TextStyle(color: context.et.danger)),
                 ],
               ),
             ),
@@ -551,8 +553,8 @@ class _ConfigPageState extends State<ConfigPage> {
                   ),
                   EtSection(
                     key: ValueKey('config-section-basic-${_sectionEpoch[0]}'),
-                    title: 'Basic',
-                    subtitle: 'Identity, network and addresses',
+                    title: I18n.t('Basic'),
+                    subtitle: I18n.t('Identity, network and addresses'),
                     initiallyExpanded: true,
                     leading: _sectionBadge(
                       ConfigSectionIndex.basic,
@@ -578,8 +580,8 @@ class _ConfigPageState extends State<ConfigPage> {
                     key: ValueKey(
                       'config-section-advanced-${_sectionEpoch[1]}',
                     ),
-                    title: 'Advanced',
-                    subtitle: 'Datapath, routing, privacy',
+                    title: I18n.t('Advanced'),
+                    subtitle: I18n.t('Datapath, routing, privacy'),
                     initiallyExpanded: _sectionEpoch[1] > 0,
                     leading: _sectionBadge(
                       ConfigSectionIndex.advanced,
@@ -602,7 +604,7 @@ class _ConfigPageState extends State<ConfigPage> {
                     key: ValueKey(
                       'config-section-port-forward-${_sectionEpoch[2]}',
                     ),
-                    title: 'Port forward',
+                    title: I18n.t('Port forward'),
                     subtitle: 'Expose local services through a peer',
                     initiallyExpanded: _sectionEpoch[2] > 0,
                     leading: _sectionBadge(
@@ -627,7 +629,7 @@ class _ConfigPageState extends State<ConfigPage> {
                   EtSection(
                     key: ValueKey('config-section-acl-${_sectionEpoch[3]}'),
                     title: 'ACL',
-                    subtitle: 'Allow or deny traffic per chain',
+                    subtitle: I18n.t('Allow or deny traffic per chain'),
                     initiallyExpanded: _sectionEpoch[3] > 0,
                     leading: _sectionBadge(
                       ConfigSectionIndex.acl,
@@ -667,23 +669,23 @@ class _ConfigPageState extends State<ConfigPage> {
 
   Widget _buildEmptyState(BuildContext context, AppState state) {
     return EtPage(
-      title: 'Config',
+      title: I18n.t('Config'),
       subtitle: 'No network',
       actions: [
         EtIconButton(
           icon: Symbols.add,
-          tooltip: 'Add network',
+          tooltip: I18n.t('Add network'),
           onPressed: () => _addNetwork(),
         ),
       ],
       child: EtEmptyState(
         icon: Symbols.lan,
-        title: 'No network configured',
+        title: I18n.t('No network configured'),
         message:
             'Configuration belongs to a network. Create one to set its '
             'identity, transport and rules.',
         action: EtPrimaryButton(
-          label: 'Create network',
+          label: I18n.t('Create network'),
           icon: Symbols.add,
           expanded: false,
           onPressed: () => _addNetwork(),
@@ -744,12 +746,12 @@ class _ConfigPageState extends State<ConfigPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(I18n.t('Cancel')),
           ),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: p.danger),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
+            child: Text(I18n.t('Delete')),
           ),
         ],
       ),
@@ -791,12 +793,12 @@ class _BottomActionBar extends StatelessWidget {
 
     final busy = running || saving;
     final status = running
-        ? 'Applying settings…'
+        ? I18n.t('Applying settings…')
         : saving
-        ? 'Saving…'
+        ? I18n.t('Saving…')
         : dirty
-        ? 'Draft not saved'
-        : 'All changes saved';
+        ? I18n.t('Draft not saved')
+        : I18n.t('All changes saved');
     final icon = busy
         ? Symbols.progress_activity
         : dirty
@@ -846,7 +848,7 @@ class _BottomActionBar extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(
-        'Run with these settings',
+        I18n.t('Run with these settings'),
         style: theme.textTheme.labelMedium?.copyWith(
           color: locked ? p.textDisabled : p.accent,
           fontWeight: FontWeight.w600,
@@ -870,7 +872,7 @@ class _BottomActionBar extends StatelessWidget {
                 height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : const Text('Save'),
+            : Text(I18n.t('Save')),
       ),
     );
 
