@@ -197,7 +197,10 @@ class _ConfigPageState extends State<ConfigPage> {
         _saveError = state.lastError ?? 'The core rejected the configuration.';
       }
     });
-    if (saved && announce) _showSnack('Configuration saved.');
+    if (saved) {
+      EtHaptics.impact();
+      if (announce) _showSnack('Configuration saved.');
+    }
     return saved;
   }
 
@@ -469,6 +472,29 @@ class _ConfigPageState extends State<ConfigPage> {
           tooltip: 'Add network',
           onPressed: locked ? null : () => _addNetwork(),
         ),
+        PopupMenuButton<String>(
+          key: const Key('config-overflow'),
+          tooltip: 'More actions',
+          icon: const Icon(Symbols.more_vert),
+          onSelected: (value) {
+            if (value == 'delete' && !locked) {
+              _confirmDeleteNetwork(active);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'delete',
+              enabled: !locked,
+              child: Row(
+                children: [
+                  Icon(Symbols.delete_outline, size: 18, color: context.et.danger),
+                  const SizedBox(width: EtSpace.x2),
+                  Text('Delete network', style: TextStyle(color: context.et.danger)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ],
       padding: EdgeInsets.zero,
       child: Column(
@@ -489,10 +515,9 @@ class _ConfigPageState extends State<ConfigPage> {
               padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
               child: EtScrollBody(
                 top: EtSpace.x2,
-                // The action bar is anchored below the scroll area; the bottom
-                // gutter is taller than the bar so no field can ever be hidden
-                // behind it (IME inset / short screens).
-                bottom: EtSpace.x16 * 3,
+                // The compact action bar sits below the scroll area; 96dp bottom
+                // gutter keeps the last section comfortably clear of it.
+                bottom: EtSpace.x12 * 2,
                 children: [
                   ConfigInstanceCards(
                     instances: state.instances,
@@ -682,11 +707,39 @@ class _ConfigPageState extends State<ConfigPage> {
     }
     return shown.join('\n');
   }
+
+  Future<void> _confirmDeleteNetwork(NetworkInstance active) async {
+    final p = context.et;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this network?'),
+        content: Text(
+          '“${active.config.networkName}” will be removed from this device. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: p.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await AppScope.read(context).removeInstance(active.id);
+    if (!mounted) return;
+    _showSnack('Network deleted');
+  }
 }
 
-/// M3 expressive bottom action bar: one filled primary Save pill, one quiet
-/// secondary Run action, and the honest save status. It is a sibling below the
-/// scroll body, so it can never paint over a field.
+/// Compact M3 bottom action bar (~64dp height): status + secondary Run link on
+/// the left, and a compact primary Save pill on the right. Never towers over
+/// the form when clean.
 class _BottomActionBar extends StatelessWidget {
   const _BottomActionBar({
     required this.dirty,
@@ -711,7 +764,6 @@ class _BottomActionBar extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final p = context.et;
-    final wide = context.etDesktop;
 
     final busy = running || saving;
     final status = running
@@ -729,38 +781,73 @@ class _BottomActionBar extends StatelessWidget {
     final iconColor = busy
         ? scheme.primary
         : dirty
-        ? scheme.onSurfaceVariant
+        ? p.warn
         : p.success;
-    final helper = connected
-        ? 'Save stores the draft. Run restarts the running tunnel with it.'
-        : 'Save stores the draft. Run starts the network with it.';
 
-    final statusRow = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 20, color: iconColor),
-        const SizedBox(width: EtSpace.x2),
-        Flexible(
-          child: Text(
-            status,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurface,
+    final statusRow = AnimatedSwitcher(
+      duration: context.etReducedMotion ? Duration.zero : EtDuration.fast,
+      switchInCurve: EtCurves.enter,
+      switchOutCurve: EtCurves.exit,
+      layoutBuilder: (current, previous) => Stack(
+        alignment: AlignmentDirectional.centerStart,
+        children: [...previous, ?current],
+      ),
+      child: Row(
+        key: ValueKey<String>(status),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
 
-    final save = EtPrimaryButton(
-      label: 'Save',
-      loading: saving,
-      onPressed: dirty && !locked ? onSave : null,
-    );
     final run = TextButton(
       onPressed: locked ? null : onRun,
-      child: const Text('Run with these settings'),
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        minimumSize: const Size(0, 28),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        'Run with these settings',
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: locked ? p.textDisabled : p.accent,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+
+    final save = SizedBox(
+      height: 40,
+      child: FilledButton(
+        onPressed: dirty && !locked ? onSave : null,
+        style: FilledButton.styleFrom(
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x5),
+          disabledBackgroundColor: scheme.onSurface.withValues(alpha: 0.12),
+          disabledForegroundColor: scheme.onSurface.withValues(alpha: 0.38),
+        ),
+        child: saving
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Save'),
+      ),
     );
 
     return Material(
@@ -770,55 +857,27 @@ class _BottomActionBar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            EtSpace.x4,
-            EtSpace.x3,
-            EtSpace.x4,
-            EtSpace.x3,
+          padding: const EdgeInsets.symmetric(
+            horizontal: EtSpace.x4,
+            vertical: EtSpace.x2,
           ),
-          child: wide
-              ? Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          statusRow,
-                          const SizedBox(height: 2),
-                          Text(
-                            helper,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: EtSpace.x4),
-                    run,
-                    const SizedBox(width: EtSpace.x3),
-                    SizedBox(width: 220, child: save),
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     statusRow,
                     const SizedBox(height: 2),
-                    Text(
-                      helper,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: EtSpace.x3),
-                    save,
-                    const SizedBox(height: EtSpace.x1),
-                    Center(child: run),
+                    run,
                   ],
                 ),
+              ),
+              const SizedBox(width: EtSpace.x3),
+              save,
+            ],
+          ),
         ),
       ),
     );

@@ -582,6 +582,31 @@ M3 用 **elevation level + surface container role** 表达高度，取消 v3 的
 ## 7. 动效 —— M3 motion
 
 动效的职责是解释**什么变了、去了哪里**，不是装饰。工具类 App 里 90% 的交互应当
+
+### 7.3 v5.x 动效与细节落地清单
+
+实现位置：`lib/core/ui/et_motion.dart`（`EtEnter` / `EtPressScale` / `EtHaptics`）
+与各屏页面。所有一次性动效在 `EtDuration.hero`（280ms）或更短内完成，
+保证 golden 在 320ms 的固定 pump 后看到终态；reduced motion 下全部降为 0。
+
+| 场景 | 动效 | 规格 |
+|---|---|---|
+| 切换底部/侧边导航 | 内容淡入 + 上移 12dp | `EtDuration.base` 200ms，`EtCurves.enter`；IndexedStack 保留各页状态 |
+| 首页 hero 首次/状态变化 | 徽章 → orb → 状态文案 → 延迟 → 主操作分段入场 | 280ms，Interval 0/0.08/0.16/0.24/0.32，上移 10dp |
+| hero 主操作按压 | 缩到 0.98 再回弹 | 120ms，`EtCurves.exit` |
+| 主题/语言胶囊、筛选 chips | 容器颜色渐变 + 选中字重 | 150ms，`EtCurves.standard` |
+| 页面副标题、状态行、badge、mono 值 | AnimatedSwitcher 淡入淡出 | 150ms |
+| 流量图 | 最新采样点的呼吸光环 | 1400ms 循环；reduced motion 静态 |
+| 空状态 / 闪屏 | 淡入 + 轻微上移/缩放 | 200ms / 300ms 一次性 |
+| EtSection 展开箭头 | 旋转 180° 而非换字形 | 150ms |
+| 触感 | 导航切换、筛选、复制、保存、连接 | `EtHaptics.selection()` / `.impact()`（桌面/测试静默） |
+
+细节约定：
+
+- Activity 的导航角标只统计「未读事件」，进入 Activity 即清零（商业 App 常规行为）；
+- 删除网络属于破坏性操作，从 Config 顶栏移到 `⋮` 溢出菜单，避免与 `+` 相邻误触；
+- 所有动效都是解释性的：颜色/动效从不单独承载状态，文字与图标始终同步变化。
+
 “立刻完成”。
 
 ### 7.1 时长与缓动

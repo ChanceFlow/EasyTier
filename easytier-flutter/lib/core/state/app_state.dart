@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../client/core_client.dart';
 import '../models/models.dart';
+import '../ui/et_shell.dart';
 import '../vpn/vpn_controller.dart';
 import '../vpn/vpn_service.dart';
 
@@ -42,12 +43,16 @@ class AppState extends ChangeNotifier {
   List<NetworkInstance> instances = const [];
   String? activeId;
   InstanceStatus status = InstanceStatus.stopped;
+  EtDestination destination = EtDestination.home;
   ThemeMode themeMode = ThemeMode.system;
   Locale locale = const Locale('en');
+  String configServerUrl = '';
+  String logLevel = 'info';
 
   bool initialized = false;
   bool busy = false;
   String? lastError;
+  int _unseenEvents = 0;
   bool _polling = false;
   bool _selfStopping = false;
   Timer? _pollTimer;
@@ -65,7 +70,9 @@ class AppState extends ChangeNotifier {
 
   bool get connected => status.phase.isUp;
 
-  int get unseenEvents => events.length;
+  /// Events arrived since the Activity tab was last visited; drives the shell
+  /// badge and is cleared when the user opens Activity (commercial behaviour).
+  int get unseenEvents => _unseenEvents;
 
   Future<void> bootstrap() async {
     await client.init();
@@ -219,6 +226,15 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  void setDestination(EtDestination value) {
+    if (destination == value) return;
+    destination = value;
+    if (value == EtDestination.activity && _unseenEvents != 0) {
+      _unseenEvents = 0;
+    }
+    notifyListeners();
+  }
+
   void setThemeMode(ThemeMode mode) {
     themeMode = mode;
     notifyListeners();
@@ -235,6 +251,16 @@ class AppState extends ChangeNotifier {
 
   void toggleLocale() {
     setLocale(locale.languageCode == 'zh' ? const Locale('en') : const Locale('zh'));
+  }
+
+  void setConfigServerUrl(String url) {
+    configServerUrl = url.trim();
+    notifyListeners();
+  }
+
+  void setLogLevel(String level) {
+    logLevel = level;
+    notifyListeners();
   }
 
   void clearError() {
@@ -344,6 +370,7 @@ class AppState extends ChangeNotifier {
   void _onEvent(NetworkEvent event) {
     events.insert(0, event);
     if (events.length > 200) events.removeLast();
+    if (destination != EtDestination.activity) _unseenEvents++;
     notifyListeners();
   }
 

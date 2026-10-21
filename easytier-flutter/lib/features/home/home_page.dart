@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -83,7 +84,10 @@ class HomePage extends StatelessWidget {
       _HomeView.stopped => EtPrimaryButton(
           label: 'Connect',
           icon: Symbols.cable,
-          onPressed: () => unawaited(state.connect()),
+          onPressed: () {
+            EtHaptics.impact();
+            unawaited(state.connect());
+          },
         ),
       _HomeView.connecting => const EtPrimaryButton(
           label: 'Connecting…',
@@ -129,6 +133,7 @@ class HomePage extends StatelessWidget {
       peerCount: status.peers.isEmpty ? status.peerCount : status.peers.length,
       routeCount: status.routeCount,
       rxBps: status.rxBps,
+      onOpenDevices: () => state.setDestination(EtDestination.devices),
     );
 
     final networkCard = HomeNetworkCard(
@@ -136,16 +141,34 @@ class HomePage extends StatelessWidget {
       networkName: networkName,
       virtualIp: virtualIp,
       up: up,
-      onlinePeers: status.onlinePeers,
-      peerCount: status.peers.isEmpty ? status.peerCount : status.peers.length,
-      routeCount: status.routeCount,
+      onConfigure: () => state.setDestination(EtDestination.config),
+      onCopyIp: virtualIp == null
+          ? null
+          : () async {
+              EtHaptics.selection();
+              await Clipboard.setData(ClipboardData(text: virtualIp));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Copied $virtualIp')),
+              );
+            },
     );
 
-    final peersCard = HomePeersCard(peers: up ? status.peers : const [], up: up);
+    final peersCard = HomePeersCard(
+      peers: up ? status.peers : const [],
+      up: up,
+      onOpenDevices: () => state.setDestination(EtDestination.devices),
+    );
 
     return EtPage(
       title: 'Home',
       subtitle: networkName,
+      actions: [
+        _NetworkSwitcherAction(
+          instanceName: active.config.instanceName,
+          onTap: () => _showNetworkSwitcherSheet(context, state),
+        ),
+      ],
       child: EtScrollBody(
         children: [
           ?banner,
@@ -224,6 +247,153 @@ class HomePage extends StatelessWidget {
       message: relayOnly
           ? 'All online peers are reached through a relay. Direct paths are unavailable right now.'
           : 'Some peers are unreachable or relayed. Open Devices for the per-peer paths.',
+    );
+  }
+
+  Future<void> _showNetworkSwitcherSheet(
+    BuildContext context,
+    AppState state,
+  ) async {
+    await showEtSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        final p = sheetContext.et;
+        final text = Theme.of(sheetContext).textTheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            EtSpace.x4,
+            EtSpace.x1,
+            EtSpace.x4,
+            EtSpace.x5,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: EtSpace.x2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Network profiles',
+                        style: text.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: p.text,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        unawaited(state.addInstance());
+                      },
+                      icon: const Icon(Symbols.add, size: 18),
+                      label: const Text('New'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: EtSpace.x2),
+              for (final instance in state.instances)
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(EtRadius.lg),
+                  ),
+                  leading: EtAvatar(
+                    name: instance.config.instanceName,
+                    size: 38,
+                  ),
+                  title: Text(
+                    instance.config.networkName,
+                    style: text.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: p.text,
+                    ),
+                  ),
+                  subtitle: Text(
+                    instance.config.instanceName,
+                    style: EtText.mono(size: EtType.caption, color: p.text2),
+                  ),
+                  trailing: instance.id == state.activeId
+                      ? const EtBadge(
+                          label: 'Active',
+                          tone: EtTone.success,
+                          icon: Symbols.check_circle,
+                        )
+                      : Icon(Symbols.chevron_right, color: p.text2),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(state.selectInstance(instance.id));
+                  },
+                ),
+              const SizedBox(height: EtSpace.x2),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  state.setDestination(EtDestination.config);
+                },
+                icon: const Icon(Symbols.tune, size: 18),
+                label: const Text('Edit active configuration'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NetworkSwitcherAction extends StatelessWidget {
+  const _NetworkSwitcherAction({
+    required this.instanceName,
+    required this.onTap,
+  });
+
+  final String instanceName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.et;
+    return Tooltip(
+      message: 'Switch network',
+      child: Material(
+        color: p.scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(EtRadius.pill),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: EtSpace.x3,
+              vertical: 6,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Symbols.lan, size: 15, color: p.accent),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 112),
+                  child: Text(
+                    instanceName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: EtText.mono(
+                      size: EtType.caption,
+                      weight: FontWeight.w500,
+                      color: p.text,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(Symbols.expand_more, size: 16, color: p.text2),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

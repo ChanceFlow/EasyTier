@@ -50,7 +50,6 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  EtDestination _current = EtDestination.home;
   bool _bootstrapped = false;
 
   @override
@@ -71,18 +70,79 @@ class _AppRootState extends State<AppRoot> {
     if (!state.initialized) return const _Splash();
 
     return EtShell(
-      current: _current,
-      onSelect: (destination) => setState(() => _current = destination),
-      activityBadge: state.events.length,
-      child: IndexedStack(
-        index: _current.index,
-        children: const [
-          HomePage(),
-          DevicesPage(),
-          ConfigPage(),
-          ActivityPage(),
-          SettingsPage(),
-        ],
+      current: state.destination,
+      onSelect: (next) {
+        EtHaptics.selection();
+        state.setDestination(next);
+      },
+      activityBadge: state.unseenEvents,
+      child: _TabTransition(
+        index: state.destination.index,
+        child: IndexedStack(
+          index: state.destination.index,
+          children: const [
+            HomePage(),
+            DevicesPage(),
+            ConfigPage(),
+            ActivityPage(),
+            SettingsPage(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fades and lifts the page body when the selected destination changes. The
+/// [IndexedStack] keeps every tab's state; only the visible frame animates.
+class _TabTransition extends StatefulWidget {
+  const _TabTransition({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  @override
+  State<_TabTransition> createState() => _TabTransitionState();
+}
+
+class _TabTransitionState extends State<_TabTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: EtDuration.base,
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(_TabTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index) {
+      if (context.etReducedMotion) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (context.etReducedMotion) return widget.child;
+    final curved = CurvedAnimation(parent: _controller, curve: EtCurves.enter);
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.6, end: 1).animate(curved),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.012),
+          end: Offset.zero,
+        ).animate(curved),
+        child: widget.child,
       ),
     );
   }
@@ -94,41 +154,56 @@ class _Splash extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.et;
+    final reduced = context.etReducedMotion;
     return Scaffold(
       backgroundColor: p.bg,
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: p.accentQuiet,
-              child: Icon(Symbols.verified_user, size: 32, color: p.accentOnTint),
-            ),
-            const SizedBox(height: EtSpace.x5),
-            Text(
-              'EasyTier',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: EtSpace.x2),
-            Text(
-              'Starting core…',
-              style: EtText.ui(size: EtType.bodySm, color: p.text3),
-            ),
-            const SizedBox(height: EtSpace.x6),
-            // Determinate on purpose: an indeterminate bar schedules frames
-            // forever, which makes every widget test (and golden) unable to
-            // settle. The splash does not need to fake progress.
-            SizedBox(
-              width: 120,
-              child: LinearProgressIndicator(
-                value: 0.55,
-                minHeight: 2,
-                backgroundColor: p.surface2,
-                color: p.accent,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: reduced ? 1 : 0, end: 1),
+          duration: reduced ? Duration.zero : EtDuration.slow,
+          curve: EtCurves.enter,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 0.94 + t * 0.06, child: child),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 32,
+                backgroundColor: p.accentQuiet,
+                child: Icon(Symbols.verified_user, size: 32, color: p.accentOnTint),
               ),
-            ),
-          ],
+              const SizedBox(height: EtSpace.x5),
+              Text(
+                'EasyTier',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: EtSpace.x2),
+              Text(
+                'Starting core…',
+                style: EtText.ui(size: EtType.bodySm, color: p.text3),
+              ),
+              const SizedBox(height: EtSpace.x6),
+              // Determinate on purpose: an indeterminate bar schedules frames
+              // forever, which makes every widget test (and golden) unable to
+              // settle. The splash does not need to fake progress.
+              SizedBox(
+                width: 120,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: 0.55),
+                  duration: reduced ? Duration.zero : EtDuration.loopSweep,
+                  curve: EtCurves.standard,
+                  builder: (context, value, _) => LinearProgressIndicator(
+                    value: value,
+                    minHeight: 2,
+                    backgroundColor: p.surface2,
+                    color: p.accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

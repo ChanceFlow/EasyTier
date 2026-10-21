@@ -1,6 +1,7 @@
 import 'package:easytier_flutter/core/client/mock_core_client.dart';
 import 'package:easytier_flutter/core/models/models.dart';
 import 'package:easytier_flutter/core/state/app_state.dart';
+import 'package:easytier_flutter/core/ui/et_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,6 +56,18 @@ void main() {
       final invalid = state.activeConfig!.copyWith(networkName: '');
       expect(await state.validateConfig(invalid), contains('Network name'));
       expect(await state.validateConfig(state.activeConfig!), isNull);
+    });
+
+    test('unseen event badge clears when Activity is opened', () async {
+      await state.connect();
+      expect(state.unseenEvents, greaterThan(0));
+
+      state.setDestination(EtDestination.activity);
+      expect(state.unseenEvents, 0);
+
+      // Background events do not raise the badge while Activity is in front.
+      await state.disconnect();
+      expect(state.unseenEvents, 0);
     });
 
     test('theme mode defaults to system and toggles dark/light', () {

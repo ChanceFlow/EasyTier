@@ -95,7 +95,6 @@ class _ActivityPageState extends State<ActivityPage> {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.et;
     final state = AppScope.of(context);
     final all = state.events;
 
@@ -114,7 +113,6 @@ class _ActivityPageState extends State<ActivityPage> {
       title: 'Activity',
       subtitle: _subtitle(all.length, visible.length, filtered.length),
       actions: [
-        _filterMenu(p, counts),
         EtIconButton(
           key: const Key('activity-clear'),
           icon: Symbols.delete_outline,
@@ -122,37 +120,28 @@ class _ActivityPageState extends State<ActivityPage> {
           onPressed: visible.isEmpty ? null : () => _confirmClear(context, state),
         ),
       ],
-      child: _body(context, visible: visible, filtered: filtered, entries: entries),
-    );
-  }
-
-  /// M3 menu with checkbox items: selected filter is checked, every option shows
-  /// its event count.
-  Widget _filterMenu(EtPalette p, Map<_ActivityFilter, int> counts) {
-    return MenuAnchor(
-      builder: (context, controller, _) => EtIconButton(
-        key: const Key('activity-filter'),
-        icon: Symbols.filter_list,
-        tooltip: 'Filter activity',
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-      ),
-      menuChildren: [
-        for (final filter in _ActivityFilter.values)
-          // The key wraps the item because CheckboxMenuButton forwards its own
-          // key to the inner MenuItemButton (two widgets, one key).
-          KeyedSubtree(
-            key: Key('activity-filter-${filter.name}'),
-            child: CheckboxMenuButton(
-              value: _filter == filter,
-              onChanged: (_) => setState(() => _filter = filter),
-              trailingIcon: Text(
-                '${counts[filter]}',
-                style: EtText.mono(size: EtType.caption, color: p.text2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (visible.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: EtSpace.x3),
+              child: _ActivityFilterBar(
+                selected: _filter,
+                counts: counts,
+                onSelect: (next) => setState(() => _filter = next),
               ),
-              child: Text(filter.label),
+            ),
+          Expanded(
+            child: _body(
+              context,
+              visible: visible,
+              filtered: filtered,
+              entries: entries,
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -349,6 +338,86 @@ class _EventRow extends StatelessWidget {
         _ActivityPageState._time(event.at),
         style: EtText.mono(size: EtType.caption, color: p.text2),
       ),
+    );
+  }
+}
+
+class _ActivityFilterBar extends StatelessWidget {
+  const _ActivityFilterBar({
+    required this.selected,
+    required this.counts,
+    required this.onSelect,
+  });
+
+  final _ActivityFilter selected;
+  final Map<_ActivityFilter, int> counts;
+  final ValueChanged<_ActivityFilter> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.et.scheme;
+    return Wrap(
+      spacing: EtSpace.x2,
+      runSpacing: EtSpace.x2,
+      children: [
+        for (final filter in _ActivityFilter.values)
+          Material(
+            key: Key('activity-filter-${filter.name}'),
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(EtRadius.pill),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                EtHaptics.selection();
+                onSelect(filter);
+              },
+              child: AnimatedContainer(
+                duration: context.etReducedMotion
+                    ? Duration.zero
+                    : EtDuration.fast,
+                curve: EtCurves.standard,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: EtSpace.x3,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: selected == filter
+                      ? scheme.primaryContainer
+                      : scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(EtRadius.pill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      filter.label,
+                      style: EtText.ui(
+                        size: EtType.caption,
+                        weight: selected == filter
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: selected == filter
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${counts[filter] ?? 0}',
+                      style: EtText.mono(
+                        size: EtType.micro,
+                        weight: FontWeight.w600,
+                        color: selected == filter
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

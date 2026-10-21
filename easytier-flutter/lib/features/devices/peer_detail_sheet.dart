@@ -24,6 +24,7 @@ Future<void> showPeerDetailSheet(BuildContext context, Peer peer) {
 Future<void> _copyIp(BuildContext context, Peer peer) async {
   final messenger = ScaffoldMessenger.of(context);
   final navigator = Navigator.of(context);
+  EtHaptics.selection();
   await Clipboard.setData(ClipboardData(text: peer.ipv4));
   if (!context.mounted) return;
   navigator.maybePop();

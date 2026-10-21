@@ -217,6 +217,13 @@ abstract final class EtDuration {
   static const base = Duration(milliseconds: 200); // short4
   static const slow = Duration(milliseconds: 300); // medium2
 
+  /// One-shot entrance for page-transition / hero choreography (kept below
+  /// 320ms so a single golden capture always sees the settled state).
+  static const hero = Duration(milliseconds: 280);
+
+  /// Delay between sibling entrance steps (badge → orb → text → action).
+  static const stagger = Duration(milliseconds: 36);
+
   static const loopSpin = Duration(milliseconds: 700);
   static const loopSweep = Duration(milliseconds: 900);
   static const loopShimmer = Duration(milliseconds: 1400);

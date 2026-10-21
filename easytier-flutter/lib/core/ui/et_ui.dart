@@ -605,9 +605,13 @@ class _EtSectionState extends State<EtSection> {
           children: [
             ?widget.trailing,
             const SizedBox(width: EtSpace.x2),
-            Icon(
-              _expanded ? Symbols.expand_less : Symbols.expand_more,
-              color: p.text2,
+            AnimatedRotation(
+              turns: _expanded ? 0.5 : 0,
+              duration: context.etReducedMotion
+                  ? Duration.zero
+                  : EtDuration.fast,
+              curve: EtCurves.standard,
+              child: Icon(Symbols.expand_more, color: p.text2),
             ),
           ],
         ),
@@ -727,20 +731,32 @@ class EtEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.et;
+    final reduced = context.etReducedMotion;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(EtSpace.x6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(EtSpace.x4),
-              decoration: BoxDecoration(
-                color: p.neutralQuiet,
-                shape: BoxShape.circle,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: reduced ? 1 : 0, end: 1),
+        duration: reduced ? Duration.zero : EtDuration.base,
+        curve: EtCurves.enter,
+        builder: (context, t, child) => Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * 10),
+            child: child,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(EtSpace.x6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(EtSpace.x4),
+                decoration: BoxDecoration(
+                  color: p.neutralQuiet,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 30, color: p.text2),
               ),
-              child: Icon(icon, size: 30, color: p.text2),
-            ),
             const SizedBox(height: EtSpace.x4),
             Text(
               title,
@@ -757,11 +773,12 @@ class EtEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: EtText.ui(size: EtType.bodySm, color: p.text2),
             ),
-            if (action != null) ...[
-              const SizedBox(height: EtSpace.x5),
-              action!,
+              if (action != null) ...[
+                const SizedBox(height: EtSpace.x5),
+                action!,
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -769,36 +786,67 @@ class EtEmptyState extends StatelessWidget {
 }
 
 /// Streaming area chart for rx/tx, using M3 primary/tertiary roles.
-class EtSpeedGraph extends StatelessWidget {
+class EtSpeedGraph extends StatefulWidget {
   const EtSpeedGraph({super.key, required this.history, this.height = 84});
 
   final List<TrafficSample> history;
   final double height;
 
   @override
+  State<EtSpeedGraph> createState() => _EtSpeedGraphState();
+}
+
+class _EtSpeedGraphState extends State<EtSpeedGraph>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: EtDuration.loopPulse,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (context.etReducedMotion) {
+      _pulse.stop();
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = context.et;
     return Semantics(
-      label: history.isEmpty
+      label: widget.history.isEmpty
           ? 'No traffic yet'
-          : 'Traffic, last ${history.length} seconds, receive and send',
+          : 'Traffic, last ${widget.history.length} seconds, receive and send',
       child: SizedBox(
-        height: height,
-        child: history.isEmpty
+        height: widget.height,
+        child: widget.history.isEmpty
             ? Center(
                 child: Text(
                   'Waiting for traffic…',
                   style: EtText.ui(size: EtType.caption, color: p.text2),
                 ),
               )
-            : CustomPaint(
-                painter: _SpeedGraphPainter(
-                  history: history,
-                  rxColor: p.accent,
-                  txColor: p.scheme.tertiary,
-                  grid: p.border,
+            : AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, _) => CustomPaint(
+                  painter: _SpeedGraphPainter(
+                    history: widget.history,
+                    rxColor: p.accent,
+                    txColor: p.scheme.tertiary,
+                    grid: p.border,
+                    pulse: context.etReducedMotion ? 0 : _pulse.value,
+                  ),
+                  size: Size.infinite,
                 ),
-                size: Size.infinite,
               ),
       ),
     );
@@ -811,12 +859,16 @@ class _SpeedGraphPainter extends CustomPainter {
     required this.rxColor,
     required this.txColor,
     required this.grid,
+    this.pulse = 0,
   });
 
   final List<TrafficSample> history;
   final Color rxColor;
   final Color txColor;
   final Color grid;
+
+  /// 0..1 phase of the "live" halo drawn at the newest sample.
+  final double pulse;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -891,6 +943,16 @@ class _SpeedGraphPainter extends CustomPainter {
       final lastX = (history.length - 1) * dx;
       final lastY = size.height - (pick(last) / maxValue) * size.height;
       canvas.drawCircle(Offset(lastX, lastY), 3, Paint()..color = color);
+      // Breathing halo marks the live edge without animating the whole line.
+      final wave = (math.sin(pulse * math.pi * 2) + 1) / 2;
+      canvas.drawCircle(
+        Offset(lastX, lastY),
+        5 + wave * 6,
+        Paint()
+          ..color = color.withValues(alpha: (1 - wave) * 0.30)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4,
+      );
     }
 
     drawSeries((s) => s.txBps, txColor);
@@ -901,7 +963,8 @@ class _SpeedGraphPainter extends CustomPainter {
   bool shouldRepaint(_SpeedGraphPainter old) =>
       old.history != history ||
       old.rxColor != rxColor ||
-      old.txColor != txColor;
+      old.txColor != txColor ||
+      old.pulse != pulse;
 }
 
 /// Legend for [EtSpeedGraph]; rates are mono so they align.
@@ -1175,6 +1238,7 @@ class EtStatTile extends StatelessWidget {
     required this.icon,
     this.tone = EtTone.accent,
     this.unit,
+    this.onTap,
   });
 
   final String label;
@@ -1182,48 +1246,67 @@ class EtStatTile extends StatelessWidget {
   final IconData icon;
   final EtTone tone;
   final String? unit;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final (bg, fg) = tone.resolve(context.et);
-    return Container(
-      padding: const EdgeInsets.all(EtSpace.x3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: fg),
-          const SizedBox(height: EtSpace.x2),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(EtSpace.x3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: EtText.mono(
-                    size: EtType.title,
-                    weight: FontWeight.w500,
-                    color: fg,
-                    height: 1.2,
-                  ),
-                ),
+              Row(
+                children: [
+                  Icon(icon, size: 18, color: fg),
+                  const Spacer(),
+                  if (onTap != null)
+                    Icon(
+                      Symbols.chevron_right,
+                      size: 16,
+                      color: fg.withValues(alpha: 0.7),
+                    ),
+                ],
               ),
-              if (unit != null) ...[
-                const SizedBox(width: 2),
-                Text(unit!, style: EtText.ui(size: EtType.micro, color: fg)),
-              ],
+              const SizedBox(height: EtSpace.x2),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: EtText.mono(
+                        size: EtType.title,
+                        weight: FontWeight.w500,
+                        color: fg,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                  if (unit != null) ...[
+                    const SizedBox(width: 2),
+                    Text(unit!, style: EtText.ui(size: EtType.micro, color: fg)),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: EtText.ui(size: EtType.micro, color: fg, height: 1.2),
+              ),
             ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: EtText.ui(size: EtType.micro, color: fg, height: 1.2),
-          ),
-        ],
+        ),
       ),
     );
   }

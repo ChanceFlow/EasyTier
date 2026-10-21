@@ -16,19 +16,16 @@ Finder _inSettings(Finder finder) => find.descendant(
 
 void main() {
   setUpAll(loadEtFonts);
-  testWidgets('settings lists every group and the active instance name',
+
+  testWidgets('settings lists clean commercial M3 groups and version metadata',
       (tester) async {
     await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.settings);
 
     for (final title in [
       'Appearance',
-      'Language',
-      'Core',
-      'Config server',
-      'Logs',
+      'Core & Networking',
       'About',
-      'Danger zone',
     ]) {
       expect(_inSettings(find.text(title)), findsOneWidget,
           reason: 'missing section $title');
@@ -36,14 +33,16 @@ void main() {
 
     final page = tester.widget<EtPage>(_inSettings(find.byType(EtPage)));
     expect(page.title, 'Settings');
-    expect(page.subtitle, 'office-mesh');
-    // The core version is read from the client and shown in Core and About.
-    expect(_inSettings(find.text('2.7.0-mock')), findsNWidgets(2));
+    expect(page.subtitle, 'Preferences & core runtime');
+
+    expect(_inSettings(find.text('2.6.4+4')), findsOneWidget);
+    expect(_inSettings(find.text('2.7.0-mock')), findsOneWidget);
     expect(_inSettings(find.text('Normal (in-process)')), findsOneWidget);
-    expect(_inSettings(find.text('UI language (coming in M2)')), findsOneWidget);
+    expect(_inSettings(find.text('Documentation')), findsOneWidget);
+    expect(_inSettings(find.text('Source repository')), findsOneWidget);
   });
 
-  testWidgets('appearance segmented control applies the theme immediately',
+  testWidgets('appearance segmented pill applies the theme immediately',
       (tester) async {
     final state = await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.settings);
@@ -68,7 +67,7 @@ void main() {
     expect(app().themeMode, ThemeMode.system);
   });
 
-  testWidgets('language segmented control stores the locale', (tester) async {
+  testWidgets('language segmented pill stores the locale', (tester) async {
     final state = await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.settings);
 
@@ -81,53 +80,48 @@ void main() {
     expect(state.locale.languageCode, 'en');
   });
 
-  testWidgets('unavailable rows are honest: disabled with an M2 tooltip',
+  testWidgets('config server row opens bottom sheet and persists server URL',
       (tester) async {
-    await pumpPhoneApp(tester);
+    final state = await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.settings);
 
-    // Config server "Connect": disabled button with a tooltip and a visible badge.
-    expect(find.byTooltip('M2'), findsOneWidget);
-    expect(_inSettings(find.text('M2')), findsAtLeastNWidgets(1));
+    expect(_inSettings(find.text('Off')), findsOneWidget);
 
-    // Docs and repo link placeholders are disabled too, never fake links.
-    expect(find.byTooltip('Coming in M2'), findsNWidgets(2));
-    expect(_inSettings(find.text('Documentation')), findsOneWidget);
-    expect(_inSettings(find.text('Source repository')), findsOneWidget);
+    final row = find.byKey(const Key('settings-config-server-row'));
+    await tester.ensureVisible(row);
+    await pumpFrames(tester);
+    await tester.tap(row);
+    await pumpFrames(tester, frames: 12);
+
+    final input = find.byKey(const Key('settings-config-server-input'));
+    expect(input, findsOneWidget);
+    await tester.enterText(input, 'https://config.easytier.cn');
+    await pumpFrames(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await pumpFrames(tester, frames: 12);
+
+    expect(state.configServerUrl, 'https://config.easytier.cn');
+    expect(_inSettings(find.text('Configured')), findsOneWidget);
+    expect(_inSettings(find.text('https://config.easytier.cn')), findsOneWidget);
   });
 
-  testWidgets('log level stays a local preference', (tester) async {
-    await pumpPhoneApp(tester);
+  testWidgets('log level menu updates state logLevel preference',
+      (tester) async {
+    final state = await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.settings);
 
-    // Log level is an M3 DropdownMenu; assert the field's text rather than the
-    // popup's menu-item widgets.
-    final menu = _inSettings(
-      find.byWidgetPredicate((widget) => widget is DropdownMenu),
-    );
-    expect(menu, findsOneWidget);
-    expect(
-      tester.widget<TextField>(_inSettings(find.byType(TextField)).last)
-          .controller!
-          .text,
-      'info',
-    );
-
-    await tester.ensureVisible(menu);
+    expect(state.logLevel, 'info');
+    final row = find.byKey(const Key('settings-log-level-row'));
+    await tester.ensureVisible(row);
     await pumpFrames(tester);
-    await tester.tap(
-      find.descendant(of: menu, matching: find.byIcon(Icons.arrow_drop_down)),
-    );
+    await tester.tap(row);
     await pumpFrames(tester, frames: 12);
-    await tester.tap(find.text('debug').last);
-    await pumpFrames(tester, frames: 16);
 
-    expect(
-      tester.widget<TextField>(_inSettings(find.byType(TextField)).last)
-          .controller!
-          .text,
-      'debug',
-    );
+    await tester.tap(find.text('debug').last);
+    await pumpFrames(tester, frames: 12);
+
+    expect(state.logLevel, 'debug');
+    expect(_inSettings(find.text('debug')), findsOneWidget);
   });
 
   testWidgets('Settings never overflows at 320px', (tester) async {
@@ -135,8 +129,6 @@ void main() {
     tester.view.devicePixelRatio = 2.0;
     addTearDown(tester.view.reset);
 
-    // Scoped harness: the real settings page composition without the shell, so
-    // an offstage tab cannot fail this check.
     final state = AppState(
       client: MockCoreClient(startDelay: Duration.zero),
       pollInterval: null,
@@ -168,43 +160,5 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(_inSettings(find.text('Appearance')), findsOneWidget);
-  });
-
-  testWidgets('deleting the active network confirms first, then removes it',
-      (tester) async {
-    final state = await pumpPhoneApp(tester);
-    await openDestination(tester, EtDestination.settings);
-
-    expect(state.instances, hasLength(1));
-
-    await tester.ensureVisible(_inSettings(find.text('Delete this network')));
-    await pumpFrames(tester);
-    await tester.tap(_inSettings(find.text('Delete this network')));
-    await pumpFrames(tester);
-    expect(find.text('Delete this network?'), findsOneWidget);
-
-    await tester.tap(find.text('Cancel'));
-    await pumpFrames(tester);
-    expect(find.text('Delete this network?'), findsNothing);
-    expect(state.instances, hasLength(1));
-
-    await tester.ensureVisible(_inSettings(find.text('Delete this network')));
-    await pumpFrames(tester);
-    await tester.tap(_inSettings(find.text('Delete this network')));
-    await pumpFrames(tester);
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-    await pumpFrames(tester, frames: 12);
-
-    expect(state.instances, isEmpty);
-    expect(find.text('Network deleted'), findsOneWidget);
-    expect(_inSettings(find.text('Danger zone')), findsNothing);
-    expect(
-      tester.widget<EtPage>(_inSettings(find.byType(EtPage))).subtitle,
-      'No network',
-    );
-
-    // Let the snackbar's dismissal timer run out before letting the test end.
-    await tester.pump(const Duration(seconds: 5));
-    await pumpFrames(tester);
   });
 }

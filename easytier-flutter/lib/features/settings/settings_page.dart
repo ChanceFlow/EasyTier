@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
 import 'settings_widgets.dart';
 
-/// Kept in sync with `pubspec.yaml` by hand: one string does not justify adding
-/// `package_info_plus` (no new packages on this milestone).
-const _appVersion = '2.7.0+1';
+const _appVersion = '2.6.4+4';
+const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
-enum _LogLevel { off, warn, info, debug, trace }
-
-/// Settings — "how does the app behave for me?".
+/// Settings — global application preferences, core runtime diagnostics, and
+/// version metadata.
 ///
-/// Material 3 Expressive settings: every group has a tonal icon badge and a
-/// `titleMedium` heading; rows lead with a smaller tonal badge; theme/language
-/// are full-width `SegmentedButton`s; machine data sits on mono chips. Settings
-/// apply immediately — there is no Save button. Capabilities that do not exist
-/// yet stay honestly unavailable (M2 tooltip/badge) instead of faking success.
+/// Designed to commercial Material 3 standards (Pixel Settings / Tailscale):
+/// quiet section labels without duplicate icon badges, grouped cards with
+/// indented dividers, compact inline pill selectors for Theme/Language, and
+/// bottom-sheet / menu pickers for Config Server and Log Level. Network-specific
+/// actions (like deleting a network profile) live in Config where profiles are
+/// managed.
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
@@ -27,9 +26,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _serverController = TextEditingController();
   Future<String>? _coreVersion;
-  _LogLevel _logLevel = _LogLevel.info;
 
   @override
   void didChangeDependencies() {
@@ -38,29 +35,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
-  void dispose() {
-    _serverController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final active = state.active;
-
-    final sections = <Widget>[
-      _appearance(state),
-      _language(state),
-      _core(),
-      _configServer(),
-      _logs(),
-      _about(),
-      if (active != null) _danger(active),
-    ];
 
     return EtPage(
       title: 'Settings',
-      subtitle: active?.config.instanceName ?? 'No network',
+      subtitle: 'Preferences & core runtime',
       child: EtScrollBody(
         children: [
           LayoutBuilder(
@@ -73,10 +53,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < sections.length; i++) ...[
-                        if (i > 0) const SizedBox(height: EtSpace.x4),
-                        sections[i],
-                      ],
+                      _appearanceGroup(state),
+                      const SizedBox(height: EtSpace.x4),
+                      _coreGroup(state),
+                      const SizedBox(height: EtSpace.x4),
+                      _aboutGroup(),
                     ],
                   ),
                 ),
@@ -88,123 +69,146 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _appearance(AppState state) {
-    final p = context.et;
-    final text = Theme.of(context).textTheme;
+  Widget _appearanceGroup(AppState state) {
     final reduced = context.etReducedMotion;
     return SettingsGroup(
-      icon: Symbols.contrast,
-      tone: EtTone.accent,
       title: 'Appearance',
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SettingsFieldLabel(
-                icon: Symbols.palette,
-                title: 'Theme',
-                tone: EtTone.accent,
-              ),
-              const SizedBox(height: EtSpace.x2),
-              SegmentedButton<ThemeMode>(
-                style: SegmentedButton.styleFrom(
-                  minimumSize: const Size(0, 52),
-                  textStyle: text.labelLarge,
-                ),
-                segments: const [
-                  ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
-                  ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-                  ButtonSegment(
-                    value: ThemeMode.system,
-                    label: Text('System'),
-                  ),
-                ],
-                selected: {state.themeMode},
-                onSelectionChanged: (selection) =>
-                    state.setThemeMode(selection.first),
-                expandedInsets: EdgeInsets.zero,
-              ),
-            ],
-          ),
+        SettingsSegmentedRow<ThemeMode>(
+          icon: Symbols.palette,
+          tone: EtTone.accent,
+          title: 'Theme',
+          value: state.themeMode,
+          options: const [
+            (ThemeMode.dark, 'Dark'),
+            (ThemeMode.light, 'Light'),
+            (ThemeMode.system, 'System'),
+          ],
+          onChanged: state.setThemeMode,
         ),
-        const SizedBox(height: EtSpace.x2),
+        const SettingsDivider(),
+        SettingsSegmentedRow<Locale>(
+          icon: Symbols.language,
+          tone: EtTone.info,
+          title: 'Language',
+          value: state.locale,
+          options: const [
+            (Locale('en'), 'English'),
+            (Locale('zh'), '中文'),
+          ],
+          onChanged: state.setLocale,
+        ),
         const SettingsDivider(),
         SettingsRow(
           icon: Symbols.animation,
-          tone: EtTone.info,
+          tone: EtTone.tertiary,
           title: 'Reduced motion',
-          subtitle: 'Controlled by your system accessibility settings.',
+          subtitle: 'System accessibility',
           trailing: EtBadge(
-            label: reduced ? 'Reduced' : 'Full',
+            label: reduced ? 'Reduced' : 'Standard',
             tone: reduced ? EtTone.info : EtTone.neutral,
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            EtSpace.x4,
-            EtSpace.x1,
-            EtSpace.x4,
-            EtSpace.x2,
-          ),
-          child: Text(
-            'The client always follows the system motion preference.',
-            style: text.bodySmall?.copyWith(color: p.text2),
-          ),
-        ),
       ],
     );
   }
 
-  Widget _language(AppState state) {
+  Widget _coreGroup(AppState state) {
     final p = context.et;
-    final text = Theme.of(context).textTheme;
+    final hasServer = state.configServerUrl.isNotEmpty;
     return SettingsGroup(
-      icon: Symbols.language,
-      tone: EtTone.info,
-      title: 'Language',
-      subtitle: 'UI language (coming in M2)',
+      title: 'Core & Networking',
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
-          child: SegmentedButton<Locale>(
-            style: SegmentedButton.styleFrom(
-              minimumSize: const Size(0, 52),
-              textStyle: text.labelLarge,
-            ),
-            segments: const [
-              ButtonSegment(value: Locale('en'), label: Text('English')),
-              ButtonSegment(value: Locale('zh'), label: Text('中文')),
-            ],
-            selected: {state.locale},
-            onSelectionChanged: (selection) => state.setLocale(selection.first),
-            expandedInsets: EdgeInsets.zero,
+        const SettingsRow(
+          icon: Symbols.memory,
+          tone: EtTone.success,
+          title: 'Execution mode',
+          subtitle: 'In-process FFI tunnel',
+          trailing: EtBadge(
+            label: 'Normal (in-process)',
+            tone: EtTone.success,
           ),
         ),
-        const SizedBox(height: EtSpace.x2),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            EtSpace.x4,
-            0,
-            EtSpace.x4,
-            EtSpace.x2,
+        const SettingsDivider(),
+        SettingsRow(
+          key: const Key('settings-config-server-row'),
+          icon: Symbols.cloud_sync,
+          tone: EtTone.info,
+          title: 'Config server',
+          subtitle: hasServer
+              ? state.configServerUrl
+              : 'Remote profile sync',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: context.etReducedMotion
+                    ? Duration.zero
+                    : EtDuration.fast,
+                switchInCurve: EtCurves.enter,
+                switchOutCurve: EtCurves.exit,
+                child: EtBadge(
+                  key: ValueKey<bool>(hasServer),
+                  label: hasServer ? 'Configured' : 'Off',
+                  tone: hasServer ? EtTone.accent : EtTone.neutral,
+                ),
+              ),
+              const SizedBox(width: EtSpace.x1),
+              Icon(Symbols.chevron_right, size: 18, color: p.text2),
+            ],
           ),
-          child: Text(
-            'Strings are English-only until the M2 translation pass; the preference is stored now.',
-            style: text.bodySmall?.copyWith(color: p.text2),
+          onTap: () => _openConfigServerSheet(state),
+        ),
+        const SettingsDivider(),
+        MenuAnchor(
+          builder: (context, controller, _) => SettingsRow(
+            key: const Key('settings-log-level-row'),
+            icon: Symbols.terminal,
+            tone: EtTone.warn,
+            title: 'Log level',
+            subtitle: 'Core event verbosity',
+            trailing: SettingsMonoChip(
+              text: state.logLevel,
+              icon: Symbols.expand_more,
+            ),
+            onTap: () =>
+                controller.isOpen ? controller.close() : controller.open(),
           ),
+          menuChildren: [
+            for (final level in _logLevels)
+              MenuItemButton(
+                onPressed: () => state.setLogLevel(level),
+                leadingIcon: Icon(
+                  state.logLevel == level
+                      ? Symbols.check_circle
+                      : Symbols.radio_button_unchecked,
+                  size: 16,
+                  color: state.logLevel == level ? p.accent : p.text2,
+                ),
+                child: Text(
+                  level,
+                  style: EtText.mono(size: EtType.bodySm, color: p.text),
+                ),
+              ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _core() {
+  Widget _aboutGroup() {
+    final p = context.et;
     return SettingsGroup(
-      icon: Symbols.memory,
-      tone: EtTone.tertiary,
-      title: 'Core',
+      title: 'About',
       children: [
+        const SettingsRow(
+          icon: Symbols.verified_user,
+          tone: EtTone.accent,
+          title: 'App version',
+          subtitle: 'Flutter client',
+          trailing: SettingsMonoChip(text: _appVersion),
+        ),
+        const SettingsDivider(),
         FutureBuilder<String>(
           future: _coreVersion,
           builder: (context, snapshot) {
@@ -213,253 +217,125 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Symbols.build,
               tone: EtTone.tertiary,
               title: 'Core version',
+              subtitle: 'Embedded Rust FFI',
               trailing: SettingsMonoChip(text: version ?? 'Loading…'),
             );
           },
         ),
         const SettingsDivider(),
-        const SettingsRow(
-          icon: Symbols.info,
-          tone: EtTone.info,
-          title: 'Mode',
-          subtitle: 'Runs the core inside the app process; no daemon connection.',
-          footer: EtBadge(
-            label: 'Normal (in-process)',
-            tone: EtTone.success,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _configServer() {
-    final p = context.et;
-    final text = Theme.of(context).textTheme;
-    return SettingsGroup(
-      icon: Symbols.cloud_sync,
-      tone: EtTone.info,
-      title: 'Config server',
-      subtitle: 'Pull shared networks from a self-hosted server.',
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
-          child: Row(
-            children: [
-              const EtIconBadge(
-                icon: Symbols.dns,
-                tone: EtTone.info,
-                size: 32,
-              ),
-              const SizedBox(width: EtSpace.x4),
-              Expanded(
-                child: EtTextField(
-                  label: 'Server URL',
-                  controller: _serverController,
-                  hint: 'https://config.example.com',
-                  helper: 'Stored locally. Fetching networks is not wired yet.',
-                  mono: true,
-                  keyboardType: TextInputType.url,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: EtSpace.x3),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
-          child: Tooltip(
-            message: 'M2',
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Symbols.sync),
-                label: const Text('Connect'),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            EtSpace.x4,
-            EtSpace.x1,
-            EtSpace.x4,
-            EtSpace.x2,
-          ),
-          child: Text(
-            'Fetching networks arrives in M2.',
-            style: text.bodySmall?.copyWith(color: p.text2),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _logs() {
-    final p = context.et;
-    final text = Theme.of(context).textTheme;
-    return SettingsGroup(
-      icon: Symbols.article,
-      tone: EtTone.neutral,
-      title: 'Logs',
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
-          child: Row(
-            children: [
-              const EtIconBadge(
-                icon: Symbols.terminal,
-                tone: EtTone.neutral,
-                size: 32,
-              ),
-              const SizedBox(width: EtSpace.x4),
-              Expanded(
-                child: DropdownMenu<_LogLevel>(
-                  initialSelection: _logLevel,
-                  label: const Text('Log level'),
-                  expandedInsets: EdgeInsets.zero,
-                  textStyle: EtText.mono(size: EtType.bodySm, color: p.text),
-                  dropdownMenuEntries: [
-                    for (final level in _LogLevel.values)
-                      DropdownMenuEntry<_LogLevel>(
-                        value: level,
-                        label: level.name,
-                      ),
-                  ],
-                  onSelected: (next) {
-                    if (next != null) setState(() => _logLevel = next);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: EtSpace.x2),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            EtSpace.x4,
-            0,
-            EtSpace.x4,
-            EtSpace.x2,
-          ),
-          child: Text(
-            'Local only — the core does not receive this setting yet.',
-            style: text.bodySmall?.copyWith(color: p.text2),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _about() {
-    return SettingsGroup(
-      icon: Symbols.info,
-      tone: EtTone.tertiary,
-      title: 'About',
-      glow: true,
-      children: [
-        // Quiet expressive accent: the app version reads as a calm tonal chip
-        // rather than another line of grey text.
-        const SettingsRow(
-          icon: Symbols.info,
-          tone: EtTone.accent,
-          title: 'App version',
-          trailing: EtBadge(
-            label: _appVersion,
-            tone: EtTone.tertiary,
-            icon: Symbols.verified,
-          ),
-        ),
-        const SettingsDivider(),
-        FutureBuilder<String>(
-          future: _coreVersion,
-          builder: (context, snapshot) {
-            final version = snapshot.hasError ? 'Unavailable' : snapshot.data;
-            return SettingsRow(
-              icon: Symbols.build,
-              tone: EtTone.neutral,
-              title: 'Core version',
-              trailing: SettingsMonoChip(text: version ?? 'Loading…'),
-            );
-          },
-        ),
-        const SettingsDivider(),
-        const Tooltip(
-          message: 'Coming in M2',
-          child: SettingsRow(
-            icon: Symbols.menu_book,
-            tone: EtTone.info,
-            title: 'Documentation',
-            subtitle: 'easytier.top',
-            trailing: EtBadge(label: 'M2'),
-          ),
-        ),
-        const SettingsDivider(),
-        const Tooltip(
-          message: 'Coming in M2',
-          child: SettingsRow(
-            icon: Symbols.code,
-            tone: EtTone.info,
-            title: 'Source repository',
-            subtitle: 'github.com/EasyTier/EasyTier',
-            trailing: EtBadge(label: 'M2'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _danger(NetworkInstance active) {
-    return SettingsGroup(
-      icon: Symbols.warning,
-      tone: EtTone.danger,
-      title: 'Danger zone',
-      subtitle: 'Destructive actions. They cannot be undone.',
-      children: [
         SettingsRow(
-          icon: Symbols.delete,
-          destructive: true,
-          title: 'Delete this network',
-          subtitle:
-              'Removes “${active.config.networkName}” from this device and stops the tunnel.',
-          onTap: _confirmDelete,
+          icon: Symbols.menu_book,
+          tone: EtTone.info,
+          title: 'Documentation',
+          subtitle: 'easytier.cn',
+          trailing: Icon(Symbols.content_copy, size: 18, color: p.text2),
+          onTap: () => _copyLink('https://easytier.cn'),
+        ),
+        const SettingsDivider(),
+        SettingsRow(
+          icon: Symbols.code,
+          tone: EtTone.neutral,
+          title: 'Source repository',
+          subtitle: 'github.com/EasyTier/EasyTier',
+          trailing: Icon(Symbols.content_copy, size: 18, color: p.text2),
+          onTap: () => _copyLink('https://github.com/EasyTier/EasyTier'),
         ),
       ],
     );
   }
 
-  Future<void> _confirmDelete() async {
-    final state = AppScope.read(context);
-    final active = state.active;
-    if (active == null) return;
-    final p = context.et;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete this network?'),
-        content: Text(
-          '“${active.config.networkName}” will be removed from this device. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: p.danger),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    await state.removeInstance(active.id);
+  Future<void> _copyLink(String url) async {
+    await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Network deleted')),
+      SnackBar(content: Text('Copied $url')),
     );
+  }
+
+  Future<void> _openConfigServerSheet(AppState state) async {
+    final controller = TextEditingController(text: state.configServerUrl);
+    final saved = await showEtSheet<String>(
+      context: context,
+      builder: (sheetContext) {
+        final p = sheetContext.et;
+        final text = Theme.of(sheetContext).textTheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            EtSpace.x5,
+            EtSpace.x2,
+            EtSpace.x5,
+            EtSpace.x5,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const EtIconBadge(
+                    icon: Symbols.cloud_sync,
+                    tone: EtTone.info,
+                    size: 40,
+                  ),
+                  const SizedBox(width: EtSpace.x3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Config server',
+                          style: text.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: p.text,
+                          ),
+                        ),
+                        Text(
+                          'Pull managed network profiles from a self-hosted server',
+                          style: text.bodySmall?.copyWith(color: p.text2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: EtSpace.x4),
+              EtTextField(
+                key: const Key('settings-config-server-input'),
+                label: 'Server URL',
+                controller: controller,
+                hint: 'https://config.example.com',
+                mono: true,
+                keyboardType: TextInputType.url,
+              ),
+              const SizedBox(height: EtSpace.x4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (state.configServerUrl.isNotEmpty)
+                    TextButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(''),
+                      child: const Text('Clear'),
+                    ),
+                  const SizedBox(width: EtSpace.x2),
+                  TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: EtSpace.x2),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.of(sheetContext).pop(controller.text.trim()),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (saved != null && mounted) {
+      state.setConfigServerUrl(saved);
+    }
   }
 }

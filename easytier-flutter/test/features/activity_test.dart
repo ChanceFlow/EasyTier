@@ -123,12 +123,10 @@ void main() {
       });
     });
 
-    testWidgets('filter menu narrows the feed and offers a way back', (tester) async {
+    testWidgets('filter chips narrow the feed and offer a way back', (tester) async {
       await _runWithApp(tester, (state) async {
         await openDestination(tester, EtDestination.activity);
 
-        await tester.tap(find.byKey(const Key('activity-filter')));
-        await pumpFrames(tester, frames: 16);
         await tester.tap(find.byKey(const Key('activity-filter-peers')));
         await pumpFrames(tester, frames: 16);
 
@@ -140,8 +138,6 @@ void main() {
         await pumpFrames(tester, frames: 16);
         expect(find.text('Connecting to EasyTier Home'), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key('activity-filter')));
-        await pumpFrames(tester, frames: 16);
         await tester.tap(find.byKey(const Key('activity-filter-warnings')));
         await pumpFrames(tester, frames: 16);
         expect(find.text('No warnings'), findsOneWidget);

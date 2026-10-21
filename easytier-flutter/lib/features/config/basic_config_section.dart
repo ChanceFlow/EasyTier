@@ -42,7 +42,6 @@ class BasicConfigSection extends StatelessWidget {
               mono: true,
               enabled: enabled,
               hint: 'office-mesh',
-              helper: 'Identifier for this configuration on the device.',
               error: errors[ConfigField.instanceName],
               onChanged: (_) => onTextChanged(ConfigField.instanceName),
             ),
@@ -53,7 +52,6 @@ class BasicConfigSection extends StatelessWidget {
               mono: true,
               enabled: enabled,
               hint: 'chance-desktop',
-              helper: 'Shown to peers in Devices.',
               error: errors[ConfigField.hostname],
               onChanged: (_) => onTextChanged(ConfigField.hostname),
             ),
@@ -67,7 +65,6 @@ class BasicConfigSection extends StatelessWidget {
               controller: form.networkName,
               enabled: enabled,
               hint: 'EasyTier Home',
-              helper: 'Every peer that should join this mesh uses the same name.',
               error: errors[ConfigField.networkName],
               onChanged: (_) => onTextChanged(ConfigField.networkName),
             ),
@@ -79,7 +76,6 @@ class BasicConfigSection extends StatelessWidget {
               obscure: !revealSecret,
               enabled: enabled,
               hint: 'Shared secret',
-              helper: 'Shared by every peer. Stored locally, never uploaded.',
               error: errors[ConfigField.networkSecret],
               suffix: EtIconButton(
                 icon: revealSecret

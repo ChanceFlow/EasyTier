@@ -16,6 +16,8 @@ import 'peer_pills.dart';
 /// M3 menu, status is communicated by icon + label + colour together.
 enum _DeviceSort { latency, name, status }
 
+enum _DevicePathFilter { all, direct, relayed, offline }
+
 extension on _DeviceSort {
   String get label => switch (this) {
     _DeviceSort.latency => 'Latency',
@@ -33,6 +35,7 @@ class DevicesPage extends StatefulWidget {
 
 class _DevicesPageState extends State<DevicesPage> {
   _DeviceSort _sort = _DeviceSort.latency;
+  _DevicePathFilter _pathFilter = _DevicePathFilter.all;
   bool _searchOpen = false;
   String _query = '';
   final TextEditingController _searchController = TextEditingController();
@@ -69,6 +72,13 @@ class _DevicesPageState extends State<DevicesPage> {
   void _setSort(_DeviceSort value) => setState(() => _sort = value);
 
   bool _matches(Peer peer) {
+    final matchesFilter = switch (_pathFilter) {
+      _DevicePathFilter.all => true,
+      _DevicePathFilter.direct => peer.online && peer.path == 'direct',
+      _DevicePathFilter.relayed => peer.online && peer.path == 'relay',
+      _DevicePathFilter.offline => !peer.online,
+    };
+    if (!matchesFilter) return false;
     final query = _query.trim().toLowerCase();
     if (query.isEmpty) return true;
     return peer.hostname.toLowerCase().contains(query) ||
@@ -183,7 +193,11 @@ class _DevicesPageState extends State<DevicesPage> {
           if (up && status.peers.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: EtSpace.x3),
-              child: _DevicesSummary(status: status),
+              child: _DeviceFilterBar(
+                peers: status.peers,
+                selected: _pathFilter,
+                onSelect: (next) => setState(() => _pathFilter = next),
+              ),
             ),
           Expanded(
             child: _body(
@@ -598,74 +612,120 @@ class _PathCell extends StatelessWidget {
   }
 }
 
-/// Expressive status summary: online / offline / routes as tonal chips. `Wrap`
-/// keeps it overflow-free at 320dp (chips flow to a second line instead of
-/// clipping) and adds no scrollable, so list scroll positions stay unaffected.
-class _DevicesSummary extends StatelessWidget {
-  const _DevicesSummary({required this.status});
+/// Interactive path filter chips (`All`, `Direct`, `Relayed`, `Offline`) so the
+/// top bar acts as a real 1-tap filter instead of repeating the AppBar subtitle.
+class _DeviceFilterBar extends StatelessWidget {
+  const _DeviceFilterBar({
+    required this.peers,
+    required this.selected,
+    required this.onSelect,
+  });
 
-  final InstanceStatus status;
+  final List<Peer> peers;
+  final _DevicePathFilter selected;
+  final ValueChanged<_DevicePathFilter> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final online = status.peers.where((peer) => peer.online).length;
-    final offline = status.peers.length - online;
+    final direct = peers.where((p) => p.online && p.path == 'direct').length;
+    final relayed = peers.where((p) => p.online && p.path == 'relay').length;
+    final offline = peers.where((p) => !p.online).length;
+
+    final items = [
+      (_DevicePathFilter.all, 'All', peers.length, Symbols.devices),
+      (_DevicePathFilter.direct, 'Direct', direct, Symbols.bolt),
+      (_DevicePathFilter.relayed, 'Relayed', relayed, Symbols.alt_route),
+      (_DevicePathFilter.offline, 'Offline', offline, Symbols.link_off),
+    ];
+
     return Wrap(
       spacing: EtSpace.x2,
       runSpacing: EtSpace.x2,
       children: [
-        _SummaryChip(
-          icon: Symbols.check_circle,
-          label: '$online online',
-          tone: EtTone.success,
-        ),
-        _SummaryChip(
-          icon: Symbols.radio_button_unchecked,
-          label: '$offline offline',
-          tone: EtTone.neutral,
-        ),
-        _SummaryChip(
-          icon: Symbols.alt_route,
-          label: '${status.routeCount} routes',
-          tone: EtTone.tertiary,
-        ),
+        for (final (filter, label, count, icon) in items)
+          _FilterPill(
+            icon: icon,
+            label: label,
+            count: count,
+            selected: selected == filter,
+            onTap: () => onSelect(filter),
+          ),
       ],
     );
   }
 }
 
-/// Expressive stadium chip: tonal container, icon, quiet label.
-class _SummaryChip extends StatelessWidget {
-  const _SummaryChip({required this.icon, required this.label, required this.tone});
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
-  final EtTone tone;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = context.et;
-    final (bg, fg) = tone.resolve(p);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: EtSpace.x3, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(EtRadius.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: fg),
-          const SizedBox(width: EtSpace.x2),
-          Text(
-            label,
-            style: EtText.ui(
-              size: EtType.caption,
-              weight: FontWeight.w500,
-              color: fg,
-            ),
+    final scheme = p.scheme;
+    final bg = selected
+        ? scheme.primaryContainer
+        : scheme.surfaceContainerHigh;
+    final fg = selected
+        ? scheme.onPrimaryContainer
+        : scheme.onSurfaceVariant;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(EtRadius.pill),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          EtHaptics.selection();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: context.etReducedMotion ? Duration.zero : EtDuration.fast,
+          curve: EtCurves.standard,
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 6,
           ),
-        ],
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(EtRadius.pill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: fg),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: EtText.ui(
+                  size: EtType.caption,
+                  weight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: fg,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '$count',
+                style: EtText.mono(
+                  size: EtType.micro,
+                  weight: FontWeight.w600,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

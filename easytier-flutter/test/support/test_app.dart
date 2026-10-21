@@ -105,7 +105,10 @@ Future<AppState> _pumpApp(
   final state = AppState(
     client: MockCoreClient(
       startDelay: Duration.zero,
-      clock: () => DateTime(2026, 10, 20, 12, 0, 0),
+      clock: () {
+        final now = DateTime.now();
+        return DateTime(now.year, now.month, now.day, 12, 0, 0);
+      },
     ),
     // No polling timer: widget tests assert "no pending timers" at the end.
     pollInterval: null,

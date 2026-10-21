@@ -192,10 +192,21 @@ class EtPage extends StatelessWidget {
                     ),
                   ),
                   if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      style: EtText.ui(size: EtType.caption, color: p.text2),
-
+                    AnimatedSwitcher(
+                      duration: EtDuration.fast,
+                      switchInCurve: EtCurves.enter,
+                      switchOutCurve: EtCurves.exit,
+                      layoutBuilder: (current, previous) => Stack(
+                        alignment: AlignmentDirectional.centerStart,
+                        children: [...previous, ?current],
+                      ),
+                      child: Text(
+                        subtitle!,
+                        key: ValueKey<String>(subtitle!),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: EtText.ui(size: EtType.caption, color: p.text2),
+                      ),
                     ),
                 ],
               ),

@@ -33,7 +33,11 @@ class HomeCardHeader extends StatelessWidget {
 
 /// The hero: one large expressive surface (aurora aura + connection orb +
 /// the single primary action). Everything else on Home is a supporting block.
-class HomeHero extends StatelessWidget {
+///
+/// Motion: the content is choreographed (badge → orb → state → latency →
+/// action) on first paint and replayed whenever the connection state changes,
+/// so "connected" lands with a deliberate beat instead of a hard swap.
+class HomeHero extends StatefulWidget {
   const HomeHero({
     super.key,
     required this.signalState,
@@ -56,23 +60,58 @@ class HomeHero extends StatelessWidget {
   final Widget action;
 
   @override
+  State<HomeHero> createState() => _HomeHeroState();
+}
+
+class _HomeHeroState extends State<HomeHero>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: EtDuration.hero,
+  )..forward();
+
+  @override
+  void didUpdateWidget(HomeHero oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.signalState != widget.signalState) {
+      if (context.etReducedMotion) {
+        _controller.value = 1;
+      } else {
+        _controller.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Animation<double> _slice(double begin, double end) => CurvedAnimation(
+        parent: _controller,
+        curve: Interval(begin, end, curve: EtCurves.enter),
+      );
+
+  @override
   Widget build(BuildContext context) {
     final p = context.et;
     final text = Theme.of(context).textTheme;
     final reduced = context.etReducedMotion;
+    final latencyMs = widget.latencyMs;
     final value = latencyMs == null ? '—' : '$latencyMs';
     final semantics = latencyMs == null
         ? 'Latency unavailable'
         : 'Latency $latencyMs milliseconds';
 
-    final (tone, icon, defaultLabel) = switch (signalState) {
+    final (tone, icon, defaultLabel) = switch (widget.signalState) {
       EtSignalState.connected => (EtTone.success, Symbols.check_circle, 'Connected'),
       EtSignalState.connecting => (EtTone.info, Symbols.sync, 'Connecting'),
       EtSignalState.degraded => (EtTone.warn, Symbols.warning, 'Degraded'),
       EtSignalState.disconnected => (EtTone.danger, Symbols.link_off, 'Disconnected'),
       EtSignalState.off => (EtTone.neutral, Symbols.radio_button_unchecked, 'Not running'),
     };
-    final statusText = signalLabel ?? defaultLabel;
+    final statusText = widget.signalLabel ?? defaultLabel;
 
     return Container(
       decoration: BoxDecoration(
@@ -98,7 +137,7 @@ class HomeHero extends StatelessWidget {
                 tertiary: EtAccent.violet,
                 success: EtAccent.cyan,
                 dark: p.isDark,
-                intensity: switch (signalState) {
+                intensity: switch (widget.signalState) {
                   EtSignalState.connected => 1.0,
                   EtSignalState.connecting => 0.85,
                   EtSignalState.degraded => 0.7,
@@ -137,38 +176,67 @@ class HomeHero extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(EtSpace.x5, EtSpace.x4, EtSpace.x5, EtSpace.x5),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
+            padding: const EdgeInsets.fromLTRB(
+              EtSpace.x5,
+              EtSpace.x4,
+              EtSpace.x5,
+              EtSpace.x5,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                EtEnter(
+                  animation: _slice(0.0, 0.55),
+                  child: Row(
                     children: [
                       EtBadge(label: statusText, tone: tone, icon: icon),
                       const Spacer(),
                       Text(
-                        uptimeLabel,
+                        widget.uptimeLabel,
                         style: EtText.mono(size: EtType.caption, color: p.text2),
                       ),
                     ],
                   ),
-                  const SizedBox(height: EtSpace.x2),
-                  Center(child: EtConnectionOrb(state: signalState, size: 112)),
-                  const SizedBox(height: EtSpace.x1),
-                  Center(
-                    child: Text(
-                      stateLine,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.titleLarge?.copyWith(
-                        color: p.text,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.2,
+                ),
+                const SizedBox(height: EtSpace.x2),
+                EtEnter(
+                  animation: _slice(0.08, 0.68),
+                  interval: const Interval(0.08, 0.68, curve: EtCurves.enter),
+                  offset: 6,
+                  child: Center(
+                    child: EtConnectionOrb(
+                      state: widget.signalState,
+                      size: 112,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: EtSpace.x1),
+                EtEnter(
+                  animation: _slice(0.16, 0.76),
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: reduced ? Duration.zero : EtDuration.fast,
+                      switchInCurve: EtCurves.enter,
+                      switchOutCurve: EtCurves.exit,
+                      child: Text(
+                        widget.stateLine,
+                        key: ValueKey<String>(widget.stateLine),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleLarge?.copyWith(
+                          color: p.text,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: EtSpace.x2),
-                  Center(
+                ),
+                const SizedBox(height: EtSpace.x2),
+                EtEnter(
+                  animation: _slice(0.24, 0.86),
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -218,18 +286,20 @@ class HomeHero extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: EtSpace.x4),
-                  action,
-                ],
-              ),
+                ),
+                const SizedBox(height: EtSpace.x4),
+                EtEnter(
+                  animation: _slice(0.32, 1.0),
+                  child: EtPressScale(child: widget.action),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
   }
 }
-
-
 
 /// Layered radial aurora used behind the hero content.
 class _AuroraPainter extends CustomPainter {
@@ -284,7 +354,8 @@ class _AuroraPainter extends CustomPainter {
       old.success != success || old.dark != dark || old.intensity != intensity;
 }
 
-/// Three tonal bento stats under the hero.
+/// Three tonal bento stats under the hero. Tapping Peers or Routes navigates
+/// directly to the Devices tab so the dashboard is connected to the peer table.
 class HomeStatsRow extends StatelessWidget {
   const HomeStatsRow({
     super.key,
@@ -293,6 +364,7 @@ class HomeStatsRow extends StatelessWidget {
     required this.peerCount,
     required this.routeCount,
     required this.rxBps,
+    this.onOpenDevices,
   });
 
   final bool up;
@@ -300,6 +372,7 @@ class HomeStatsRow extends StatelessWidget {
   final int peerCount;
   final int routeCount;
   final int rxBps;
+  final VoidCallback? onOpenDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +384,7 @@ class HomeStatsRow extends StatelessWidget {
             value: up ? '$onlinePeers / $peerCount' : '—',
             icon: Symbols.devices,
             tone: up ? EtTone.accent : EtTone.neutral,
+            onTap: onOpenDevices,
           ),
         ),
         const SizedBox(width: EtSpace.x3),
@@ -320,6 +394,7 @@ class HomeStatsRow extends StatelessWidget {
             value: up ? '$routeCount' : '—',
             icon: Symbols.alt_route,
             tone: up ? EtTone.warn : EtTone.neutral,
+            onTap: onOpenDevices,
           ),
         ),
         const SizedBox(width: EtSpace.x3),
@@ -336,7 +411,8 @@ class HomeStatsRow extends StatelessWidget {
   }
 }
 
-/// Identity + counts of the selected network, as M3 list rows on a card.
+/// Identity of the selected network, with a direct link to edit its
+/// configuration and one-tap Virtual IP copy.
 class HomeNetworkCard extends StatelessWidget {
   const HomeNetworkCard({
     super.key,
@@ -344,60 +420,65 @@ class HomeNetworkCard extends StatelessWidget {
     required this.networkName,
     required this.virtualIp,
     required this.up,
-    required this.onlinePeers,
-    required this.peerCount,
-    required this.routeCount,
+    this.onConfigure,
+    this.onCopyIp,
   });
 
   final String instanceName;
   final String networkName;
   final String? virtualIp;
   final bool up;
-  final int onlinePeers;
-  final int peerCount;
-  final int routeCount;
+  final VoidCallback? onConfigure;
+  final VoidCallback? onCopyIp;
 
   @override
   Widget build(BuildContext context) {
     final p = context.et;
     return EtSurface(
-      padding: const EdgeInsets.fromLTRB(0, EtSpace.x4, 0, EtSpace.x2),
+      padding: const EdgeInsets.fromLTRB(0, EtSpace.x3, 0, EtSpace.x2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: EtSpace.x4),
-            child: HomeCardHeader(title: 'Network'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
+            child: HomeCardHeader(
+              title: 'Network',
+              trailing: onConfigure == null
+                  ? null
+                  : TextButton.icon(
+                      onPressed: onConfigure,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: EtSpace.x2,
+                        ),
+                      ),
+                      icon: const Icon(Symbols.tune, size: 16),
+                      label: const Text('Configure'),
+                    ),
+            ),
           ),
           const SizedBox(height: EtSpace.x1),
-          _DetailTile(label: 'Virtual IP', value: virtualIp ?? '—', mono: true),
-          _DetailTile(label: 'Instance', value: instanceName, mono: true),
-          _DetailTile(label: 'Network', value: networkName),
-          Divider(height: 1, indent: EtSpace.x4, endIndent: EtSpace.x4, color: p.border),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              EtSpace.x4,
-              EtSpace.x4,
-              EtSpace.x4,
-              EtSpace.x2,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: EtKpi(
-                    label: 'Peers online',
-                    value: up ? '$onlinePeers / $peerCount' : '—',
-                  ),
-                ),
-                Expanded(
-                  child: EtKpi(
-                    label: 'Routes',
-                    value: up ? '$routeCount' : '—',
-                  ),
-                ),
-              ],
-            ),
+          _DetailTile(
+            label: 'Virtual IP',
+            value: virtualIp ?? '—',
+            mono: true,
+            onTap: virtualIp != null ? onCopyIp : null,
           ),
+          Divider(
+            height: 1,
+            indent: EtSpace.x4,
+            endIndent: EtSpace.x4,
+            color: p.border.withValues(alpha: 0.5),
+          ),
+          _DetailTile(label: 'Instance', value: instanceName, mono: true),
+          Divider(
+            height: 1,
+            indent: EtSpace.x4,
+            endIndent: EtSpace.x4,
+            color: p.border.withValues(alpha: 0.5),
+          ),
+          _DetailTile(label: 'Network', value: networkName),
         ],
       ),
     );
@@ -406,31 +487,49 @@ class HomeNetworkCard extends StatelessWidget {
 
 /// One `ListTile` data row: label on the left, mono/UI value right-aligned.
 class _DetailTile extends StatelessWidget {
-  const _DetailTile({required this.label, required this.value, this.mono = false});
+  const _DetailTile({
+    required this.label,
+    required this.value,
+    this.mono = false,
+    this.onTap,
+  });
 
   final String label;
   final String value;
   final bool mono;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = context.et;
     final text = Theme.of(context).textTheme;
     return ListTile(
+      onTap: onTap,
       dense: true,
       minVerticalPadding: 0,
       contentPadding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
       title: Text(label, style: text.bodyMedium?.copyWith(color: p.text2)),
       trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 176),
-        child: Text(
-          value,
-          textAlign: TextAlign.end,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: mono
-              ? EtText.mono(size: EtType.bodySm, color: p.text)
-              : text.bodyMedium?.copyWith(color: p.text),
+        constraints: const BoxConstraints(maxWidth: 196),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: mono
+                    ? EtText.mono(size: EtType.bodySm, color: p.text)
+                    : text.bodyMedium?.copyWith(color: p.text),
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: EtSpace.x1),
+              Icon(Symbols.content_copy, size: 14, color: p.text2),
+            ],
+          ],
         ),
       ),
     );
@@ -512,10 +611,16 @@ class HomeTrafficCard extends StatelessWidget {
 /// Peer summary: the three lowest-latency online peers, then every offline peer.
 /// Offline peers are never hidden here or anywhere else in the client.
 class HomePeersCard extends StatelessWidget {
-  const HomePeersCard({super.key, required this.peers, required this.up});
+  const HomePeersCard({
+    super.key,
+    required this.peers,
+    required this.up,
+    this.onOpenDevices,
+  });
 
   final List<Peer> peers;
   final bool up;
+  final VoidCallback? onOpenDevices;
 
   @override
   Widget build(BuildContext context) {
@@ -539,9 +644,30 @@ class HomePeersCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
             child: HomeCardHeader(
               title: 'Peers',
-              trailing: Text(
-                up ? '${online.length} of ${peers.length} online' : '0 peers',
-                style: text.bodySmall?.copyWith(color: p.text2),
+              trailing: InkWell(
+                borderRadius: BorderRadius.circular(EtRadius.sm),
+                onTap: onOpenDevices,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: EtSpace.x1,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        up
+                            ? '${online.length} of ${peers.length} online'
+                            : '0 peers',
+                        style: text.bodySmall?.copyWith(color: p.text2),
+                      ),
+                      if (onOpenDevices != null) ...[
+                        const SizedBox(width: 2),
+                        Icon(Symbols.chevron_right, size: 16, color: p.text2),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -572,7 +698,7 @@ class HomePeersCard extends StatelessWidget {
                 ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: EtSpace.x2),
-                child: EtPeerRow(peer: shown[i]),
+                child: EtPeerRow(peer: shown[i], onTap: onOpenDevices),
               ),
             ],
         ],

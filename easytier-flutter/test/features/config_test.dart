@@ -243,6 +243,41 @@ void main() {
     expect(find.text('Create network'), findsOneWidget);
     expect(find.byType(EtSection), findsNothing);
   });
+
+  testWidgets('deleting the active network in Config confirms first, then removes it', (
+    tester,
+  ) async {
+    final state = await pumpPhoneApp(tester);
+    await openDestination(tester, EtDestination.config);
+
+    expect(state.instances, hasLength(1));
+
+    Future<void> openDelete() async {
+      await tester.tap(find.byKey(const Key('config-overflow')));
+      await pumpFrames(tester, frames: 12);
+      await tester.tap(find.text('Delete network').last);
+      await pumpFrames(tester, frames: 12);
+    }
+
+    await openDelete();
+    expect(find.text('Delete this network?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await pumpFrames(tester);
+    expect(find.text('Delete this network?'), findsNothing);
+    expect(state.instances, hasLength(1));
+
+    await openDelete();
+    await pumpFrames(tester);
+    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+    await pumpFrames(tester, frames: 12);
+
+    expect(state.instances, isEmpty);
+    expect(find.text('No network configured'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await pumpFrames(tester);
+  });
 }
 
 /// A core with no configured instance, used to cover the empty state.

@@ -3,80 +3,25 @@ import 'package:flutter/material.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
 
-/// Expressive settings group: a tonal `EtIconBadge`, a `titleMedium` heading and
-/// an optional subtitle above a calm M3 card. Settings apply immediately, so a
-/// group never owns a Save button.
-///
-/// [glow] adds a quiet `EtGradient.surfaceGlow` band behind the heading — used
-/// once on About as its expressive accent, not on every group.
+/// Commercial M3 settings section: a quiet, single-line section label above a
+/// grouped card. Never puts a second icon badge on the section header so the
+/// card's leading icon column stays clean and uncrowded.
 class SettingsGroup extends StatelessWidget {
   const SettingsGroup({
     super.key,
-    required this.icon,
     required this.title,
-    this.tone = EtTone.accent,
-    this.subtitle,
-    this.children = const [],
-    this.glow = false,
-    this.meta,
+    required this.children,
+    this.trailing,
   });
 
-  final IconData icon;
   final String title;
-  final EtTone tone;
-  final String? subtitle;
   final List<Widget> children;
-  final bool glow;
-  final Widget? meta;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final p = context.et;
     final text = Theme.of(context).textTheme;
-    final destructive = tone == EtTone.danger;
-
-    Widget header = Row(
-      children: [
-        EtIconBadge(icon: icon, tone: tone, size: 36),
-        const SizedBox(width: EtSpace.x3),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: text.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: destructive ? p.danger : p.text,
-                ),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle!,
-                  style: text.bodySmall?.copyWith(color: p.text2),
-                ),
-              ],
-            ],
-          ),
-        ),
-        ?meta,
-      ],
-    );
-
-    if (glow) {
-      header = Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: EtSpace.x3,
-          vertical: EtSpace.x2,
-        ),
-        decoration: BoxDecoration(
-          gradient: EtGradient.surfaceGlow(p),
-          borderRadius: BorderRadius.circular(EtRadius.lg),
-        ),
-        child: header,
-      );
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -84,17 +29,28 @@ class SettingsGroup extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(
             EtSpace.x4,
-            EtSpace.x2,
+            EtSpace.x1,
             EtSpace.x4,
             EtSpace.x2,
           ),
-          child: header,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: text.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: p.accent,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
         ),
         EtSurface(
-          padding: const EdgeInsets.symmetric(vertical: EtSpace.x2),
-          borderColor: destructive
-              ? p.danger.withValues(alpha: 0.35)
-              : null,
+          padding: const EdgeInsets.symmetric(vertical: EtSpace.x1),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: children,
@@ -105,9 +61,9 @@ class SettingsGroup extends StatelessWidget {
   }
 }
 
-/// One settings row: tonal icon badge, label/helper, optional value or control.
-/// Built on the M3 `ListTile`, so state layers, semantics and 48dp targets come
-/// from Material instead of hand-rolled rows.
+/// Standard commercial M3 settings row: one 36dp tonal icon squircle on the
+/// left, crisp title + optional 1-line subtitle, and a compact trailing value
+/// or control on the right.
 class SettingsRow extends StatelessWidget {
   const SettingsRow({
     super.key,
@@ -116,7 +72,6 @@ class SettingsRow extends StatelessWidget {
     this.tone = EtTone.accent,
     this.subtitle,
     this.trailing,
-    this.footer,
     this.onTap,
     this.destructive = false,
   });
@@ -125,14 +80,7 @@ class SettingsRow extends StatelessWidget {
   final String title;
   final EtTone tone;
   final String? subtitle;
-
-  /// Right-hand value/control: mono chip, badge or text.
   final Widget? trailing;
-
-  /// Extra line under the helper (e.g. the mode badge), so a long value never
-  /// squeezes the label on narrow screens.
-  final Widget? footer;
-
   final VoidCallback? onTap;
   final bool destructive;
 
@@ -140,79 +88,216 @@ class SettingsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.et;
     final text = Theme.of(context).textTheme;
-    final subtitleWidget = (subtitle == null && footer == null)
-        ? null
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (subtitle != null)
-                Text(subtitle!, style: text.bodySmall?.copyWith(color: p.text2)),
-              if (footer != null) ...[
-                if (subtitle != null) const SizedBox(height: EtSpace.x1),
-                footer!,
-              ],
-            ],
-          );
 
     return ListTile(
       onTap: onTap,
-      minVerticalPadding: EtSpace.x2,
-      contentPadding: const EdgeInsets.symmetric(horizontal: EtSpace.x4),
+      dense: false,
+      visualDensity: const VisualDensity(vertical: -1),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: EtSpace.x4,
+        vertical: 2,
+      ),
       leading: EtIconBadge(
         icon: icon,
         tone: destructive ? EtTone.danger : tone,
-        size: 32,
+        size: 36,
       ),
       title: Text(
         title,
         style: text.bodyLarge?.copyWith(
+          fontSize: 15,
           fontWeight: FontWeight.w500,
           color: destructive ? p.danger : p.text,
         ),
       ),
-      subtitle: subtitleWidget,
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodySmall?.copyWith(color: p.text2),
+            ),
       trailing: trailing,
     );
   }
 }
 
-/// Label for an inline control (Theme, Language): the same tonal badge as a row
-/// so the whole card keeps one leading-icon line.
-class SettingsFieldLabel extends StatelessWidget {
-  const SettingsFieldLabel({
+/// Settings row with an inline compact segmented pill selector. Automatically
+/// wraps the selector below the title on ultra-narrow (<300dp) viewports so
+/// 320px screens never overflow while normal phones stay single-row.
+class SettingsSegmentedRow<T> extends StatelessWidget {
+  const SettingsSegmentedRow({
     super.key,
     required this.icon,
     required this.title,
+    required this.value,
+    required this.options,
+    required this.onChanged,
     this.tone = EtTone.accent,
+    this.subtitle,
   });
 
   final IconData icon;
   final String title;
+  final String? subtitle;
   final EtTone tone;
+  final T value;
+  final List<(T value, String label)> options;
+  final ValueChanged<T> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final p = context.et;
     final text = Theme.of(context).textTheme;
-    return Row(
-      children: [
-        EtIconBadge(icon: icon, tone: tone, size: 32),
-        const SizedBox(width: EtSpace.x4),
-        Expanded(
+    final pill = SettingsSegmentedPill<T>(
+      value: value,
+      options: options,
+      onChanged: onChanged,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 310;
+        if (narrow) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: EtSpace.x4,
+              vertical: EtSpace.x2,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    EtIconBadge(icon: icon, tone: tone, size: 36),
+                    const SizedBox(width: EtSpace.x3),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: text.bodyLarge?.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: p.text,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: EtSpace.x2),
+                Align(alignment: Alignment.centerRight, child: pill),
+              ],
+            ),
+          );
+        }
+
+        return SettingsRow(
+          icon: icon,
+          tone: tone,
+          title: title,
+          subtitle: subtitle,
+          trailing: pill,
+        );
+      },
+    );
+  }
+}
+
+/// Sleek stadium pill segmented control (34dp height) for 2–3 inline options.
+class SettingsSegmentedPill<T> extends StatelessWidget {
+  const SettingsSegmentedPill({
+    super.key,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final T value;
+  final List<(T value, String label)> options;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.et;
+    final scheme = p.scheme;
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(EtRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (optionValue, label) in options)
+            _SegmentPillItem(
+              label: label,
+              selected: optionValue == value,
+              onTap: () {
+                if (optionValue != value) onChanged(optionValue);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SegmentPillItem extends StatelessWidget {
+  const _SegmentPillItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.et.scheme;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(EtRadius.pill),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(EtRadius.pill),
+        onTap: () {
+          EtHaptics.selection();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: context.etReducedMotion ? Duration.zero : EtDuration.fast,
+          curve: EtCurves.standard,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? scheme.primaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(EtRadius.pill),
+          ),
           child: Text(
-            title,
-            style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+            label,
+            style: EtText.ui(
+              size: EtType.caption,
+              weight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected
+                  ? scheme.onPrimaryContainer
+                  : scheme.onSurfaceVariant,
+              height: 1.15,
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
 /// Mono value chip: machine data on a `surfaceContainerHighest` pill.
 class SettingsMonoChip extends StatelessWidget {
-  const SettingsMonoChip({super.key, required this.text});
+  const SettingsMonoChip({super.key, required this.text, this.icon});
 
   final String text;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -220,28 +305,49 @@ class SettingsMonoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: EtSpace.x3,
-        vertical: EtSpace.x1,
+        vertical: 5,
       ),
       decoration: BoxDecoration(
         color: p.scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(EtRadius.pill),
       ),
-      child: Text(
-        text,
-        style: EtText.mono(size: EtType.caption, color: p.text2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSwitcher(
+            duration: context.etReducedMotion ? Duration.zero : EtDuration.fast,
+            switchInCurve: EtCurves.enter,
+            switchOutCurve: EtCurves.exit,
+            child: Text(
+              text,
+              key: ValueKey<String>(text),
+              style: EtText.mono(
+                size: EtType.caption,
+                weight: FontWeight.w500,
+                color: p.text,
+              ),
+            ),
+          ),
+          if (icon != null) ...[
+            const SizedBox(width: 4),
+            Icon(icon, size: 14, color: p.text2),
+          ],
+        ],
       ),
     );
   }
 }
 
-/// Hairline between rows/groups inside an expressive card.
+/// Indented hairline divider aligned with the row title (past the 36dp leading
+/// icon badge + 16dp horizontal padding + 16dp gap = 68dp).
 class SettingsDivider extends StatelessWidget {
   const SettingsDivider({super.key});
 
   @override
-  Widget build(BuildContext context) => const Divider(
+  Widget build(BuildContext context) => Divider(
         height: 1,
-        indent: EtSpace.x4,
+        indent: 68,
         endIndent: EtSpace.x4,
+        color: context.et.border.withValues(alpha: 0.6),
       );
 }
