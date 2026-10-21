@@ -6,7 +6,7 @@ import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
 import 'settings_widgets.dart';
 
-const _appVersion = '2.6.4+4';
+const _appVersion = '2.6.4+5';
 const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
 /// Settings — global application preferences, core runtime diagnostics, and
