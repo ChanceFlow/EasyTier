@@ -5,6 +5,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../models/models.dart';
 import '../theme/theme.dart';
+import 'et_brand.dart';
 
 /// Shared UI kit built from Material 3 primitives.
 ///
@@ -1123,12 +1124,12 @@ class _EtConnectionOrbState extends State<EtConnectionOrb>
   @override
   Widget build(BuildContext context) {
     final p = context.et;
-    final (icon, color) = switch (widget.state) {
-      EtSignalState.connected => (Symbols.shield, p.success),
-      EtSignalState.connecting => (Symbols.sync, p.accent),
-      EtSignalState.degraded => (Symbols.warning, p.warn),
-      EtSignalState.disconnected => (Symbols.link_off, p.danger),
-      EtSignalState.off => (Symbols.shield, p.neutral),
+    final color = switch (widget.state) {
+      EtSignalState.connected => p.success,
+      EtSignalState.connecting => p.accent,
+      EtSignalState.degraded => p.warn,
+      EtSignalState.disconnected => p.danger,
+      EtSignalState.off => p.neutral,
     };
     return ExcludeSemantics(
       child: SizedBox.square(
@@ -1144,14 +1145,34 @@ class _EtConnectionOrbState extends State<EtConnectionOrb>
               outline: p.scheme.outlineVariant,
             ),
             child: Center(
-              child: Container(
-                width: widget.size * 0.46,
-                height: widget.size * 0.46,
-                decoration: BoxDecoration(
-                  color: p.scheme.surface.withValues(alpha: 0.72),
-                  shape: BoxShape.circle,
+              child: SizedBox.square(
+                dimension: widget.size * 0.50,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    EtBrandMark(
+                      size: widget.size * 0.44,
+                      radius: widget.size * 0.125,
+                    ),
+                    Positioned(
+                      right: widget.size * 0.015,
+                      bottom: widget.size * 0.015,
+                      child: Container(
+                        width: 11,
+                        height: 11,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: p.scheme.surface.withValues(alpha: 0.9),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, size: widget.size * 0.22, color: color),
               ),
             ),
           ),

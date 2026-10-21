@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EasyTier mesh mark: three nodes on a triangle, white on the M3 blue tile. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="4.6"
+        android:strokeLineCap="round"
+        android:pathData="M54,34.8 L31.7,68.8 M54,34.8 L76.3,68.8 M31.7,68.8 L76.3,68.8" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,26.1 a8.7,8.7 0 1,0 0.1,0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M31.7,60.1 a8.7,8.7 0 1,0 0.1,0 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M76.3,60.1 a8.7,8.7 0 1,0 0.1,0 Z" />
+</vector>

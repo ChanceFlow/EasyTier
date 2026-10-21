@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/theme.dart';
+import 'et_brand.dart';
 
 enum EtDestination { home, devices, config, activity, settings }
 
@@ -90,19 +91,7 @@ class EtShell extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: p.scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    child: Icon(
-                      Symbols.shield,
-                      color: p.scheme.onPrimaryContainer,
-                      size: 20,
-                    ),
-                  ),
+                  const EtBrandMark(size: 34, radius: 11),
                   if (extended) ...[
                     const SizedBox(width: EtSpace.x3),
                     Text(

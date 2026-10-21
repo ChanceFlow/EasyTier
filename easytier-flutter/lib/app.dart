@@ -182,11 +182,7 @@ class _Splash extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
-                radius: 32,
-                backgroundColor: p.accentQuiet,
-                child: Icon(Symbols.verified_user, size: 32, color: p.accentOnTint),
-              ),
+              const EtBrandMark(size: 72, radius: 20),
               const SizedBox(height: EtSpace.x5),
               Text(
                 'EasyTier',

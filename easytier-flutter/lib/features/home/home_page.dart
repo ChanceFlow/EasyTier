@@ -123,7 +123,7 @@ class HomePage extends StatelessWidget {
                   backgroundColor: Theme.of(
                     context,
                   ).colorScheme.surface.withValues(alpha: 0.16),
-                  textStyle: const TextStyle(
+                  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                   ),

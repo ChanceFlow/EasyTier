@@ -590,6 +590,18 @@ M3 用 **elevation level + surface container role** 表达高度，取消 v3 的
 
 ---
 
+## 6.9 品牌 mark 与启动图标
+
+- 统一 mark：**M3 蓝 (#1A73E8) 圆角方块 + 白色三节点 mesh（三角连接）**；
+  单一几何来源 `EtBrandMark`（`et_brand.dart`），rail / splash / hero orb 共用。
+- Android：legacy `mipmap-*/ic_launcher(_round).png` + adaptive
+  `mipmap-anydpi-v26/ic_launcher.xml`（background = `@color/ic_launcher_background`，
+  foreground/monochrome = `drawable/ic_launcher_{foreground,monochrome}.xml`）。
+- iOS 用满幅方形（系统自行圆角）；macOS/Windows 用圆角版；
+  Windows `.ico` 多尺寸；全部由 1024 master 生成，避免各平台漂移。
+- Hero orb 不再是黑色盾牌 + 霓虹环：中心是品牌 mark，状态只由外环/光晕与
+  右下小圆点编码（connected success、degraded warn、off neutral）。
+
 ## 7. 动效 —— M3 motion
 
 动效的职责是解释**什么变了、去了哪里**，不是装饰。工具类 App 里 90% 的交互应当
