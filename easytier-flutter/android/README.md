@@ -268,3 +268,26 @@ levels are Flutter 3.47 defaults: `minSdk 24`, `compileSdk 36`, `targetSdk 36`.
   must route through `releaseTunnel` or fds leak silently.
 * **Notification icon** is a vector drawable; verify it renders as an alpha mask
   on API 24–26 devices.
+
+## Building the APK with the real Rust core
+
+`flutter build apk` alone produces a UI-only APK: the Dart side defaults to
+`MockCoreClient` and no `libeasytier_ffi.so` is bundled. To ship the working
+client, build the cdylib and bundle it per ABI:
+
+```bash
+# ARM64 (device) — NDK r28, Rust with aarch64-linux-android target, protoc
+ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358 \
+  easytier-flutter/tool/build_android.sh
+
+# -> easytier-flutter/build/app/outputs/flutter-apk/app-release.apk
+```
+
+The script builds `easytier-ffi` for `aarch64-linux-android` (with the NDK
+clang driver and bionic sysroot for bindgen), copies the cdylib into
+`android/app/src/main/jniLibs/arm64-v8a/`, and runs
+`flutter build apk --target-platform android-arm64 --dart-define=EASYTIER_USE_FFI=true`.
+The jniLibs directory is git-ignored: always rebuild it for the target ABI.
+The release variant currently uses the debug signing config, so these APKs are
+internal-test builds only.
+

@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+
+# Native Rust core staged by tool/build_android.sh (built per ABI, never committed)
+android/app/src/main/jniLibs/

@@ -139,3 +139,13 @@ icons.
   the Flutter UI yet.
 - Desktop privilege elevation and the system-service mode are not implemented.
 - Android device build is not verified in this environment (SDK licences).
+
+### Android APK with the bundled Rust core
+
+```bash
+# requires Rust + Android NDK r28 + protoc; see android/README.md
+ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358 tool/build_android.sh
+```
+
+This stages `libeasytier_ffi.so` for arm64-v8a and builds with
+`--dart-define=EASYTIER_USE_FFI=true`; without it the APK runs the mock core.
