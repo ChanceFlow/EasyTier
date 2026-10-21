@@ -306,8 +306,24 @@ jobs:
           path: ./signpath-artifacts/*
           if-no-files-found: error
 
-      - name: Submit SignPath test-signing request
+      # Fork/build-mirror repos usually lack SIGNPATH_API_TOKEN; GitHub cannot
+      # read `secrets` inside `if:`, so probe it here and skip signing when absent.
+      # The unsigned artifacts are still uploaded, so the matrix stays green.
+      - name: Detect SignPath token
+        id: signpath-token
         if: ${{ github.event_name == 'workflow_dispatch' && contains(matrix.TARGET, 'windows') }}
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if [ -n "${SIGNPATH_API_TOKEN:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SIGNPATH_API_TOKEN is not set; skipping test signing"
+          fi
+
+      - name: Submit SignPath test-signing request
+        if: ${{ github.event_name == 'workflow_dispatch' && contains(matrix.TARGET, 'windows') && steps.signpath-token.outputs.available == 'true' }}
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -320,7 +336,7 @@ jobs:
           output-artifact-directory: ./signpath-signed-artifacts
 
       - name: Upload signed SignPath test artifact
-        if: ${{ github.event_name == 'workflow_dispatch' && contains(matrix.TARGET, 'windows') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && contains(matrix.TARGET, 'windows') && steps.signpath-token.outputs.available == 'true' }}
         uses: actions/upload-artifact@v5
         with:
           name: signpath-signed-${{ matrix.ARTIFACT_NAME }}
