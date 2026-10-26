@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import '../../config/canonical_toml.dart';
 import '../../models/models.dart';
 import '../core_client.dart';
 import 'ffi_bindings.dart';
@@ -158,7 +159,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       return existingId;
     }
 
-    final toml = _tomlFor(config, id);
+    final toml = encodeToml(config, instanceId: id);
     final result = await _runInWorker('run_network_instance', toml).timeout(
       startTimeout,
       onTimeout: () => throw CoreClientException(
@@ -246,7 +247,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
 
     final existingId = _idForInstanceName(config.instanceName);
     final pointer = _bindings.allocateCString(
-      _tomlFor(config, existingId ?? _newUuid()),
+      encodeToml(config, instanceId: existingId ?? _newUuid()),
     );
     try {
       final status = _bindings.parseConfig(pointer);
@@ -1051,160 +1052,11 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
 
   // ===== TOML generation =====
 
-  static const Map<String, int> _aclChainTypes = <String, int>{
-    'inbound': 1,
-    'outbound': 2,
-    'forward': 3,
-  };
-
-  static const Map<String, int> _aclActions = <String, int>{
-    'allow': 1,
-    'deny': 2,
-    'drop': 2,
-  };
-
-  static const Map<String, int> _aclProtocols = <String, int>{
-    'tcp': 1,
-    'udp': 2,
-    'icmp': 3,
-    'icmpv6': 4,
-    'any': 5,
-  };
-
-  /// Serializes [config] into the TOML the core's `TomlConfigLoader` reads.
-  ///
-  /// The client uses this internally with the persisted instance UUID. It is
-  /// public so the config screen can show the exact effective config (rather
-  /// than the human-readable preview on [NetworkConfig.debugToml]) and so the
-  /// wire format can be cross-checked against the Rust core in tests.
+  /// Serialises [config] into the canonical TOML read by the core's
+  /// `TomlConfigLoader`. The source editor uses the very same encoder, so its
+  /// text is a real config file rather than a client-only preview.
   static String encodeToml(NetworkConfig config, {String? instanceId}) =>
-      _tomlFor(config, instanceId ?? _newUuid());
-
-  static String _tomlFor(NetworkConfig config, String instanceId) {
-    final buffer = StringBuffer();
-    void line(String value) => buffer.writeln(value);
-    void blank() => buffer.writeln();
-
-    line('instance_name = ${_tomlString(config.instanceName)}');
-    line('instance_id = ${_tomlString(instanceId)}');
-    line('hostname = ${_tomlString(config.hostname)}');
-    line('dhcp = ${config.dhcp}');
-    if (!config.dhcp && config.virtualIpv4.trim().isNotEmpty) {
-      line(
-        'ipv4 = ${_tomlString('${config.virtualIpv4.trim()}/${config.networkLength}')}',
-      );
-    }
-    line(
-      'listeners = ['
-      '${config.listenerUrls.map(_tomlString).join(', ')}]',
-    );
-
-    for (final peer in config.peerUrls) {
-      if (peer.trim().isEmpty) continue;
-      blank();
-      line('[[peer]]');
-      line('uri = ${_tomlString(peer.trim())}');
-    }
-    for (final cidr in config.proxyCidrs) {
-      if (cidr.trim().isEmpty) continue;
-      blank();
-      line('[[proxy_network]]');
-      line('cidr = ${_tomlString(cidr.trim())}');
-    }
-    for (final forward in config.portForwards) {
-      blank();
-      line('[[port_forward]]');
-      line('bind_addr = ${_tomlString(forward.local)}');
-      line('dst_addr = ${_tomlString(forward.remote)}');
-      line('proto = ${_tomlString(forward.proto.toLowerCase())}');
-    }
-
-    blank();
-    line('[network_identity]');
-    line('network_name = ${_tomlString(config.networkName)}');
-    line('network_secret = ${_tomlString(config.networkSecret)}');
-
-    blank();
-    line('[flags]');
-    line('enable_encryption = ${!config.disableEncryption}');
-    line('enable_ipv6 = ${!config.disableIpv6}');
-    line('latency_first = ${config.latencyFirst}');
-    line('multi_thread = ${config.multiThread}');
-    line('use_smoltcp = ${config.useSmoltcp}');
-    line('bind_device = ${config.bindDevice}');
-    line('no_tun = ${config.noTun}');
-    line('private_mode = ${config.enablePrivateMode}');
-    line('accept_dns = ${config.enableMagicDns}');
-    line('disable_p2p = ${config.disableP2p}');
-    line('p2p_only = ${config.p2pOnly}');
-    line('relay_all_peer_rpc = ${config.relayAllPeerRpc}');
-    line('enable_exit_node = ${config.enableExitNode}');
-    final mtu = config.mtu;
-    if (mtu != null && mtu > 0) {
-      line('mtu = $mtu');
-    }
-    if (config.devName.trim().isNotEmpty) {
-      line('dev_name = ${_tomlString(config.devName.trim())}');
-    }
-
-    // ACL rules are grouped into one chain per direction. `default_action = 1`
-    // (Allow) is intentional: the UI exposes individual rules, so an explicit
-    // deny must not implicitly turn the list into a deny-all policy.
-    final rulesByChain = <String, List<AclRule>>{};
-    for (final rule in config.aclRules) {
-      final chain = rule.chain.trim().toLowerCase();
-      rulesByChain.putIfAbsent(chain, () => <AclRule>[]).add(rule);
-    }
-    for (final entry in rulesByChain.entries) {
-      final chainType = _aclChainTypes[entry.key] ?? 1;
-      blank();
-      line('[[acl.acl_v1.chains]]');
-      line('name = ${_tomlString('${entry.key}-rules')}');
-      line('chain_type = $chainType');
-      line('enabled = true');
-      line('default_action = 1');
-      for (var index = 0; index < entry.value.length; index++) {
-        final rule = entry.value[index];
-        final comment = rule.comment.trim();
-        line('[[acl.acl_v1.chains.rules]]');
-        line(
-          'name = ${_tomlString(comment.isEmpty ? '${entry.key}-rule-${index + 1}' : comment)}',
-        );
-        if (comment.isNotEmpty) {
-          line('description = ${_tomlString(comment)}');
-        }
-        line('priority = ${(entry.value.length - index).clamp(0, 65535)}');
-        line('enabled = true');
-        line('action = ${_aclActions[rule.action.trim().toLowerCase()] ?? 1}');
-        line(
-          'protocol = ${_aclProtocols[rule.protocol.trim().toLowerCase()] ?? 5}',
-        );
-        line(
-          'source_ips = [${_tomlString(rule.source.trim().isEmpty ? '0.0.0.0/0' : rule.source.trim())}]',
-        );
-        line(
-          'destination_ips = [${_tomlString(rule.destination.trim().isEmpty ? '0.0.0.0/0' : rule.destination.trim())}]',
-        );
-        final ports = rule.ports
-            .split(',')
-            .map((port) => port.trim())
-            .where((port) => port.isNotEmpty)
-            .toList();
-        if (ports.isNotEmpty) {
-          line('ports = [${ports.map(_tomlString).join(', ')}]');
-        }
-      }
-    }
-
-    return buffer.toString();
-  }
-
-  static String _tomlString(String value) => '"${value
-      .replaceAll('\\', r'\\')
-      .replaceAll('"', r'\"')
-      .replaceAll('\n', r'\n')
-      .replaceAll('\r', r'\r')
-      .replaceAll('\t', r'\t')}"';
+      encodeConfigToml(config, instanceId: instanceId ?? _newUuid());
 
   static String? _validateLocally(NetworkConfig config) {
     if (config.instanceName.trim().isEmpty) {
@@ -1238,6 +1090,9 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     }
     return null;
   }
+
+
+
 
   static final RegExp _ipv4Pattern = RegExp(
     r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$',

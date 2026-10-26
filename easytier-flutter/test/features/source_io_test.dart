@@ -32,7 +32,7 @@ void main() {
     await tester.tap(find.byTooltip('Edit TOML source'));
     await pumpFrames(tester, frames: 16);
 
-    clipboard['text'] = 'network_name = "Imported Net"\nmtu = 1300\n';
+    clipboard['text'] = '[network_identity]\nnetwork_name = "Imported Net"\n[flags]\nmtu = 1300\n';
     await tester.tap(find.byKey(const Key('source-import')));
     await pumpFrames(tester, frames: 16);
 

@@ -202,14 +202,15 @@ void main() {
     final editorField = find.byKey(const Key('source-editor-field'));
     expect(editorField, findsOneWidget);
     final editor = tester.widget<TextField>(editorField);
-    expect(editor.controller!.text, contains('network_name = "EasyTier Home"'));
+    expect(editor.controller!.text, contains('[network_identity]'));
+    expect(editor.controller!.text, contains('instance_id ='));
 
     await tester.enterText(
       editorField,
-      'network_name = "Renamed Net"\nhostname = "renamed-host"\n',
+      'instance_name = "office-mesh"\nhostname = "renamed-host"\n[network_identity]\nnetwork_name = "Renamed Net"\n',
     );
     await pumpFrames(tester, frames: 12);
-    expect(find.text('Valid TOML'), findsOneWidget);
+    expect(find.textContaining('Valid TOML'), findsOneWidget);
 
     final applyButton = tester.widget<FilledButton>(
       find.byKey(const Key('source-editor-apply')),

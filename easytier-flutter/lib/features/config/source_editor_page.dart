@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import '../../core/models/models.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
-import 'toml_source.dart';
+import '../../core/config/canonical_toml.dart';
 
 /// Full-screen editor for the network configuration as TOML source.
 ///
@@ -19,9 +19,14 @@ import 'toml_source.dart';
 /// are tolerated and listed as warnings; syntax errors block Apply and name the
 /// offending line.
 class SourceEditorPage extends StatefulWidget {
-  const SourceEditorPage({super.key, required this.initial});
+  const SourceEditorPage({
+    super.key,
+    required this.initial,
+    required this.instanceId,
+  });
 
   final NetworkConfig initial;
+  final String instanceId;
 
   @override
   State<SourceEditorPage> createState() => _SourceEditorPageState();
@@ -36,8 +41,10 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: networkConfigToToml(widget.initial));
-    _result = parseNetworkConfigToml(_controller.text, base: widget.initial);
+    _controller = TextEditingController(
+      text: encodeConfigToml(widget.initial, instanceId: widget.instanceId),
+    );
+    _result = parseConfigToml(_controller.text, base: widget.initial);
   }
 
   @override
@@ -48,14 +55,17 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
 
   void _reparse(String _) {
     setState(() {
-      _result = parseNetworkConfigToml(_source, base: widget.initial);
+      _result = parseConfigToml(_source, base: widget.initial);
     });
   }
 
   void _revert() {
     setState(() {
-      _controller.text = networkConfigToToml(widget.initial);
-      _result = parseNetworkConfigToml(_controller.text, base: widget.initial);
+      _controller.text = encodeConfigToml(
+        widget.initial,
+        instanceId: widget.instanceId,
+      );
+      _result = parseConfigToml(_controller.text, base: widget.initial);
       _controller.selection = TextSelection.collapsed(
         offset: _controller.text.length,
       );
@@ -123,14 +133,14 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
     setState(() {
       _controller.text = text;
       _controller.selection = TextSelection.collapsed(offset: text.length);
-      _result = parseNetworkConfigToml(text, base: widget.initial);
+      _result = parseConfigToml(text, base: widget.initial);
     });
     EtHaptics.selection();
   }
 
   void _apply() {
     final config = _result.config;
-    if (config == null) return;
+    if (config == null || _result.hasUnsupportedFields) return;
     EtHaptics.selection();
     Navigator.of(context).pop(config);
   }
@@ -275,7 +285,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
             errors: errors.length,
             warnings: warnings.length,
             onCancel: () => Navigator.of(context).pop(),
-            onApply: _result.ok ? _apply : null,
+            onApply: _result.ok && !_result.hasUnsupportedFields ? _apply : null,
             reduced: reduced,
           ),
         ],

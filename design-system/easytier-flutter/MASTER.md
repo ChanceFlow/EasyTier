@@ -204,7 +204,12 @@ v4 严格按 M3 baseline 实现，结果“正确但丑”：五个屏幕都是�
   由 Settings 的 Log level 偏好门控（off/error/warn/info/debug/trace）。
 - **Share network**：Config `⋮` 生成邀请文本（Network/Instance/Peer，secret 默认隐藏
   可开关），一键复制；不伪造二维码。
-- **Config 源文件编辑**：顶栏 `<>` 打开全屏 TOML source editor（本地
+- **Config 源文件编辑**：顶栏 `<>` 打开全屏 TOML source editor，**使用 core 的
+  canonical schema**（`[network_identity]` / `[[peer]]` / `[[proxy_network]]` /
+  `[[port_forward]] bind_addr,dst_addr` / `[flags]` / `[[acl.acl_v1.chains]]`，
+  编码逻辑与 `FfiCoreClient` 共用 `core/config/canonical_toml.dart`）：
+  未建模的键/表会被识别并**禁止 Apply**，避免静默丢字段；`instance_id` 从当前实例
+  透传。以下为本地解析细节（本地
   `networkConfigToToml` / `parseNetworkConfigToml` 往返，支持 `[[port_forward]]`
   与 `[[acl_rule]]`）；语法错误按行号提示并禁用 Apply，未知键降级为 warning；
   Apply 只写回 draft，仍需 Save 才持久化；secret 在编辑时明文可见（本地文件语义）。

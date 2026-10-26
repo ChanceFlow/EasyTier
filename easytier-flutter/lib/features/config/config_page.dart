@@ -379,7 +379,10 @@ class _ConfigPageState extends State<ConfigPage> {
   Future<void> _openSourceEditor(NetworkConfig draft) async {
     final next = await Navigator.of(context).push<NetworkConfig>(
       MaterialPageRoute<NetworkConfig>(
-        builder: (_) => SourceEditorPage(initial: draft),
+        builder: (_) => SourceEditorPage(
+          initial: draft,
+          instanceId: AppScope.of(context).activeId ?? 'unknown-instance',
+        ),
       ),
     );
     final form = _form;

@@ -9,7 +9,7 @@ import '../../core/ui/ui.dart';
 import 'logs_page.dart';
 import 'settings_widgets.dart';
 
-const _appVersion = '2.6.4+8';
+const _appVersion = '2.6.4+9';
 const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
 /// Settings — global application preferences, core runtime diagnostics, and
