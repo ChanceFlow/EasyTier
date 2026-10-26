@@ -103,12 +103,21 @@ class _AppRootState extends State<AppRoot> {
         index: state.destination.index,
         child: IndexedStack(
           index: state.destination.index,
-          children: const [
-            HomePage(),
-            DevicesPage(),
-            ConfigPage(),
-            ActivityPage(),
-            SettingsPage(),
+          children: [
+            for (final (index, page) in const [
+              HomePage(),
+              DevicesPage(),
+              ConfigPage(),
+              ActivityPage(),
+              SettingsPage(),
+            ].indexed)
+              // Hidden tabs stay mounted (state/scroll preserved) but their
+              // tickers are paused: the Home orb and traffic pulse must not
+              // keep repainting while the user is on another tab.
+              TickerMode(
+                enabled: state.destination.index == index,
+                child: page,
+              ),
           ],
         ),
       ),
