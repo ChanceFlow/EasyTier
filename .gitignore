@@ -54,3 +54,6 @@ release-artifacts/
 
 # Python bytecode from the design-system gate scripts
 design-system/**/__pycache__/
+
+# Flutter golden failure artifacts
+easytier-flutter/test/failures/
