@@ -156,5 +156,63 @@ description = "block"
     expect(result.ok, isTrue);
     expect(result.config!.virtualIpv4, '10.9.0.7');
     expect(result.config!.networkLength, 20);
+    expect(validatePrefixLength(result.config!.networkLength), isNull);
+    expect(
+      validateNetworkConfigFields(result.config!.copyWith(networkSecret: '')),
+      isEmpty,
+    );
+  });
+
+  test('ipv4 without /24 parses cleanly and disables dhcp when dhcp is omitted', () {
+    const dhcpBase = NetworkConfig(
+      instanceName: 'redmi',
+      hostname: 'redmi',
+      networkName: 'mynet',
+      dhcp: true,
+    );
+    final result = parseConfigToml(
+      '''
+instance_name = "redmi"
+hostname = "redmi"
+ipv4 = "10.144.144.10"
+listeners = ["tcp://0.0.0.0:11010"]
+
+[network_identity]
+network_name = "mynet"
+network_secret = "secret"
+
+[[peer]]
+uri = "quic://example.com:11010"
+
+[file_logger]
+level = "info"
+
+[console_logger]
+level = "warn"
+''',
+      base: dhcpBase,
+    );
+    expect(result.errors, isEmpty);
+    expect(result.hasUnsupportedFields, isFalse);
+    expect(result.config!.dhcp, isFalse);
+    expect(result.config!.virtualIpv4, '10.144.144.10');
+    expect(result.config!.networkLength, 24);
+    expect(result.config!.peerUrls, ['quic://example.com:11010']);
+    expect(validateNetworkConfigFields(result.config!), isEmpty);
+  });
+
+  test('ipv4 rejects invalid address or out-of-range prefix', () {
+    expect(
+      parseConfigToml('ipv4 = "999.0.0.1"\n', base: _full).ok,
+      isFalse,
+    );
+    expect(
+      parseConfigToml('ipv4 = "10.0.0.1/33"\n', base: _full).ok,
+      isFalse,
+    );
+    expect(
+      parseConfigToml('ipv4 = "/24"\n', base: _full).ok,
+      isFalse,
+    );
   });
 }

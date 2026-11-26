@@ -244,6 +244,43 @@ void main() {
     expect(apply.onPressed, isNull);
   });
 
+  testWidgets('source editor accepts bare ipv4 without /24 and surfaces unsupported fields', (tester) async {
+    await pumpPhoneApp(tester);
+    await openDestination(tester, EtDestination.config);
+
+    await tester.tap(find.byTooltip('Edit TOML source'));
+    await pumpFrames(tester, frames: 12);
+
+    final editorField = find.byKey(const Key('source-editor-field'));
+    await tester.enterText(
+      editorField,
+      'instance_name = "office-mesh"\nroutes = ["10.0.0.0/8"]\n',
+    );
+    await pumpFrames(tester, frames: 12);
+    expect(find.textContaining('1 unsupported field'), findsOneWidget);
+    expect(find.text('Valid TOML'), findsNothing);
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('source-editor-apply'))).onPressed,
+      isNull,
+    );
+
+    await tester.enterText(
+      editorField,
+      'instance_name = "office-mesh"\nhostname = "redmi"\nipv4 = "10.144.0.7"\n[network_identity]\nnetwork_name = "mynet"\n',
+    );
+    await pumpFrames(tester, frames: 12);
+    expect(find.text('Valid TOML'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('source-editor-apply')));
+    await pumpFrames(tester, frames: 36);
+
+    expect(find.text('Edit source'), findsNothing);
+    expect(field('virtual-ipv4'), findsOneWidget);
+    final ipv4Field = tester.widget<TextField>(
+      find.descendant(of: field('virtual-ipv4'), matching: find.byType(TextField)),
+    );
+    expect(ipv4Field.controller!.text, '10.144.0.7');
+  });
+
   testWidgets('wide screens pair fields in two columns', (tester) async {
     await pumpDesktopApp(tester, connect: false);
     await openDestination(tester, EtDestination.config);

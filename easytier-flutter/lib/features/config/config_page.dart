@@ -215,7 +215,8 @@ class _ConfigPageState extends State<ConfigPage> {
       final saved = await _saveDraft(announce: false);
       if (!saved) return;
       if (!mounted) return;
-      if (state.status.phase.isUp) {
+      if (state.status.phase != ConnectionPhase.stopped &&
+          state.status.phase != ConnectionPhase.error) {
         await state.disconnect();
         if (!mounted) return;
       }
@@ -389,6 +390,8 @@ class _ConfigPageState extends State<ConfigPage> {
     if (next == null || form == null || !mounted) return;
     setState(() {
       form.reseed(next);
+      _errors = const {};
+      _coreErrors.clear();
       _saveError = null;
     });
     _showSnack(I18n.t('Source applied to the draft. Review the form, then Save.'));

@@ -26,6 +26,9 @@ class AppState extends ChangeNotifier {
   AppState({
     required this.client,
     this.pollInterval = const Duration(seconds: 1),
+    this.virtualIpPollInterval = const Duration(milliseconds: 250),
+    this.staticVirtualIpTimeout = const Duration(seconds: 8),
+    this.dhcpVirtualIpTimeout = const Duration(seconds: 25),
     VpnController? vpn,
   }) : vpnController = vpn {
     final controller = vpnController;
@@ -36,6 +39,15 @@ class AppState extends ChangeNotifier {
 
   /// Status polling cadence; `null` disables polling (widget tests / goldens).
   final Duration? pollInterval;
+
+  /// Cadence while waiting for the core to report its virtual IP after start.
+  final Duration virtualIpPollInterval;
+
+  /// Maximum wait for static IP startup before failing Android VPN attach.
+  final Duration staticVirtualIpTimeout;
+
+  /// Maximum wait for DHCP lease assignment before failing Android VPN attach.
+  final Duration dhcpVirtualIpTimeout;
 
   /// Android data plane, or `null` on platforms without a VpnService.
   final VpnController? vpnController;
@@ -60,6 +72,13 @@ class AppState extends ChangeNotifier {
   final LogBus logs = LogBus();
   bool _polling = false;
   bool _selfStopping = false;
+  bool _reconcilingVpn = false;
+  bool _disposed = false;
+  int _connectGeneration = 0;
+  String? _vpnInstanceId;
+  String? _pendingVpnInstanceId;
+  VpnRequest? _activeVpnRequest;
+  Completer<void>? _virtualIpSignal;
   Timer? _pollTimer;
   StreamSubscription<NetworkEvent>? _eventSub;
   StreamSubscription<VpnTileAction>? _vpnTileSub;
@@ -103,11 +122,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> refresh() async {
     final id = activeId;
-    if (id == null || _polling) return;
+    if (_disposed || id == null || _polling) return;
     _polling = true;
     try {
-      status = await client.collectStatus(id);
-      notifyListeners();
+      final collected = await client.collectStatus(id);
+      if (_disposed || activeId != id) return;
+      status = collected;
+      _notify();
       final vpn = vpnController;
       if (vpn != null && status.phase.isUp) {
         // Fire-and-forget: a notification hiccup must never break status refresh.
@@ -118,6 +139,7 @@ class AppState extends ChangeNotifier {
             connected: true,
           ),
         );
+        await _reconcileVpnIfNeeded(id);
       }
     } catch (error) {
       lastError = error.toString();
@@ -128,6 +150,10 @@ class AppState extends ChangeNotifier {
     } finally {
       _polling = false;
     }
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
   }
 
   String? _lastRefreshError;
@@ -154,32 +180,83 @@ class AppState extends ChangeNotifier {
   Future<void> connect() async {
     final instance = active;
     if (instance == null || busy) return;
+    final generation = ++_connectGeneration;
+    final config = instance.config;
     busy = true;
     lastError = null;
     _log(
       LogLevel.info,
       'tunnel',
-      'Connecting to ${instance.config.networkName} (${instance.config.instanceName})',
+      'Connecting to ${config.networkName} (${config.instanceName})',
     );
     notifyListeners();
+    String? startedId;
     try {
-      activeId = await client.runInstance(instance.config);
+      final needsVpn = _needsAndroidVpn(config);
+      if (needsVpn) {
+        final granted = await vpnController!.prepare();
+        if (!granted) {
+          throw StateError(
+            vpnController!.lastError ?? 'VPN permission was declined.',
+          );
+        }
+        if (generation != _connectGeneration) return;
+      }
+
+      final previousVpnId = _vpnInstanceId;
+      if (previousVpnId != null && previousVpnId != instance.id) {
+        final vpn = vpnController;
+        if (vpn != null && vpn.isConnected) {
+          _selfStopping = true;
+          try {
+            await vpn.disconnect();
+          } finally {
+            _selfStopping = false;
+          }
+        }
+        try {
+          await client.stopInstance(previousVpnId);
+        } catch (_) {}
+        _vpnInstanceId = null;
+        _activeVpnRequest = null;
+      }
+
+      startedId = await client.runInstance(config);
+      if (generation != _connectGeneration) {
+        try {
+          await client.stopInstance(startedId);
+        } catch (_) {}
+        return;
+      }
+      activeId = startedId;
       await refresh();
-      await _attachVpnIfNeeded(instance.config);
+      await _attachVpnIfNeeded(startedId, config, generation: generation);
+      if (generation != _connectGeneration) return;
       await refresh();
       _log(LogLevel.info, 'tunnel', 'Connected · ${status.peers.length} peers');
     } catch (error) {
-      lastError = error.toString();
-      _log(LogLevel.error, 'tunnel', 'Connect failed: $error');
+      final message = error.toString();
+      lastError = message;
+      _log(LogLevel.error, 'tunnel', 'Connect failed: $message');
+      await _cleanupFailedConnect(startedId);
+      if (generation == _connectGeneration) {
+        status = InstanceStatus(
+          instanceId: startedId ?? activeId ?? '',
+          phase: ConnectionPhase.error,
+          error: message,
+        );
+      }
     } finally {
       busy = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   Future<void> disconnect() async {
     final id = activeId;
     if (id == null || busy) return;
+    _connectGeneration++;
+    _completeVirtualIpSignal();
     busy = true;
     lastError = null;
     _log(LogLevel.info, 'tunnel', 'Disconnecting');
@@ -188,9 +265,15 @@ class AppState extends ChangeNotifier {
       final vpn = vpnController;
       if (vpn != null && vpn.isConnected) {
         _selfStopping = true;
-        await vpn.disconnect();
-        _selfStopping = false;
+        try {
+          await vpn.disconnect();
+        } finally {
+          _selfStopping = false;
+        }
       }
+      _vpnInstanceId = null;
+      _pendingVpnInstanceId = null;
+      _activeVpnRequest = null;
       await client.stopInstance(id);
       await refresh();
       _log(LogLevel.info, 'tunnel', 'Disconnected');
@@ -199,13 +282,16 @@ class AppState extends ChangeNotifier {
       _log(LogLevel.error, 'tunnel', 'Disconnect failed: $error');
     } finally {
       busy = false;
-      notifyListeners();
+      _notify();
     }
   }
 
   Future<void> selectInstance(String id) async {
     if (activeId == id) return;
+    _connectGeneration++;
+    _completeVirtualIpSignal();
     activeId = id;
+    lastError = null;
     status = InstanceStatus.stopped;
     _log(LogLevel.debug, 'profiles', 'Switched active profile to $id');
     notifyListeners();
@@ -243,7 +329,7 @@ class AppState extends ChangeNotifier {
       return false;
     } finally {
       busy = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -322,9 +408,18 @@ class AppState extends ChangeNotifier {
 
   // ---- VPN data plane ------------------------------------------------------
 
+  bool _needsAndroidVpn(NetworkConfig config) {
+    final controller = vpnController;
+    if (controller == null || controller.service is UnsupportedVpnService) {
+      return false;
+    }
+    if (client is! TunFdCapable) return false;
+    return !config.noTun;
+  }
+
   void _wireVpn(VpnController controller) {
     controller.sink = CallbackTunFdSink((fd) async {
-      final id = activeId;
+      final id = _pendingVpnInstanceId ?? _vpnInstanceId ?? activeId;
       if (id == null) return;
       final transport = client;
       if (transport is TunFdCapable) {
@@ -343,50 +438,263 @@ class AppState extends ChangeNotifier {
     unawaited(controller.consumeTileAction());
   }
 
-  /// Starts the Android tunnel after the core instance is up. The virtual IP is
-  /// usually a DHCP lease, so wait briefly for the core to report it.
-  Future<void> _attachVpnIfNeeded(NetworkConfig config) async {
+  /// Starts the Android tunnel after the core instance is up. Static configs
+  /// report a virtual IP as soon as the core is ready; DHCP configs wait for a
+  /// peer lease before the Android TUN can be established.
+  Future<void> _attachVpnIfNeeded(
+    String instanceId,
+    NetworkConfig config, {
+    required int generation,
+  }) async {
     final controller = vpnController;
-    if (controller == null || controller.service is UnsupportedVpnService) return;
-    // Without an FFI transport there is no core to borrow the fd.
-    if (client is! TunFdCapable) return;
+    if (controller == null || !_needsAndroidVpn(config)) return;
 
-    final ip = await _waitForVirtualIp();
-    if (ip == null) {
+    final readyStatus = await _waitForVirtualIp(
+      instanceId: instanceId,
+      config: config,
+      generation: generation,
+    );
+    if (generation != _connectGeneration) return;
+    if (readyStatus == null) {
       throw StateError(
-        'The core did not report a virtual IP; cannot start the Android tunnel.',
+        status.error ??
+            (config.dhcp
+                ? 'Timed out waiting for a DHCP virtual IP from peers.'
+                : 'The core did not report a virtual IP; cannot start the Android tunnel.'),
       );
     }
-    final tunnel = await controller.connect(
-      VpnRequest(
-        ipv4Cidr: ip,
-        routes: <String>[
-          ...config.proxyCidrs,
-          if (config.enableExitNode) '0.0.0.0/0',
-        ],
-        mtu: config.mtu ?? 1300,
-        session: config.networkName,
-      ),
-    );
-    if (tunnel == null) {
-      throw StateError(controller.lastError ?? 'VPN start was declined.');
+
+    final request = buildVpnRequest(config, readyStatus);
+    _pendingVpnInstanceId = instanceId;
+    try {
+      final tunnel = await controller.connect(request);
+      if (tunnel == null) {
+        throw StateError(controller.lastError ?? 'VPN start was declined.');
+      }
+      if (controller.lastError != null) {
+        throw StateError(controller.lastError!);
+      }
+      _vpnInstanceId = instanceId;
+      _activeVpnRequest = request;
+    } finally {
+      if (_pendingVpnInstanceId == instanceId) {
+        _pendingVpnInstanceId = null;
+      }
     }
   }
 
-  Future<String?> _waitForVirtualIp() async {
-    for (var attempt = 0; attempt < 10; attempt++) {
-      final ip = status.virtualIp;
-      if (ip != null && ip.isNotEmpty) return ip;
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+  Future<InstanceStatus?> _waitForVirtualIp({
+    required String instanceId,
+    required NetworkConfig config,
+    required int generation,
+  }) async {
+    final timeout = config.dhcp
+        ? dhcpVirtualIpTimeout
+        : staticVirtualIpTimeout;
+    final deadline = DateTime.now().add(timeout);
+    final startupGraceDeadline = DateTime.now().add(const Duration(seconds: 3));
+
+    while (true) {
+      if (generation != _connectGeneration || activeId != instanceId) {
+        return null;
+      }
+      final current = status;
+      final ip = current.virtualIp;
+      if (ip != null && ip.isNotEmpty) {
+        return current;
+      }
+      if (current.error != null && current.error!.isNotEmpty) {
+        return null;
+      }
+      if (current.phase == ConnectionPhase.error) {
+        return null;
+      }
+      final now = DateTime.now();
+      if (current.phase == ConnectionPhase.stopped &&
+          now.isAfter(startupGraceDeadline)) {
+        return null;
+      }
+      if (!now.isBefore(deadline)) {
+        return null;
+      }
+
+      final signal = _virtualIpSignal ??= Completer<void>();
+      final remaining = deadline.difference(now);
+      final wait = remaining < virtualIpPollInterval
+          ? remaining
+          : virtualIpPollInterval;
+      await Future.any<void>(<Future<void>>[
+        Future<void>.delayed(wait),
+        signal.future,
+      ]);
+      if (generation != _connectGeneration || activeId != instanceId) {
+        return null;
+      }
       await refresh();
     }
-    final ip = status.virtualIp;
-    return ip == null || ip.isEmpty ? null : ip;
+  }
+
+  Future<void> _cleanupFailedConnect(String? startedId) async {
+    final controller = vpnController;
+    if (controller != null && controller.isConnected) {
+      _selfStopping = true;
+      try {
+        await controller.disconnect();
+      } catch (_) {
+      } finally {
+        _selfStopping = false;
+      }
+    }
+    _vpnInstanceId = null;
+    _pendingVpnInstanceId = null;
+    _activeVpnRequest = null;
+    if (startedId != null) {
+      try {
+        await client.stopInstance(startedId);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _reconcileVpnIfNeeded(String instanceId) async {
+    final controller = vpnController;
+    final config = activeConfig;
+    if (controller == null ||
+        config == null ||
+        config.noTun ||
+        busy ||
+        _reconcilingVpn ||
+        !controller.isConnected ||
+        _vpnInstanceId != instanceId ||
+        status.virtualIp == null ||
+        status.virtualIp!.isEmpty) {
+      return;
+    }
+
+    final desired = buildVpnRequest(config, status);
+    final current = _activeVpnRequest;
+    if (current != null && _vpnRequestEquals(current, desired)) {
+      return;
+    }
+
+    _reconcilingVpn = true;
+    _pendingVpnInstanceId = instanceId;
+    try {
+      final tunnel = await controller.connect(desired);
+      if (tunnel != null && controller.lastError == null) {
+        _activeVpnRequest = desired;
+      }
+    } catch (error) {
+      _log(LogLevel.warn, 'tunnel', 'Failed to update VPN routes: $error');
+    } finally {
+      if (_pendingVpnInstanceId == instanceId) {
+        _pendingVpnInstanceId = null;
+      }
+      _reconcilingVpn = false;
+    }
+  }
+
+  static VpnRequest buildVpnRequest(
+    NetworkConfig config,
+    InstanceStatus status,
+  ) {
+    final rawIp = status.virtualIp?.trim() ?? '';
+    final slash = rawIp.indexOf('/');
+    final ip = slash < 0 ? rawIp : rawIp.substring(0, slash).trim();
+    final embeddedPrefix = slash < 0
+        ? null
+        : int.tryParse(rawIp.substring(slash + 1).trim());
+    final prefix =
+        embeddedPrefix ??
+        status.virtualIpPrefixLength ??
+        (config.dhcp ? 24 : config.networkLength);
+    final ipv4Cidr = '$ip/$prefix';
+
+    final routes = <String>{};
+    if (prefix > 0 && prefix < 32) {
+      final subnet = _maskedIpv4Cidr(ip, prefix);
+      if (subnet != null) routes.add(subnet);
+    }
+    for (final cidr in status.remoteProxyCidrs) {
+      final normalized = _normalizeIpv4Cidr(cidr);
+      if (normalized != null) routes.add(normalized);
+    }
+    if (config.enableMagicDns) {
+      routes.add('100.100.100.101/32');
+    }
+    final sortedRoutes = routes.toList()..sort();
+
+    return VpnRequest(
+      ipv4Cidr: ipv4Cidr,
+      ipv6Cidr: config.disableIpv6 ? null : 'fd00::1/128',
+      routes: sortedRoutes,
+      dns: config.enableMagicDns
+          ? const <String>['100.100.100.101']
+          : const <String>[],
+      mtu: config.mtu ?? 1300,
+      session: config.networkName,
+    );
+  }
+
+  static bool _vpnRequestEquals(VpnRequest a, VpnRequest b) {
+    if (a.ipv4Cidr != b.ipv4Cidr ||
+        a.ipv6Cidr != b.ipv6Cidr ||
+        a.mtu != b.mtu ||
+        a.session != b.session ||
+        a.routes.length != b.routes.length ||
+        a.dns.length != b.dns.length) {
+      return false;
+    }
+    for (var i = 0; i < a.routes.length; i++) {
+      if (a.routes[i] != b.routes[i]) return false;
+    }
+    for (var i = 0; i < a.dns.length; i++) {
+      if (a.dns[i] != b.dns[i]) return false;
+    }
+    return true;
+  }
+
+  static String? _maskedIpv4Cidr(String ip, int prefix) =>
+      _normalizeIpv4Cidr('$ip/$prefix');
+
+  static String? _normalizeIpv4Cidr(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || trimmed.contains(':')) return null;
+    final slash = trimmed.indexOf('/');
+    final address = (slash < 0 ? trimmed : trimmed.substring(0, slash)).trim();
+    final prefix = slash < 0
+        ? 32
+        : int.tryParse(trimmed.substring(slash + 1).trim());
+    if (prefix == null || prefix < 0 || prefix > 32) return null;
+    final parts = address.split('.');
+    if (parts.length != 4) return null;
+    var ipInt = 0;
+    for (final part in parts) {
+      final octet = int.tryParse(part);
+      if (octet == null || octet < 0 || octet > 255) return null;
+      ipInt = (ipInt << 8) | octet;
+    }
+    final mask = prefix == 0 ? 0 : (0xffffffff << (32 - prefix)) & 0xffffffff;
+    final network = ipInt & mask;
+    final maskedIp =
+        '${(network >> 24) & 0xff}.${(network >> 16) & 0xff}.'
+        '${(network >> 8) & 0xff}.${network & 0xff}';
+    return '$maskedIp/$prefix';
+  }
+
+  void _completeVirtualIpSignal() {
+    final signal = _virtualIpSignal;
+    _virtualIpSignal = null;
+    if (signal != null && !signal.isCompleted) {
+      signal.complete();
+    }
   }
 
   Future<void> _onVpnStopped(VpnStopReason reason) async {
     if (_selfStopping || reason == VpnStopReason.superseded) return;
-    final id = activeId;
+    final id = _vpnInstanceId ?? activeId;
+    _vpnInstanceId = null;
+    _pendingVpnInstanceId = null;
+    _activeVpnRequest = null;
     if (reason == VpnStopReason.revoked) {
       lastError = 'The system VPN slot was taken by another app.';
     }
@@ -397,11 +705,13 @@ class AppState extends ChangeNotifier {
         // The instance may already be gone; the UI must still leave "connected".
       }
     }
-    status = InstanceStatus(
-      instanceId: id ?? status.instanceId,
-      phase: ConnectionPhase.stopped,
-      error: lastError,
-    );
+    if (activeId == id || id == null) {
+      status = InstanceStatus(
+        instanceId: id ?? status.instanceId,
+        phase: ConnectionPhase.stopped,
+        error: lastError,
+      );
+    }
     events.insert(
       0,
       NetworkEvent(
@@ -429,12 +739,18 @@ class AppState extends ChangeNotifier {
       'event',
       '${event.title}${event.detail == null ? '' : ' · ${event.detail}'}',
     );
+    if (event.kind == EventKind.connected) {
+      _completeVirtualIpSignal();
+    }
     if (destination != EtDestination.activity) _unseenEvents++;
-    notifyListeners();
+    _notify();
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _connectGeneration++;
+    _completeVirtualIpSignal();
     _pollTimer?.cancel();
     _eventSub?.cancel();
     _vpnTileSub?.cancel();

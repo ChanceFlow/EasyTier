@@ -183,6 +183,8 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
   var mtu = base.mtu;
   var devName = base.devName;
   String? instanceId;
+  var sawDhcp = false;
+  var sawStaticIpv4 = false;
   var sawPeers = false;
   var sawProxy = false;
   var sawPortForward = false;
@@ -290,9 +292,12 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
         'network_identity' => 'identity',
         'flags' => 'flags',
         'acl' => 'acl_root',
+        'file_logger' || 'console_logger' || 'source' => 'ignored_section',
         _ => 'unknown',
       };
-      if (section == 'unknown') {
+      if (section == 'ignored_section') {
+        warnings.add(TomlIssue(lineNo, 'Ignored [$name] section.'));
+      } else if (section == 'unknown') {
         unsupported.add(TomlIssue(lineNo, 'Table [$name] is not editable yet.'));
       }
       continue;
@@ -410,6 +415,7 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
           ruleLine ??= lineNo;
         }
       case 'unknown':
+      case 'ignored_section':
         break;
       case 'acl_root':
         unsupported.add(TomlIssue(lineNo, 'ACL table "$key" is not editable yet.'));
@@ -422,15 +428,56 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
           case 'hostname':
             if (value is String) hostname = value;
           case 'dhcp':
-            if (value is bool) dhcp = value;
+            if (value is bool) {
+              dhcp = value;
+              sawDhcp = true;
+            } else {
+              errors.add(TomlIssue(lineNo, 'dhcp must be a boolean.'));
+            }
           case 'ipv4':
             if (value is String) {
-              final slash = value.lastIndexOf('/');
-              if (slash <= 0) {
-                errors.add(TomlIssue(lineNo, 'ipv4 must look like "10.144.0.2/24".'));
+              final trimmed = value.trim();
+              if (trimmed.isEmpty) {
+                virtualIpv4 = '';
               } else {
-                virtualIpv4 = value.substring(0, slash);
-                networkLength = int.tryParse(value.substring(slash + 1)) ?? networkLength;
+                final slash = trimmed.lastIndexOf('/');
+                if (slash < 0) {
+                  if (!_isValidIpv4(trimmed)) {
+                    errors.add(
+                      TomlIssue(lineNo, 'ipv4 "$trimmed" is not a valid IPv4 address.'),
+                    );
+                  } else {
+                    virtualIpv4 = trimmed;
+                    networkLength = 24;
+                    sawStaticIpv4 = true;
+                  }
+                } else if (slash == 0) {
+                  errors.add(
+                    TomlIssue(
+                      lineNo,
+                      'ipv4 "$trimmed" is missing an IPv4 address before "/".',
+                    ),
+                  );
+                } else {
+                  final address = trimmed.substring(0, slash).trim();
+                  final prefixText = trimmed.substring(slash + 1).trim();
+                  final prefix = int.tryParse(prefixText);
+                  if (!_isValidIpv4(address) ||
+                      prefix == null ||
+                      prefix < 1 ||
+                      prefix > 32) {
+                    errors.add(
+                      TomlIssue(
+                        lineNo,
+                        'ipv4 must be an IPv4 address like "10.144.0.2" or CIDR like "10.144.0.2/24".',
+                      ),
+                    );
+                  } else {
+                    virtualIpv4 = address;
+                    networkLength = prefix;
+                    sawStaticIpv4 = true;
+                  }
+                }
               }
             } else {
               errors.add(TomlIssue(lineNo, 'ipv4 must be a string.'));
@@ -456,6 +503,9 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
   }
   if (section == 'port_forward') flushPortForward(lines.length);
   if (section == 'acl_rules') flushRule();
+  if (sawStaticIpv4 && !sawDhcp) {
+    dhcp = false;
+  }
 
   if (errors.isNotEmpty) {
     return TomlParseResult(errors: errors, warnings: warnings, unsupported: unsupported);
@@ -497,6 +547,18 @@ TomlParseResult parseConfigToml(String source, {required NetworkConfig base}) {
 }
 
 String _str(String value) => _jsonEncode(value);
+
+bool _isValidIpv4(String raw) {
+  final parts = raw.split('.');
+  if (parts.length != 4) return false;
+  for (final part in parts) {
+    if (part.isEmpty) return false;
+    if (part.length > 1 && part.startsWith('0')) return false;
+    final number = int.tryParse(part);
+    if (number == null || number < 0 || number > 255) return false;
+  }
+  return true;
+}
 
 String _jsonEncode(String value) {
   final b = StringBuffer('"');

@@ -139,9 +139,9 @@ class MockCoreClient implements CoreClient {
     if (!config.dhcp && config.virtualIpv4.trim().isEmpty) {
       return 'Static mode needs a virtual IPv4 address.';
     }
-    final lengths = <int>[8, 16, 24, 32];
-    if (!config.dhcp && !lengths.contains(config.networkLength)) {
-      return 'Prefix length must be one of 8, 16, 24, 32.';
+    if (!config.dhcp &&
+        (config.networkLength < 1 || config.networkLength > 32)) {
+      return 'Prefix length must be between 1 and 32.';
     }
     return null;
   }
@@ -156,6 +156,7 @@ class MockCoreClient implements CoreClient {
         phase: sim.phase,
         error: sim.error,
         virtualIp: sim.instance.config.virtualIpv4,
+        virtualIpPrefixLength: sim.instance.config.networkLength,
       );
     }
 
@@ -191,6 +192,7 @@ class MockCoreClient implements CoreClient {
       instanceId: id,
       phase: allRelay && peers.isNotEmpty ? ConnectionPhase.degraded : sim.phase,
       virtualIp: sim.instance.config.dhcp ? '10.144.0.${17 + _nextId}' : sim.instance.config.virtualIpv4,
+      virtualIpPrefixLength: sim.instance.config.networkLength,
       latencyMs: latency,
       peerCount: peers.length,
       routeCount: peers.where((p) => p.online).length + 1,

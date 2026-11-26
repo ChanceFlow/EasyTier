@@ -62,10 +62,11 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
   bool _disposed = false;
   String? _version;
 
-  /// Instance name -> instance id, refreshed by every native list call.
-  Map<String, String> _runningByName = const <String, String>{};
+  /// Instance id -> instance name, refreshed by every native list call.
+  Map<String, String> _runningNameById = const <String, String>{};
 
   final Map<String, String> _virtualIps = <String, String>{};
+  final Map<String, int> _virtualIpPrefixes = <String, int>{};
   final Map<String, ConnectionPhase> _lastPhase =
       <String, ConnectionPhase>{};
   final Map<String, DateTime> _connectedAt = <String, DateTime>{};
@@ -156,7 +157,15 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     final running = _listRunning();
     final existingId = running[config.instanceName];
     if (existingId != null) {
-      return existingId;
+      final info = _collectInfos()[config.instanceName];
+      final healthy =
+          info != null &&
+          info['running'] == true &&
+          (_asString(info['error_msg'])?.isEmpty ?? true);
+      if (healthy) {
+        return existingId;
+      }
+      await _deleteInWorker(<String>[config.instanceName]);
     }
 
     final toml = encodeToml(config, instanceId: id);
@@ -178,10 +187,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       );
     }
 
-    _virtualIps.remove(id);
-    _connectedAt.remove(id);
-    _traffic.remove(id);
-    _history.remove(id);
+    _dropTracking(id);
     _emit(
       kind: EventKind.info,
       title: 'Connecting to ${config.networkName}',
@@ -194,7 +200,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
   Future<void> stopInstance(String id) async {
     _ensureInitialized();
     final config = _configs[id];
-    final name = config?.instanceName;
+    final name = config?.instanceName ?? _runningNameById[id];
     var wasUp = false;
 
     if (name != null && _listRunning().containsKey(name)) {
@@ -263,7 +269,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     _ensureInitialized();
     final config = _configs[id];
     final running = _listRunning();
-    final name = config?.instanceName ?? _runningByName[id];
+    final name = config?.instanceName ?? _runningNameById[id];
     if (name == null) {
       _dropTracking(id);
       return InstanceStatus(instanceId: id, phase: ConnectionPhase.stopped);
@@ -285,10 +291,11 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
         instanceId: id,
         phase: ConnectionPhase.connecting,
         virtualIp: _virtualIps[id],
+        virtualIpPrefixLength: _virtualIpPrefixes[id],
       );
     }
 
-    return _statusFromInfo(id, config, info);
+    return statusFromRunningInfo(id, config, info);
   }
 
   @override
@@ -335,7 +342,8 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
   @override
   Future<void> setTunFd(String instanceId, int fd) async {
     _ensureInitialized();
-    final name = _configs[instanceId]?.instanceName ?? _runningByName[instanceId];
+    final name =
+        _configs[instanceId]?.instanceName ?? _runningNameById[instanceId];
     if (name == null) {
       throw CoreClientException('Unknown instance "$instanceId".');
     }
@@ -414,6 +422,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
           );
         }
         final running = <String, String>{};
+        final byId = <String, String>{};
         for (var index = 0; index < count; index++) {
           final pair = buffer[index];
           final name = _bindings.copyCString(pair.key);
@@ -421,9 +430,10 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
           _bindings.freeString(pair.key);
           _bindings.freeString(pair.value);
           running[name] = id;
+          byId[id] = name;
         }
         if (count < capacity) {
-          _runningByName = running;
+          _runningNameById = byId;
           return running;
         }
       } finally {
@@ -471,7 +481,9 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     }
   }
 
-  InstanceStatus _statusFromInfo(
+  /// Converts a raw `collect_network_infos` snapshot into [InstanceStatus].
+  /// Exposed for unit tests so JSON decoding can be verified without a native `.so`.
+  InstanceStatus statusFromRunningInfo(
     String id,
     NetworkConfig? config,
     Map<String, dynamic> info,
@@ -480,12 +492,28 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     final running = info['running'] == true;
     final error = _asString(info['error_msg']);
     final myNode = info['my_node_info'];
-    final virtualIp = _ipv4Of(myNode) ?? _virtualIps[id];
+    final nodeIpInfo = _ipv4InfoOf(myNode);
+    final virtualIp = nodeIpInfo?.ip ?? _virtualIps[id];
+    final virtualIpPrefixLength =
+        nodeIpInfo?.prefix ??
+        _virtualIpPrefixes[id] ??
+        ((virtualIp != null && virtualIp.isNotEmpty)
+            ? (config?.dhcp == false ? config?.networkLength : 24)
+            : null);
     if (virtualIp != null && virtualIp.isNotEmpty) {
       _virtualIps[id] = virtualIp;
+      if (virtualIpPrefixLength != null) {
+        _virtualIpPrefixes[id] = virtualIpPrefixLength;
+      }
     }
 
-    final peers = _parsePeers(info);
+    final myPeerId = myNode is Map ? _asInt(myNode['peer_id']) : null;
+    final peers = _parsePeers(info, myPeerId: myPeerId);
+    final remoteProxyCidrs = _extractRemoteProxyCidrs(
+      info,
+      config: config,
+      myPeerId: myPeerId,
+    );
     final traffic = _sampleTraffic(id, info, now);
 
     final ConnectionPhase phase;
@@ -537,6 +565,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       instanceId: id,
       phase: phase,
       virtualIp: virtualIp,
+      virtualIpPrefixLength: virtualIpPrefixLength,
       latencyMs: latencyMs,
       peerCount: peers.length,
       routeCount: routeCount,
@@ -544,6 +573,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       txBps: traffic.txBps,
       uptime: connectedAt == null ? Duration.zero : now.difference(connectedAt),
       peers: peers,
+      remoteProxyCidrs: remoteProxyCidrs,
       error: error != null && error.isNotEmpty ? error : null,
       history: List<TrafficSample>.unmodifiable(
         _history[id] ?? const <TrafficSample>[],
@@ -551,7 +581,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     );
   }
 
-  List<Peer> _parsePeers(Map<String, dynamic> info) {
+  List<Peer> _parsePeers(Map<String, dynamic> info, {int? myPeerId}) {
     final pairs = _asList(info['peer_route_pairs']);
     final peerEntries = <Map<String, dynamic>>[];
     final routesByPeer = <int, Map<String, dynamic>>{};
@@ -559,15 +589,22 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     if (pairs != null && pairs.isNotEmpty) {
       for (final raw in pairs) {
         if (raw is! Map) continue;
-        final peer = raw['peer'];
-        if (peer is! Map) continue;
-        peerEntries.add(Map<String, dynamic>.from(peer));
         final route = raw['route'];
+        int? routePeerId;
         if (route is Map) {
-          final peerId = _asInt(route['peer_id']);
-          if (peerId != null) {
-            routesByPeer[peerId] = Map<String, dynamic>.from(route);
+          routePeerId = _asInt(route['peer_id']);
+          if (routePeerId != null) {
+            routesByPeer[routePeerId] = Map<String, dynamic>.from(route);
           }
+        }
+        final peer = raw['peer'];
+        if (peer is Map) {
+          peerEntries.add(Map<String, dynamic>.from(peer));
+        } else if (routePeerId != null && routePeerId != myPeerId) {
+          peerEntries.add(<String, dynamic>{
+            'peer_id': routePeerId,
+            'conns': const <Object?>[],
+          });
         }
       }
     } else {
@@ -575,6 +612,16 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       if (fallback != null) {
         for (final raw in fallback) {
           if (raw is Map) peerEntries.add(Map<String, dynamic>.from(raw));
+        }
+      }
+      final fallbackRoutes = _asList(info['routes']);
+      if (fallbackRoutes != null) {
+        for (final raw in fallbackRoutes) {
+          if (raw is! Map) continue;
+          final peerId = _asInt(raw['peer_id']);
+          if (peerId != null) {
+            routesByPeer[peerId] = Map<String, dynamic>.from(raw);
+          }
         }
       }
     }
@@ -590,6 +637,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     final peers = <Peer>[];
     for (final peer in peerEntries) {
       final peerId = _asInt(peer['peer_id']) ?? peers.length;
+      if (myPeerId != null && peerId == myPeerId) continue;
       final route = routesByPeer[peerId] ?? const <String, dynamic>{};
       final conns = _asList(peer['conns']) ?? const <Object?>[];
       final openConns = conns
@@ -615,6 +663,10 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
           openConns.isNotEmpty || (conns.isEmpty && !direct);
       final hostname = _asString(route['hostname']);
       final ipv4 = _ipv4Of(route['ipv4_addr']);
+      final routeLatencyMs = _asInt(route['path_latency']);
+      final latencyMs = latencyUs != null
+          ? (latencyUs / 1000).round()
+          : (routeLatencyMs != null && routeLatencyMs > 0 ? routeLatencyMs : null);
 
       peers.add(
         Peer(
@@ -624,7 +676,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
               : hostname,
           ipv4: ipv4 ?? '',
           path: !online ? 'lost' : (direct ? 'direct' : 'relay'),
-          latencyMs: latencyUs == null ? null : (latencyUs / 1000).round(),
+          latencyMs: latencyMs,
           online: online,
           relayVia: (!direct && nextHop != null) ? hostnames[nextHop] : null,
         ),
@@ -637,6 +689,75 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       return leftLatency.compareTo(rightLatency);
     });
     return peers;
+  }
+
+  List<String> _extractRemoteProxyCidrs(
+    Map<String, dynamic> info, {
+    NetworkConfig? config,
+    int? myPeerId,
+  }) {
+    final local = <String>{
+      for (final cidr in config?.proxyCidrs ?? const <String>[])
+        ?_normalizeIpv4Cidr(cidr),
+    };
+    final result = <String>{};
+
+    void addFromRoute(Object? rawRoute) {
+      if (rawRoute is! Map) return;
+      final peerId = _asInt(rawRoute['peer_id']);
+      if (myPeerId != null && peerId == myPeerId) return;
+      final cidrs = _asList(rawRoute['proxy_cidrs']);
+      if (cidrs == null) return;
+      for (final item in cidrs) {
+        if (item is! String) continue;
+        final normalized = _normalizeIpv4Cidr(item);
+        if (normalized != null && !local.contains(normalized)) {
+          result.add(normalized);
+        }
+      }
+    }
+
+    final routes = _asList(info['routes']);
+    if (routes != null && routes.isNotEmpty) {
+      for (final route in routes) {
+        addFromRoute(route);
+      }
+    } else {
+      final pairs = _asList(info['peer_route_pairs']);
+      if (pairs != null) {
+        for (final pair in pairs) {
+          if (pair is Map) addFromRoute(pair['route']);
+        }
+      }
+    }
+
+    final sorted = result.toList()..sort();
+    return List<String>.unmodifiable(sorted);
+  }
+
+  static String? _normalizeIpv4Cidr(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || trimmed.contains(':')) return null;
+    final slash = trimmed.indexOf('/');
+    final address = (slash < 0 ? trimmed : trimmed.substring(0, slash)).trim();
+    final prefix = slash < 0
+        ? 32
+        : int.tryParse(trimmed.substring(slash + 1).trim());
+    if (prefix == null || prefix < 0 || prefix > 32) return null;
+    final parts = address.split('.');
+    if (parts.length != 4) return null;
+    var ipInt = 0;
+    for (final part in parts) {
+      final octet = int.tryParse(part);
+      if (octet == null || octet < 0 || octet > 255) return null;
+      ipInt = (ipInt << 8) | octet;
+    }
+    final mask = prefix == 0 ? 0 : (0xffffffff << (32 - prefix)) & 0xffffffff;
+    final network = ipInt & mask;
+    final maskedIp =
+        '${(network >> 24) & 0xff}.${(network >> 16) & 0xff}.'
+        '${(network >> 8) & 0xff}.${network & 0xff}';
+    return '$maskedIp/$prefix';
   }
 
   _TrafficState _sampleTraffic(
@@ -706,13 +827,14 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     if (_disposed || text.isEmpty) return;
     try {
       final decoded = _tryJsonDecode(text);
-      if (decoded is Map<String, dynamic>) _onNativeEvent(decoded);
+      if (decoded is Map<String, dynamic>) processNativeEvent(decoded);
     } on Object {
       // Event handling must never throw into the native runtime.
     }
   }
 
-  void _onNativeEvent(Map<String, dynamic> payload) {
+  /// Processes a decoded native event payload (exposed for unit tests).
+  void processNativeEvent(Map<String, dynamic> payload) {
     final event = _asString(payload['event']);
     if (event == null) return;
     final instanceId = _asString(payload['instance_id']);
@@ -724,14 +846,27 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     switch (event) {
       case 'dhcp_ip_changed':
         final parsed = _tryJsonDecode(detail ?? '');
-        if (parsed is Map && parsed['new'] is String) {
-          final next = (parsed['new'] as String).split('/').first;
-          if (instanceId != null) _virtualIps[instanceId] = next;
-          _emit(
-            kind: EventKind.connected,
-            title: 'Tunnel up',
-            detail: instanceName == null ? next : '$next · $instanceName',
-          );
+        if (parsed is Map) {
+          final nextRaw = parsed['new'];
+          if (nextRaw is String) {
+            final info = _ipv4InfoOf(nextRaw);
+            if (info != null) {
+              if (instanceId != null) {
+                _virtualIps[instanceId] = info.ip;
+                _virtualIpPrefixes[instanceId] = info.prefix ?? 24;
+              }
+              _emit(
+                kind: EventKind.connected,
+                title: 'Tunnel up',
+                detail: instanceName == null
+                    ? info.ip
+                    : '${info.ip} · $instanceName',
+              );
+            }
+          } else if (nextRaw == null && instanceId != null) {
+            _virtualIps.remove(instanceId);
+            _virtualIpPrefixes.remove(instanceId);
+          }
         }
       case 'proxy_cidrs_updated':
         _emit(
@@ -1069,8 +1204,8 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       if (config.virtualIpv4.trim().isEmpty) {
         return 'Static mode needs a virtual IPv4 address.';
       }
-      if (!const <int>[8, 16, 24, 32].contains(config.networkLength)) {
-        return 'Prefix length must be one of 8, 16, 24, 32.';
+      if (config.networkLength < 1 || config.networkLength > 32) {
+        return 'Prefix length must be between 1 and 32.';
       }
       if (!_ipv4Pattern.hasMatch(config.virtualIpv4.trim())) {
         return 'Virtual IPv4 address is not a valid dotted quad.';
@@ -1130,6 +1265,7 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
 
   void _dropTracking(String id) {
     _virtualIps.remove(id);
+    _virtualIpPrefixes.remove(id);
     _lastPhase.remove(id);
     _connectedAt.remove(id);
     _traffic.remove(id);
@@ -1149,29 +1285,64 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
         '${hex.substring(20)}';
   }
 
-  static String? _ipv4Of(Object? value) {
+  static String? _ipv4Of(Object? value) => _ipv4InfoOf(value)?.ip;
+
+  static ({String ip, int? prefix})? _ipv4InfoOf(Object? value) {
     if (value == null) return null;
     if (value is String) {
-      final address = value.split('/').first;
-      return address.contains(':') ? null : address;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.contains(':')) return null;
+      final slash = trimmed.indexOf('/');
+      final address = (slash < 0 ? trimmed : trimmed.substring(0, slash)).trim();
+      if (address.isEmpty || address == '0.0.0.0') return null;
+      final prefix = slash < 0
+          ? null
+          : int.tryParse(trimmed.substring(slash + 1).trim());
+      return (
+        ip: address,
+        prefix: prefix != null && prefix > 0 && prefix <= 32 ? prefix : null,
+      );
     }
     if (value is! Map) return null;
 
-    // `common.Ipv4Inet` (protobuf JSON): {"address": {"addr": <u32>}, ...}
+    final rawLength = _asInt(value['network_length'] ?? value['networkLength']);
+    final mapPrefix = (rawLength != null && rawLength > 0 && rawLength <= 32)
+        ? rawLength
+        : null;
+
+    // `common.Ipv4Inet` (protobuf JSON): {"address": {"addr": <u32>}, "network_length": <u32>}
     final nested = value['address'];
-    if (nested != null) return _ipv4Of(nested);
+    if (nested != null) {
+      final inner = _ipv4InfoOf(nested);
+      if (inner == null) return null;
+      return (ip: inner.ip, prefix: inner.prefix ?? mapPrefix);
+    }
     final rawAddress = value['addr'];
     if (rawAddress is num) {
       final number = rawAddress.toInt();
-      return '${(number >> 24) & 0xff}.${(number >> 16) & 0xff}.'
+      if (number == 0) return null;
+      final ip =
+          '${(number >> 24) & 0xff}.${(number >> 16) & 0xff}.'
           '${(number >> 8) & 0xff}.${number & 0xff}';
+      return (ip: ip, prefix: mapPrefix);
     }
     if (rawAddress is String) {
-      final address = rawAddress.split('/').first;
-      return address.contains(':') ? null : address;
+      final inner = _ipv4InfoOf(rawAddress);
+      if (inner == null) return null;
+      return (ip: inner.ip, prefix: inner.prefix ?? mapPrefix);
     }
-    final direct = value['ipv4'] ?? value['ip'];
-    if (direct != null) return _ipv4Of(direct);
+    final direct =
+        value['virtual_ipv4'] ??
+        value['virtualIpv4'] ??
+        value['ipv4_addr'] ??
+        value['ipv4Addr'] ??
+        value['ipv4'] ??
+        value['ip'];
+    if (direct != null) {
+      final inner = _ipv4InfoOf(direct);
+      if (inner == null) return null;
+      return (ip: inner.ip, prefix: inner.prefix ?? mapPrefix);
+    }
     return null;
   }
 

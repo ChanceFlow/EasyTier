@@ -152,6 +152,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
     final theme = Theme.of(context);
     final reduced = context.etReducedMotion;
     final errors = _result.errors;
+    final unsupported = _result.unsupported;
     final warnings = _result.warnings;
     final lineCount = _source.isEmpty ? 1 : '\n'.allMatches(_source).length + 1;
 
@@ -214,6 +215,15 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
               message: errors.length == 1
                   ? 'Fix the syntax error to apply this source.'
                   : '${errors.length} problems — first at line ${errors.first.line}.',
+            )
+          else if (unsupported.isNotEmpty)
+            _SourceBanner(
+              tone: EtTone.warn,
+              icon: Symbols.warning,
+              title:
+                  '${unsupported.length} unsupported field${unsupported.length == 1 ? '' : 's'}',
+              message:
+                  'Line ${unsupported.first.line}: ${unsupported.first.message} Remove to apply in this editor.',
             )
           else if (warnings.isNotEmpty)
             _SourceBanner(
@@ -283,6 +293,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
           _SourceActionBar(
             lineCount: lineCount,
             errors: errors.length,
+            unsupported: unsupported.length,
             warnings: warnings.length,
             onCancel: () => Navigator.of(context).pop(),
             onApply: _result.ok && !_result.hasUnsupportedFields ? _apply : null,
@@ -330,6 +341,7 @@ class _SourceActionBar extends StatelessWidget {
   const _SourceActionBar({
     required this.lineCount,
     required this.errors,
+    required this.unsupported,
     required this.warnings,
     required this.onCancel,
     required this.onApply,
@@ -338,6 +350,7 @@ class _SourceActionBar extends StatelessWidget {
 
   final int lineCount;
   final int errors;
+  final int unsupported;
   final int warnings;
   final VoidCallback onCancel;
   final VoidCallback? onApply;
@@ -350,6 +363,8 @@ class _SourceActionBar extends StatelessWidget {
     final p = context.et;
     final status = errors > 0
         ? '$errors error${errors == 1 ? '' : 's'} · $lineCount lines'
+        : unsupported > 0
+        ? '$unsupported unsupported · $lineCount lines'
         : warnings > 0
         ? '$warnings warning${warnings == 1 ? '' : 's'} · $lineCount lines'
         : 'Ready · $lineCount lines';

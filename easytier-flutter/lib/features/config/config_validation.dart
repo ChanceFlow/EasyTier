@@ -80,7 +80,7 @@ const Map<String, int> kConfigFieldSection = {
   ConfigField.aclRules: ConfigSectionIndex.acl,
 };
 
-const List<String> kUrlSchemes = ['tcp', 'udp', 'wg', 'ws', 'wss'];
+const List<String> kUrlSchemes = ['tcp', 'udp', 'wg', 'quic', 'ws', 'wss', 'faketcp'];
 
 // ---------------------------------------------------------------------------
 // Scalar fields.
@@ -139,9 +139,8 @@ String? validateNetworkSecret(String raw) {
 }
 
 String? validatePrefixLength(int value) {
-  const allowed = [8, 16, 24, 32];
-  if (allowed.contains(value)) return null;
-  return 'Prefix length must be 8, 16, 24 or 32 — got $value.';
+  if (value >= 1 && value <= 32) return null;
+  return 'Prefix length must be between 1 and 32 — got $value.';
 }
 
 String? validateMtuText(String raw) {

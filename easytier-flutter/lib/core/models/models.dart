@@ -69,6 +69,7 @@ class InstanceStatus {
     required this.instanceId,
     required this.phase,
     this.virtualIp,
+    this.virtualIpPrefixLength,
     this.latencyMs,
     this.peerCount = 0,
     this.routeCount = 0,
@@ -76,6 +77,7 @@ class InstanceStatus {
     this.txBps = 0,
     this.uptime = Duration.zero,
     this.peers = const [],
+    this.remoteProxyCidrs = const [],
     this.error,
     this.history = const [],
   });
@@ -83,6 +85,7 @@ class InstanceStatus {
   final String instanceId;
   final ConnectionPhase phase;
   final String? virtualIp;
+  final int? virtualIpPrefixLength;
   final int? latencyMs;
   final int peerCount;
   final int routeCount;
@@ -90,14 +93,23 @@ class InstanceStatus {
   final int txBps;
   final Duration uptime;
   final List<Peer> peers;
+  final List<String> remoteProxyCidrs;
   final String? error;
   final List<TrafficSample> history;
+
+  String? get virtualIpCidr {
+    final ip = virtualIp;
+    if (ip == null || ip.isEmpty) return null;
+    if (ip.contains('/')) return ip;
+    return '$ip/${virtualIpPrefixLength ?? 24}';
+  }
 
   int get onlinePeers => peers.where((p) => p.online).length;
 
   InstanceStatus copyWith({
     ConnectionPhase? phase,
     String? virtualIp,
+    int? virtualIpPrefixLength,
     int? latencyMs,
     int? peerCount,
     int? routeCount,
@@ -105,6 +117,7 @@ class InstanceStatus {
     int? txBps,
     Duration? uptime,
     List<Peer>? peers,
+    List<String>? remoteProxyCidrs,
     String? error,
     List<TrafficSample>? history,
     bool clearError = false,
@@ -112,6 +125,8 @@ class InstanceStatus {
     instanceId: instanceId,
     phase: phase ?? this.phase,
     virtualIp: virtualIp ?? this.virtualIp,
+    virtualIpPrefixLength:
+        virtualIpPrefixLength ?? this.virtualIpPrefixLength,
     latencyMs: latencyMs ?? this.latencyMs,
     peerCount: peerCount ?? this.peerCount,
     routeCount: routeCount ?? this.routeCount,
@@ -119,6 +134,7 @@ class InstanceStatus {
     txBps: txBps ?? this.txBps,
     uptime: uptime ?? this.uptime,
     peers: peers ?? this.peers,
+    remoteProxyCidrs: remoteProxyCidrs ?? this.remoteProxyCidrs,
     error: clearError ? null : (error ?? this.error),
     history: history ?? this.history,
   );

@@ -298,7 +298,11 @@ class EasyTierVpnService : VpnService() {
         spec.ipv6Cidr?.let { builder.addAddress(it.ipPart(), it.prefixPart()) }
 
         for (route in spec.routes) {
-            builder.addRoute(route.ipPart(), route.prefixPart())
+            try {
+                builder.addRoute(route.ipPart(), route.prefixPart())
+            } catch (t: Throwable) {
+                Log.w(TAG, "skipping invalid route $route", t)
+            }
         }
         for (server in spec.dns) {
             builder.addDnsServer(server)
