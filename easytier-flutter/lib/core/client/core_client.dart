@@ -46,3 +46,19 @@ abstract class CoreClient {
 abstract interface class TunFdCapable {
   Future<void> setTunFd(String instanceId, int fd);
 }
+
+/// Implemented by transports that persist configurations on this device.
+///
+/// Configuration storage is best-effort: a sandbox without a writable
+/// directory must still be able to run a network for the current session. When
+/// that happens the client reports it through [storageWarning] instead of
+/// failing silently — the UI has no other way to explain why a network
+/// disappears after a restart.
+abstract interface class StorageAwareCoreClient {
+  /// Human-readable explanation of the last storage problem, or `null` when
+  /// every configuration reached the disk.
+  String? get storageWarning;
+
+  /// Directory holding the persisted configuration file, once resolved.
+  String? get configStorePath;
+}

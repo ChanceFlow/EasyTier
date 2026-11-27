@@ -101,10 +101,13 @@ class AppState extends ChangeNotifier {
   Future<void> bootstrap() async {
     _log(LogLevel.info, 'app', 'Client starting');
     await client.init();
+    _log(LogLevel.info, 'app', 'Transport: ${client.runtimeType}');
     _eventSub = client.events.listen(_onEvent);
+    _syncStorageWarning();
     instances = await client.listInstances();
+    _reconcileActiveId();
+    await _reconcileNativeVpn();
     if (instances.isNotEmpty) {
-      activeId ??= instances.first.id;
       await refresh();
     }
     initialized = true;
@@ -113,10 +116,115 @@ class AppState extends ChangeNotifier {
       'app',
       'Ready · ${instances.length} network${instances.length == 1 ? '' : 's'} configured',
     );
+    final store = _storageAware;
+    if (store != null) {
+      final path = store.configStorePath;
+      final warning = store.storageWarning;
+      _log(
+        warning == null ? LogLevel.info : LogLevel.warn,
+        'config',
+        warning == null
+            ? 'Config store: ${path ?? 'unknown'}'
+            : 'Config store problem: $warning',
+      );
+    }
     notifyListeners();
     final interval = pollInterval;
     if (interval != null) {
       _pollTimer ??= Timer.periodic(interval, (_) => refresh());
+    }
+  }
+
+  /// Storage capability of the current transport, or `null` when it does not
+  /// persist configurations at all (mock transport).
+  StorageAwareCoreClient? get _storageAware {
+    final Object transport = client;
+    return transport is StorageAwareCoreClient ? transport : null;
+  }
+
+  /// Human-readable storage problem (not writable, last save failed), or
+  /// `null`. The Home empty state and Config surface it instead of leaving the
+  /// user with an unexplained "no networks".
+  String? storageWarning;
+
+  void _syncStorageWarning() {
+    final warning = _storageAware?.storageWarning;
+    if (warning == null) {
+      if (storageWarning != null) {
+        storageWarning = null;
+        _log(LogLevel.info, 'config', 'Configuration storage recovered');
+      }
+      return;
+    }
+    if (storageWarning != warning) {
+      storageWarning = warning;
+      _log(LogLevel.warn, 'config', 'Configuration storage: $warning');
+    }
+  }
+
+  /// Reloads the instance list from the transport and repairs [activeId].
+  ///
+  /// Screens call this after any operation that can create or remove an
+  /// instance, so Home can never keep claiming "no networks" while the core
+  /// already has a saved one.
+  Future<void> reloadInstances() async {
+    try {
+      instances = await client.listInstances();
+    } catch (error) {
+      lastError = error.toString();
+      _log(LogLevel.error, 'config', 'Loading networks failed: $error');
+    }
+    _reconcileActiveId();
+    _syncStorageWarning();
+    _notify();
+  }
+
+  void _reconcileActiveId() {
+    if (instances.isEmpty) {
+      activeId = null;
+      return;
+    }
+    final current = activeId;
+    if (current == null || !instances.any((instance) => instance.id == current)) {
+      activeId = instances.first.id;
+    }
+  }
+
+  /// Stops a system VPN tunnel that no core instance backs.
+  ///
+  /// The Android foreground service outlives the Flutter engine, so a tunnel
+  /// (and its system VPN icon) can still be up after the app restarted while
+  /// the core has no running instance for it. Leaving it would mean the phone
+  /// routes traffic into a dead TUN while the UI shows "not connected".
+  Future<void> _reconcileNativeVpn() async {
+    final controller = vpnController;
+    if (controller == null) return;
+    try {
+      final native = await controller.status();
+      if (!native.running) return;
+      final coreIsRunning = instances.any((instance) => instance.enabled);
+      if (coreIsRunning) {
+        _log(
+          LogLevel.info,
+          'tunnel',
+          'System VPN tunnel already up · ${native.ipv4Cidr ?? 'unknown address'}',
+        );
+        return;
+      }
+      _log(
+        LogLevel.warn,
+        'tunnel',
+        'Stopping an orphaned system VPN tunnel '
+        '(${native.ipv4Cidr ?? 'unknown address'})',
+      );
+      _selfStopping = true;
+      try {
+        await controller.disconnect();
+      } finally {
+        _selfStopping = false;
+      }
+    } catch (error) {
+      _log(LogLevel.warn, 'tunnel', 'VPN reconciliation failed: $error');
     }
   }
 
@@ -178,8 +286,22 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> connect() async {
-    final instance = active;
-    if (instance == null || busy) return;
+    if (busy) return;
+    var instance = active;
+    if (instance == null) {
+      // Self-heal: a network saved while the list was stale (or added by a
+      // previous engine) must not dead-end on "Connect does nothing".
+      await reloadInstances();
+      instance = active;
+    }
+    if (instance == null) {
+      lastError = storageWarning == null
+          ? 'No network is configured yet.'
+          : '$storageWarning';
+      _log(LogLevel.warn, 'tunnel', lastError!);
+      _notify();
+      return;
+    }
     final generation = ++_connectGeneration;
     final config = instance.config;
     busy = true;
@@ -306,16 +428,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       await client.saveConfig(config);
-      // Match by name first; a rename lands on the active record instead of
-      // silently creating a second network.
-      var index = instances.indexWhere((i) => i.config.instanceName == config.instanceName);
-      if (index < 0 && activeId != null) {
-        index = instances.indexWhere((i) => i.id == activeId);
-      }
-      if (index >= 0) {
-        final updated = List<NetworkInstance>.of(instances);
-        updated[index] = updated[index].copyWith(config: config);
-        instances = updated;
+      _syncStorageWarning();
+      // The transport is the authority on ids. Reloading here is what makes a
+      // network saved from the Config screen (or the TOML editor) appear on
+      // Home even when the list started out empty.
+      await reloadInstances();
+      final saved = instances.where(
+        (instance) => instance.config.instanceName == config.instanceName,
+      );
+      if (saved.isNotEmpty) {
+        activeId = saved.first.id;
       }
       _log(
         LogLevel.info,
@@ -326,6 +448,9 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       lastError = error.toString();
       _log(LogLevel.error, 'config', 'Save failed: $error');
+      // Even a failed write can leave an in-memory instance; surface whatever
+      // the transport actually has so the UI does not lie about it.
+      await reloadInstances();
       return false;
     } finally {
       busy = false;
@@ -336,28 +461,59 @@ class AppState extends ChangeNotifier {
   Future<void> addInstance() async {
     final index = instances.length + 1;
     final config = NetworkConfig(
-      instanceName: 'net-$index',
+      instanceName: _uniqueInstanceName('net-$index'),
       hostname: 'device-$index',
       networkName: 'EasyTier Net $index',
     );
-    await client.saveConfig(config);
-    instances = await client.listInstances();
-    final created = instances.where((i) => i.config.instanceName == config.instanceName);
-    activeId = created.isEmpty ? activeId : created.first.id;
-    _log(LogLevel.info, 'config', 'Created network "${config.networkName}"');
-    notifyListeners();
+    lastError = null;
+    try {
+      await client.saveConfig(config);
+      _syncStorageWarning();
+      await reloadInstances();
+      final created = instances.where(
+        (instance) => instance.config.instanceName == config.instanceName,
+      );
+      if (created.isNotEmpty) {
+        activeId = created.first.id;
+      }
+      _log(
+        LogLevel.info,
+        'config',
+        'Created network "${config.networkName}"'
+        '${storageWarning == null ? '' : ' (memory only)'}',
+      );
+    } catch (error) {
+      lastError = error.toString();
+      _log(LogLevel.error, 'config', 'Creating a network failed: $error');
+      await reloadInstances();
+    }
+    _notify();
     await refresh();
+  }
+
+  /// Instance names are unique keys in the core; reusing `net-N` after a
+  /// delete would silently overwrite an unrelated network.
+  String _uniqueInstanceName(String base) {
+    final used = instances.map((instance) => instance.config.instanceName).toSet();
+    if (!used.contains(base)) return base;
+    var suffix = 2;
+    while (used.contains('$base-$suffix')) {
+      suffix++;
+    }
+    return '$base-$suffix';
   }
 
   Future<void> removeInstance(String id) async {
     _log(LogLevel.info, 'config', 'Deleting network $id');
-    await client.deleteInstance(id);
-    instances = await client.listInstances();
-    if (activeId == id) {
-      activeId = instances.isEmpty ? null : instances.first.id;
+    try {
+      await client.deleteInstance(id);
+    } catch (error) {
+      lastError = error.toString();
+      _log(LogLevel.error, 'config', 'Delete failed: $error');
     }
+    await reloadInstances();
     status = InstanceStatus.stopped;
-    notifyListeners();
+    _notify();
     await refresh();
   }
 

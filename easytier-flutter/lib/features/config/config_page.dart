@@ -429,6 +429,14 @@ class _ConfigPageState extends State<ConfigPage> {
     final showSummary = summaryLines.isNotEmpty;
 
     final banners = <Widget>[
+      if (state.storageWarning != null)
+        EtBanner(
+          key: const Key('config-storage-warning'),
+          tone: EtTone.warn,
+          icon: Symbols.warning,
+          title: 'Saved in memory only',
+          message: state.storageWarning!,
+        ),
       if (_saveError != null)
         EtBanner(
           tone: EtTone.danger,

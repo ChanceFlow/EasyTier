@@ -434,28 +434,73 @@ class _NetworkSwitcherAction extends StatelessWidget {
 }
 
 /// No instance at all: the only honest thing to show is the way to create one.
+///
+/// When the core reports a storage problem (or the last add attempt failed),
+/// the reason is shown here instead of a reassuring empty state: an unexplained
+/// "No networks yet" while the user just added one is the worst possible copy.
 class _NoNetworkHome extends StatelessWidget {
   const _NoNetworkHome({required this.state});
 
   final AppState state;
 
+  Future<void> _addNetwork(BuildContext context) async {
+    await state.addInstance();
+    if (!context.mounted) return;
+    final error = state.lastError;
+    if (state.instances.isNotEmpty) {
+      EtHaptics.selection();
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            state.storageWarning == null
+                ? 'Network created.'
+                : 'Network created for this session only.',
+          ),
+        ),
+      );
+      return;
+    }
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          error ?? 'Could not create a network on this device.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final problem = state.storageWarning ?? state.lastError;
     return EtPage(
       title: I18n.t('Home'),
       subtitle: 'No network',
       child: EtScrollBody(
         top: EtSpace.x6,
         children: [
+          if (problem != null) ...[
+            EtBanner(
+              tone: EtTone.warn,
+              icon: Symbols.warning,
+              title: state.storageWarning != null
+                  ? 'Configurations are not being saved'
+                  : 'Networks could not be loaded',
+              message: problem,
+            ),
+            const SizedBox(height: EtSpace.x4),
+          ],
           EtEmptyState(
             icon: Symbols.gpp_bad,
             title: 'No networks yet',
-            message: 'Add a network to start routing peers.',
+            message: problem == null
+                ? 'Add a network to start routing peers.'
+                : 'Add a network anyway — it will work for this session, '
+                    'and the reason above explains what to fix.',
             action: EtPrimaryButton(
               label: I18n.t('Add network'),
               icon: Symbols.add,
               expanded: false,
-              onPressed: () => unawaited(state.addInstance()),
+              onPressed: () => unawaited(_addNetwork(context)),
             ),
           ),
         ],

@@ -53,6 +53,15 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         const val METHOD_CHANNEL = "com.kkrainbow.easytier/vpn"
         const val EVENT_CHANNEL = "com.kkrainbow.easytier/vpn/events"
 
+        /**
+         * App-level channel for host facts Dart cannot discover on its own.
+         * Today it only answers `filesDir`: `dart:io` has no API for the app
+         * sandbox on Android, and the client must persist its network
+         * configurations there (the previous temp-directory fallback silently
+         * lost them, which surfaced as "No networks yet" after every restart).
+         */
+        const val APP_CHANNEL = "com.kkrainbow.easytier/app"
+
         private const val REQUEST_VPN_CONSENT = 0x5650
         private const val REQUEST_NOTIFICATIONS = 0x5651
 
@@ -79,6 +88,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     }
 
     private var methodChannel: MethodChannel? = null
+    private var appChannel: MethodChannel? = null
     private var eventSink: EventChannel.EventSink? = null
 
     private var pendingPrepareResult: MethodChannel.Result? = null
@@ -119,6 +129,16 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             setMethodCallHandler(::onMethodCall)
         }
         EventChannel(messenger, EVENT_CHANNEL).setStreamHandler(this)
+        appChannel = MethodChannel(messenger, APP_CHANNEL).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "filesDir" -> result.success(filesDir.absolutePath)
+                    "cacheDir" -> result.success(cacheDir.absolutePath)
+                    "packageName" -> result.success(packageName)
+                    else -> result.notImplemented()
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -142,6 +162,8 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         }
         methodChannel?.setMethodCallHandler(null)
         methodChannel = null
+        appChannel?.setMethodCallHandler(null)
+        appChannel = null
         super.onDestroy()
     }
 

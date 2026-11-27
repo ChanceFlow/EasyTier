@@ -32,7 +32,7 @@ class CoreClientException implements Exception {
 /// The instance id exposed to the UI is the instance UUID embedded in the
 /// generated TOML (`instance_id`), so it survives restarts and matches
 /// `list_instance` ids exactly.
-class FfiCoreClient implements CoreClient, TunFdCapable {
+class FfiCoreClient implements CoreClient, TunFdCapable, StorageAwareCoreClient {
   FfiCoreClient({
     EasytierFfi? native,
     String? configDirectory,
@@ -58,9 +58,17 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
 
   File? _storeFile;
   bool _storeUsable = false;
+  String? _storageWarning;
+  String? _configStorePath;
   bool _initialized = false;
   bool _disposed = false;
   String? _version;
+
+  @override
+  String? get storageWarning => _storageWarning;
+
+  @override
+  String? get configStorePath => _configStorePath;
 
   /// Instance id -> instance name, refreshed by every native list call.
   Map<String, String> _runningNameById = const <String, String>{};
@@ -107,6 +115,13 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
       kind: EventKind.info,
       title: 'EasyTier core ready',
       detail: 'Version ${await version()}',
+    );
+    _emit(
+      kind: _storeUsable ? EventKind.info : EventKind.warning,
+      title: _storeUsable
+          ? 'Configuration store ready'
+          : 'Configuration store unavailable',
+      detail: _storageWarning ?? _configStorePath,
     );
   }
 
@@ -224,7 +239,12 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     final config = _configs[id];
     await stopInstance(id);
     if (_configs.remove(id) != null) {
-      await _saveStore();
+      try {
+        await _saveStore();
+      } on Object {
+        // The removal already happened in memory; a stale on-disk copy is
+        // reported through [storageWarning] instead of failing the delete.
+      }
       _emit(
         kind: EventKind.info,
         title: 'Network removed',
@@ -236,7 +256,12 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
   @override
   Future<void> saveConfig(NetworkConfig config) async {
     _ensureInitialized();
-    await _upsertConfig(config);
+    // A writable sandbox is not guaranteed (Android without a host-provided
+    // directory, a read-only data partition, a full disk). Keep the network
+    // usable in memory and report the storage problem instead of refusing to
+    // save at all: the user can still connect this session, and the UI shows
+    // that it will not survive a restart.
+    await _upsertConfig(config, strictStorage: false);
   }
 
   @override
@@ -957,14 +982,19 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     _configs[id] = config;
     try {
       await _saveStore();
-    } on CoreClientException catch (error) {
-      if (strictStorage) rethrow;
+    } on Object catch (error) {
+      if (strictStorage) {
+        throw error is CoreClientException
+            ? error
+            : CoreClientException('failed to persist the configuration: $error');
+      }
       // Running an instance is still useful without disk persistence; surface
-      // the storage problem as an event instead of blocking the connect flow.
+      // the storage problem as an event instead of blocking the save/connect
+      // flow.
       _emit(
         kind: EventKind.warning,
         title: 'Configuration not persisted',
-        detail: error.message,
+        detail: _storageWarning ?? '$error',
       );
     }
     return id;
@@ -977,47 +1007,91 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
     return null;
   }
 
-  Future<void> _loadStore() async {
-    try {
-      final directory = _resolveConfigDirectory();
-      if (!await directory.exists()) {
-        await directory.create(recursive: true);
-      }
-      final file = File(
-        '${directory.path}${Platform.pathSeparator}easytier_flutter.json',
-      );
-      _storeFile = file;
-      _storeUsable = true;
-      if (!await file.exists()) return;
+  /// Probes [directory] by creating and deleting a marker file inside it.
+  ///
+  /// `Directory.create` alone is not enough on Android: some candidate paths
+  /// exist but reject every write, which previously looked like an empty
+  /// configuration list (the app showed "no networks" with no explanation).
+  ///
+  /// Throws when the directory cannot be created or written.
+  static Future<void> probeWritableDirectory(Directory directory) async {
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    final separator = directory.path.endsWith(Platform.pathSeparator)
+        ? ''
+        : Platform.pathSeparator;
+    final probe = File('${directory.path}$separator.easytier_write_probe');
+    await probe.writeAsString('probe', flush: true);
+    await probe.delete();
+  }
 
-      final decoded = _tryJsonDecode(await file.readAsString());
-      if (decoded is! Map) return;
-      final configs = decoded['configs'];
-      if (configs is! List) return;
-      for (final raw in configs) {
-        if (raw is! Map) continue;
-        final id = _asString(raw['id']);
-        final configJson = raw['config'];
-        if (id == null || configJson is! Map) continue;
-        _configs[id] = _configFromJson(Map<String, dynamic>.from(configJson));
+  Future<void> _probeWritable(Directory directory) =>
+      probeWritableDirectory(directory);
+
+  Future<void> _loadStore() async {
+    final attempts = <String>[];
+    for (final directory in _configDirectoryCandidates()) {
+      try {
+        await _probeWritable(directory);
+        _configStorePath = directory.path;
+        _storeFile = File(
+          '${directory.path}${Platform.pathSeparator}easytier_flutter.json',
+        );
+        _storeUsable = true;
+        _storageWarning = null;
+        await _readStoreFile(_storeFile!);
+        return;
+      } on Object catch (error) {
+        attempts.add('${directory.path}: $error');
       }
-    } on Object catch (error) {
-      _storeUsable = false;
+    }
+
+    _storeUsable = false;
+    _storeFile = null;
+    _storageWarning =
+        'No writable configuration directory. Networks work for this session '
+        'but will not be saved across restarts. Tried: ${attempts.join('; ')}';
+    _emit(
+      kind: EventKind.warning,
+      title: 'Configuration storage unavailable',
+      detail: _storageWarning,
+    );
+  }
+
+  Future<void> _readStoreFile(File file) async {
+    if (!await file.exists()) return;
+    final decoded = _tryJsonDecode(await file.readAsString());
+    if (decoded is! Map) {
+      _storageWarning =
+          'Configuration file ${file.path} is not valid JSON; starting empty.';
       _emit(
         kind: EventKind.warning,
-        title: 'Configuration storage unavailable',
-        detail: '$error',
+        title: 'Configuration file unreadable',
+        detail: _storageWarning,
       );
+      return;
+    }
+    final configs = decoded['configs'];
+    if (configs is! List) return;
+    for (final raw in configs) {
+      if (raw is! Map) continue;
+      final id = _asString(raw['id']);
+      final configJson = raw['config'];
+      if (id == null || configJson is! Map) continue;
+      _configs[id] = _configFromJson(Map<String, dynamic>.from(configJson));
     }
   }
 
   Future<void> _saveStore() async {
-    if (!_storeUsable || _storeFile == null) {
-      throw CoreClientException(
-        'No writable configuration directory. Pass FfiCoreClient('
-        'configDirectory: ...) — on Android use context.filesDir from the '
-        'VpnService host; on iOS use the Application Support directory.',
-      );
+    final target = _storeFile;
+    if (!_storeUsable || target == null) {
+      final message = _storageWarning ??
+          'No writable configuration directory. Pass FfiCoreClient('
+              'configDirectory: ...) — on Android the host supplies '
+              'context.filesDir; on iOS the Application Support directory.';
+      _storageWarning = message;
+      throw CoreClientException(message);
     }
     final payload = jsonEncode(<String, Object?>{
       'version': 1,
@@ -1029,55 +1103,71 @@ class FfiCoreClient implements CoreClient, TunFdCapable {
           },
       ],
     });
-    final target = _storeFile!;
-    final temporary = File('${target.path}.tmp');
-    await temporary.writeAsString(payload, flush: true);
-    await temporary.rename(target.path);
+    try {
+      final temporary = File('${target.path}.tmp');
+      await temporary.writeAsString(payload, flush: true);
+      await temporary.rename(target.path);
+      _storageWarning = null;
+    } on Object catch (error) {
+      _storageWarning = 'Could not save configurations to ${target.path}: $error';
+      rethrow;
+    }
   }
 
-  Directory _resolveConfigDirectory() {
-    final configured = _configDirectoryOverride;
-    if (configured != null && configured.trim().isNotEmpty) {
-      return Directory(configured);
-    }
-    final explicit = Platform.environment['EASYTIER_FLUTTER_CONFIG_DIR'];
-    if (explicit != null && explicit.trim().isNotEmpty) {
-      return Directory(explicit);
-    }
-    if (Platform.isAndroid || Platform.isIOS) {
-      // dart:io cannot discover the app sandbox directory without a plugin.
-      // Hosts should pass `configDirectory`; the temp fallback keeps read-mostly
-      // flows working but does not survive a restart.
-      return Directory(
-        '${Directory.systemTemp.path}${Platform.pathSeparator}easytier_flutter',
-      );
+  /// Directories to try, in priority order.
+  ///
+  /// The host-provided directory wins; the environment override is for desktop
+  /// debugging. Everything after that is a heuristic fallback so a stripped
+  /// sandbox still finds *something* writable instead of silently losing every
+  /// configuration (Android used to end up with an empty list that way).
+  List<Directory> _configDirectoryCandidates() {
+    final candidates = <Directory>[];
+    void add(String? path) {
+      if (path == null || path.trim().isEmpty) return;
+      final directory = Directory(path.trim());
+      if (!candidates.any((existing) => existing.path == directory.path)) {
+        candidates.add(directory);
+      }
     }
 
+    add(_configDirectoryOverride);
+    add(Platform.environment['EASYTIER_FLUTTER_CONFIG_DIR']);
+
     final separator = Platform.pathSeparator;
+    final temp = Directory.systemTemp.path;
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      // dart:io cannot discover the app sandbox without host help; keep the
+      // historical temp location as a last resort so an older install can
+      // still read what it wrote.
+      add('$temp${separator}easytier_flutter');
+      add('$temp$separator.easytier_flutter');
+      return candidates;
+    }
+
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'];
       if (appData != null && appData.isNotEmpty) {
-        return Directory('$appData${separator}EasyTier');
+        add('$appData${separator}EasyTier');
       }
     }
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
     if (Platform.isMacOS && home != null && home.isNotEmpty) {
-      return Directory(
+      add(
         '$home${separator}Library${separator}Application Support'
         '${separator}EasyTier',
       );
     }
     final xdg = Platform.environment['XDG_CONFIG_HOME'];
     if (xdg != null && xdg.isNotEmpty) {
-      return Directory('$xdg${separator}easytier');
+      add('$xdg${separator}easytier');
     }
     if (home != null && home.isNotEmpty) {
-      return Directory('$home$separator.config${separator}easytier');
+      add('$home$separator.config${separator}easytier');
     }
-    return Directory(
-      '${Directory.systemTemp.path}${separator}easytier_flutter',
-    );
+    add('$temp${separator}easytier_flutter');
+    return candidates;
   }
 
   // ===== Config <-> JSON =====

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app.dart';
 import 'core/client/client_factory.dart';
+import 'core/platform/app_directories.dart';
 import 'core/state/app_state.dart';
 import 'core/system_ui.dart';
 import 'core/vpn/vpn_controller.dart';
@@ -20,7 +21,13 @@ import 'core/vpn/vpn_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   enableEtEdgeToEdge();
-  final client = await createCoreClient();
+
+  // The core persists configurations itself, but inside a mobile sandbox only
+  // the host knows where that may write. Asking first keeps the saved network
+  // list across restarts; without it the client used an unwritable temp path
+  // and looked like it had no networks at all.
+  final configDirectory = await AppDirectories.configDirectory();
+  final client = await createCoreClient(configDirectory: configDirectory);
 
   final vpnService = createPlatformVpnService();
   final vpn = vpnService is UnsupportedVpnService
