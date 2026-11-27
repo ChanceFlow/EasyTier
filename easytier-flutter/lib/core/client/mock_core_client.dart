@@ -117,11 +117,21 @@ class MockCoreClient implements CoreClient {
   }
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {
-    for (final entry in _sims.entries.toList()) {
-      if (entry.value.instance.config.instanceName != config.instanceName) continue;
-      _sims[entry.key] = entry.value.copyWith(
-        instance: entry.value.instance.copyWith(config: config),
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {
+    // An explicit id wins: it is an edit of that record, even after a rename.
+    final existingId = instanceId != null && _sims.containsKey(instanceId)
+        ? instanceId
+        : _sims.entries
+            .where(
+              (entry) => entry.value.instance.config.instanceName ==
+                  config.instanceName,
+            )
+            .map((entry) => entry.key)
+            .firstOrNull;
+    if (existingId != null) {
+      final sim = _sims[existingId]!;
+      _sims[existingId] = sim.copyWith(
+        instance: sim.instance.copyWith(config: config),
       );
       return;
     }
@@ -161,7 +171,11 @@ class MockCoreClient implements CoreClient {
     }
 
     final now = _clock();
-    final tick = now.millisecondsSinceEpoch ~/ 1000;
+    // Seconds since midnight, not since the epoch: the golden fixtures pin the
+    // clock to "today at 12:00" (the Activity feed must group as Today), and an
+    // epoch-based tick made every rate/latency sample change with the calendar
+    // date, so goldens could never pass on a later day.
+    final tick = now.hour * 3600 + now.minute * 60 + now.second;
     final rx = 620000 + (math.sin(tick / 3) * 180000).round() + _random.nextInt(40000);
     final tx = 140000 + (math.cos(tick / 4) * 60000).round() + _random.nextInt(20000);
     final latency = 18 + (math.sin(tick / 5) * 6).round() + _random.nextInt(4);

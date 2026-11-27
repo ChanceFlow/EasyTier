@@ -18,7 +18,7 @@ the behaviour is preserved, the Tauri plugin runtime is not.
 
 | File | Responsibility |
 | --- | --- |
-| `.../MainActivity.kt` | Flutter host + `MethodChannel("com.kkrainbow.easytier/vpn")` / `EventChannel("com.kkrainbow.easytier/vpn/events")`; VPN consent flow, service start/stop, notification permission, live rate updates, tile-action drain |
+| `.../MainActivity.kt` | Flutter host + `MethodChannel("com.kkrainbow.easytier/vpn")` / `EventChannel("com.kkrainbow.easytier/vpn/events")` / `MethodChannel("com.kkrainbow.easytier/app")`; VPN consent flow, service start/stop, notification permission, live rate updates, tile-action drain, app-sandbox directories |
 | `.../EasyTierVpnService.kt` | Real `android.net.VpnService`: `establish()` → `detachFd()`, foreground service, `onRevoke`, single-tunnel enforcement, fd ownership/lifecycle |
 | `.../VpnNotification.kt` | Single source of truth for the ongoing notification (channel id, notification id, copy, actions, rate formatting) |
 | `.../EasyTierVpnTileService.kt` | Quick-settings tile (start/stop; falls back to opening the app) |
@@ -33,6 +33,7 @@ Dart side lives in `lib/core/vpn/`:
 | `vpn_service.dart` | `VpnService` seam, `MethodChannelVpnService`, `UnsupportedVpnService`, `FakeVpnService`, models/events |
 | `vpn_controller.dart` | `VpnController`: consent→start sequence, `Stream<int> tunFds`, `TunFdSink`, teardown reasons |
 | `vpn.dart` | Barrel export |
+| `lib/core/platform/app_directories.dart` | `AppDirectories`: `filesDir` lookup (config store path) with a bounded retry |
 
 No new Flutter or Gradle dependencies: the native layer uses platform APIs only
 (`android.app.Notification`, `android.service.quicksettings`, `android.system.Os`),
@@ -54,6 +55,17 @@ Commands (`MethodChannel "com.kkrainbow.easytier/vpn"`):
 | `openNotificationSettings` | — | `null` |
 | `updateNotification` | `{rxBps, txBps, connected}` | `null` |
 | `consumeTileAction` | — | `"start" \| "stop" \| null` |
+
+Host facts (`MethodChannel "com.kkrainbow.easytier/app"`) — answered because
+`dart:io` cannot discover the app sandbox on Android. Without `filesDir` the
+client fell back to a temp directory, could not persist networks, and showed
+"No networks yet" even after one had been added:
+
+| Method | Result |
+| --- | --- |
+| `filesDir` | `String` — the app-private dir; the client stores `easytier/easytier_flutter.json` inside it |
+| `cacheDir` | `String` (diagnostics only) |
+| `packageName` | `String` |
 
 `start` throws `PlatformException` with `need_prepare` (consent missing),
 `bad_args`, `vpn_busy` (another start/consent request in flight),

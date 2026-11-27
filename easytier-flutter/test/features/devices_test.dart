@@ -23,18 +23,21 @@ const NetworkConfig _testConfig = NetworkConfig(
 );
 
 class _StaticClient implements CoreClient {
-  _StaticClient({required this.status});
+  _StaticClient({required this.status, List<NetworkInstance>? instances})
+      : instances = instances ??
+            const [
+              NetworkInstance(id: 'inst-1', config: _testConfig, enabled: true),
+            ];
 
   InstanceStatus status;
+  List<NetworkInstance> instances;
   final StreamController<NetworkEvent> _events = StreamController<NetworkEvent>.broadcast();
 
   @override
   Future<void> init() async {}
 
   @override
-  Future<List<NetworkInstance>> listInstances() async => [
-        const NetworkInstance(id: 'inst-1', config: _testConfig, enabled: true),
-      ];
+  Future<List<NetworkInstance>> listInstances() async => instances;
 
   @override
   Future<String> runInstance(NetworkConfig config) async => 'inst-1';
@@ -46,7 +49,7 @@ class _StaticClient implements CoreClient {
   Future<void> deleteInstance(String id) async {}
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {}
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {}
 
   @override
   Future<NetworkConfig?> getConfig(String id) async => _testConfig;
@@ -178,6 +181,28 @@ void main() {
           expect(find.byType(EtPeerRow), findsNothing);
         },
         client: client,
+      );
+    });
+
+    testWidgets('no network shows a pointer to Config instead of a dead Connect',
+        (tester) async {
+      final client = _StaticClient(
+        status: const InstanceStatus(
+          instanceId: 'inst-1',
+          phase: ConnectionPhase.stopped,
+        ),
+      )..instances = const [];
+      await _runWithApp(
+        tester,
+        (state) async {
+          await openDestination(tester, EtDestination.devices);
+          expect(find.text('No network configured'), findsOneWidget);
+          expect(find.text('Open Config'), findsOneWidget);
+          // The dead-end "Connect" button must not be offered with no network.
+          expect(find.text('Connect to see peers'), findsNothing);
+        },
+        client: client,
+        connect: false,
       );
     });
 

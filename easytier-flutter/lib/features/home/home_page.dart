@@ -31,11 +31,17 @@ class HomePage extends StatelessWidget {
     if (active == null) return _NoNetworkHome(state: state);
 
     final status = state.status;
-    final connecting = status.phase == ConnectionPhase.connecting ||
-        (state.busy && !state.connected);
+    // `isConnecting` is tunnel-scoped. Using the generic `busy` flag here made
+    // Home claim "Connecting…" while Config was merely saving or deleting.
+    final connecting = state.isConnecting ||
+        status.phase == ConnectionPhase.connecting;
+    // Only a real tunnel failure earns the error view. `lastError` also carries
+    // save/poll problems, so it must not drive this decision (a stale one used
+    // to pin Home on "Connection failed" forever).
+    final failureMessage = status.error ?? state.connectError;
     final failed = !connecting &&
         (status.phase == ConnectionPhase.error ||
-            (!status.phase.isUp && state.lastError != null));
+            (!status.phase.isUp && failureMessage != null));
     final view = connecting
         ? _HomeView.connecting
         : failed
@@ -82,9 +88,19 @@ class HomePage extends StatelessWidget {
       _HomeView.error => EtBanner(
           tone: EtTone.danger,
           title: I18n.t('Connection failed'),
-          message: status.error ??
-              state.lastError ??
+          message: failureMessage ??
               I18n.t('The core could not start this network.'),
+          actions: [
+            IconButton(
+              key: const Key('home-dismiss-error'),
+              icon: const Icon(Symbols.close),
+              tooltip: I18n.t('Dismiss'),
+              onPressed: () {
+                EtHaptics.selection();
+                unawaited(state.dismissConnectError());
+              },
+            ),
+          ],
         ),
       _ => null,
     };
@@ -92,24 +108,51 @@ class HomePage extends StatelessWidget {
     // Exactly one M3 primary action for the whole screen. Filled for "bring it
     // up", tonal for "take it down" — never a second filled button.
     final Widget action = switch (view) {
+      // `busy` covers saves/deletes too: a tap would be silently ignored, so
+      // the control has to say "not now" instead of looking live.
       _HomeView.stopped => EtPrimaryButton(
           label: I18n.t('Connect'),
           icon: Symbols.cable,
-          onPressed: () {
-            EtHaptics.impact();
-            unawaited(state.connect());
-          },
+          loading: state.busy,
+          onPressed: state.busy
+              ? null
+              : () {
+                  EtHaptics.impact();
+                  unawaited(state.connect());
+                },
         ),
-      _HomeView.connecting => EtPrimaryButton(
-          label: I18n.t('Connecting…'),
-          loading: true,
-        ),
+      // A DHCP start can legitimately wait tens of seconds for a peer to hand
+      // out a lease; "Connecting…" must stay abortable. The cancel affordance
+      // is a compact text button below the primary action: side by side it
+      // overflowed the hero at 320 dp.
+      _HomeView.connecting => state.isDisconnecting
+          ? EtPrimaryButton(
+              label: I18n.t('Disconnecting…'),
+              tonal: true,
+              loading: true,
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                EtPrimaryButton(label: I18n.t('Connecting…'), loading: true),
+                const SizedBox(height: EtSpace.x1),
+                TextButton(
+                  key: const Key('home-cancel-connect'),
+                  onPressed: () {
+                    EtHaptics.impact();
+                    unawaited(state.cancelConnect());
+                  },
+                  child: Text(I18n.t('Cancel')),
+                ),
+              ],
+            ),
       _HomeView.error => EtPrimaryButton(
           label: I18n.t('Reconnect'),
           icon: Symbols.refresh,
-          onPressed: () => unawaited(state.connect()),
+          loading: state.busy,
+          onPressed: state.busy ? null : () => unawaited(state.connect()),
         ),
-      _HomeView.connected || _HomeView.degraded => state.busy
+      _HomeView.connected || _HomeView.degraded => state.isDisconnecting
           ? EtPrimaryButton(
               label: I18n.t('Disconnecting…'),
               tonal: true,
@@ -320,8 +363,18 @@ class HomePage extends StatelessWidget {
                     ),
                     TextButton.icon(
                       onPressed: () {
+                        final messenger = ScaffoldMessenger.maybeOf(context);
                         Navigator.of(sheetContext).pop();
-                        unawaited(state.addInstance());
+                        unawaited(() async {
+                          await state.addInstance();
+                          final error = state.lastError;
+                          if (error == null || state.instances.isNotEmpty) {
+                            return;
+                          }
+                          messenger?.showSnackBar(
+                            SnackBar(content: Text(error)),
+                          );
+                        }());
                       },
                       icon: const Icon(Symbols.add, size: 18),
                       label: Text(I18n.t('New')),
@@ -471,7 +524,7 @@ class _NoNetworkHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final problem = state.storageWarning ?? state.lastError;
+    final problem = state.storageWarning ?? state.connectError ?? state.lastError;
     return EtPage(
       title: I18n.t('Home'),
       subtitle: 'No network',

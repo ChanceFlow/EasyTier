@@ -21,7 +21,12 @@ abstract class CoreClient {
 
   Future<void> deleteInstance(String id);
 
-  Future<void> saveConfig(NetworkConfig config);
+  /// Persists [config].
+  ///
+  /// [instanceId] names the record being edited. Pass it whenever the save is
+  /// an *edit*: without it a renamed instance would be stored as a brand-new
+  /// network and the user would end up with a duplicate.
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId});
 
   Future<NetworkConfig?> getConfig(String id);
 

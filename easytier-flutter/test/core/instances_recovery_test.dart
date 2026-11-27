@@ -60,15 +60,19 @@ class _EmptyThenSaveClient implements CoreClient {
   }
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {
     saveCalls++;
     if (failSaves) {
       throw StateError('No writable configuration directory.');
     }
-    final existing = configs.entries
+    final matching = configs.entries
         .where((entry) => entry.value.instanceName == config.instanceName)
         .toList();
-    final id = existing.isEmpty ? 'inst-${_nextId++}' : existing.first.key;
+    final id = instanceId != null && configs.containsKey(instanceId)
+        ? instanceId
+        : matching.isEmpty
+            ? 'inst-${_nextId++}'
+            : matching.first.key;
     configs[id] = config;
   }
 
@@ -173,8 +177,10 @@ void main() {
 
       await state.connect();
 
-      expect(state.lastError, contains('No network is configured'));
-      expect(state.busy, isFalse);
+      // Tunnel-scoped: Home reads connectError, never the general lastError.
+      expect(state.connectError, contains('No network is configured'));
+      expect(state.lastError, isNull);
+      expect(state.isConnecting, isFalse);
     });
 
     test('a failed add keeps the UI alive and a later add succeeds', () async {
@@ -285,6 +291,62 @@ void main() {
       expect(service.stopCalls, 0);
       expect(state.instances, hasLength(1));
       expect(state.activeId, 'inst-1');
+    });
+  });
+
+  group('renaming an instance', () {
+    test('editing the name keeps one network instead of duplicating it',
+        () async {
+      final client = _EmptyThenSaveClient();
+      final state = await _boot(client);
+      addTearDown(state.dispose);
+
+      await state.saveConfig(
+        const NetworkConfig(
+          instanceName: 'redmi',
+          hostname: 'redmi',
+          networkName: 'mynet',
+          dhcp: false,
+          virtualIpv4: '10.144.0.10',
+        ),
+      );
+      final originalId = state.activeId;
+      expect(originalId, isNotNull);
+      expect(state.instances, hasLength(1));
+
+      final renamed = await state.saveConfig(
+        state.activeConfig!.copyWith(instanceName: 'phone'),
+      );
+
+      expect(renamed, isTrue);
+      expect(state.instances, hasLength(1),
+          reason: 'a rename must not create a second network');
+      expect(state.activeId, originalId);
+      expect(state.activeConfig!.instanceName, 'phone');
+    });
+
+    test('the transport honours an explicit instance id', () async {
+      final client = _EmptyThenSaveClient();
+      await client.saveConfig(
+        const NetworkConfig(
+          instanceName: 'redmi',
+          hostname: 'redmi',
+          networkName: 'mynet',
+        ),
+      );
+      final id = client.configs.keys.single;
+
+      await client.saveConfig(
+        const NetworkConfig(
+          instanceName: 'renamed',
+          hostname: 'redmi',
+          networkName: 'mynet',
+        ),
+        instanceId: id,
+      );
+
+      expect(client.configs, hasLength(1));
+      expect(client.configs[id]!.instanceName, 'renamed');
     });
   });
 

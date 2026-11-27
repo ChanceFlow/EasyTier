@@ -254,14 +254,14 @@ class FfiCoreClient implements CoreClient, TunFdCapable, StorageAwareCoreClient 
   }
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {
     _ensureInitialized();
     // A writable sandbox is not guaranteed (Android without a host-provided
     // directory, a read-only data partition, a full disk). Keep the network
     // usable in memory and report the storage problem instead of refusing to
     // save at all: the user can still connect this session, and the UI shows
     // that it will not survive a restart.
-    await _upsertConfig(config, strictStorage: false);
+    await _upsertConfig(config, instanceId: instanceId, strictStorage: false);
   }
 
   @override
@@ -976,9 +976,14 @@ class FfiCoreClient implements CoreClient, TunFdCapable, StorageAwareCoreClient 
 
   Future<String> _upsertConfig(
     NetworkConfig config, {
+    String? instanceId,
     bool strictStorage = true,
   }) async {
-    final id = _idForInstanceName(config.instanceName) ?? _newUuid();
+    // An explicit id means "this is an edit of that record"; matching by name
+    // alone would turn a rename into a second network with a new uuid.
+    final id = (instanceId != null && _configs.containsKey(instanceId))
+        ? instanceId
+        : _idForInstanceName(config.instanceName) ?? _newUuid();
     _configs[id] = config;
     try {
       await _saveStore();

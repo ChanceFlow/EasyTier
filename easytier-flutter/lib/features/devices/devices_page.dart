@@ -139,6 +139,31 @@ class _DevicesPageState extends State<DevicesPage> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    // With no network at all there is nothing to sort, search or connect; the
+    // honest answer is a pointer to the screen that creates one.
+    if (state.active == null) {
+      return EtPage(
+        title: I18n.t('Devices'),
+        subtitle: I18n.t('No network'),
+        child: EtScrollBody(
+          top: EtSpace.x6,
+          children: [
+            EtEmptyState(
+              icon: Symbols.devices,
+              title: 'No network configured',
+              message: 'Create a network first; its peers show up here.',
+              action: EtPrimaryButton(
+                label: I18n.t('Open Config'),
+                icon: Symbols.tune,
+                expanded: false,
+                onPressed: () => state.setDestination(EtDestination.config),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final status = state.status;
     final desktop = context.etDesktop;
     final up = status.phase.isUp;
@@ -183,12 +208,14 @@ class _DevicesPageState extends State<DevicesPage> {
                 tone: EtTone.warn,
               ),
             ),
-          if (!up && state.lastError != null && status.phase != ConnectionPhase.connecting)
+          if (!up &&
+              (status.error ?? state.connectError) != null &&
+              status.phase != ConnectionPhase.connecting)
             Padding(
               padding: const EdgeInsets.only(bottom: EtSpace.x3),
               child: EtBanner(
                 title: I18n.t('Connection failed'),
-                message: state.lastError!,
+                message: status.error ?? state.connectError!,
                 tone: EtTone.danger,
               ),
             ),
@@ -274,7 +301,9 @@ class _DevicesPageState extends State<DevicesPage> {
     required bool desktop,
   }) {
     final phase = status.phase;
-    final message = status.error ?? state.lastError;
+    // Tunnel failures only: `lastError` also carries config-save problems, and
+    // a failed save must not make Devices claim the network failed.
+    final message = status.error ?? state.connectError;
 
     if (phase == ConnectionPhase.connecting) {
       return _emptyScroll(
@@ -332,12 +361,16 @@ class _DevicesPageState extends State<DevicesPage> {
   }
 
   Widget _connectButton(AppState state, {required String label}) {
+    // Tunnel-scoped busy state: a configuration save must not spin this button.
+    final tunnelBusy = state.isConnecting ||
+        state.isDisconnecting ||
+        state.status.phase == ConnectionPhase.connecting;
     return EtPrimaryButton(
       label: label,
       icon: Symbols.verified_user,
       expanded: false,
-      loading: state.busy,
-      onPressed: state.busy ? null : state.connect,
+      loading: tunnelBusy,
+      onPressed: tunnelBusy ? null : state.connect,
     );
   }
 

@@ -35,11 +35,25 @@ void main() {
     expect(page.title, 'Settings');
     expect(page.subtitle, 'Preferences & core runtime');
 
-    expect(_inSettings(find.text('2.6.4+12')), findsOneWidget);
+    expect(_inSettings(find.text('2.6.4+13')), findsOneWidget);
     expect(_inSettings(find.text('2.7.0-mock')), findsOneWidget);
     expect(_inSettings(find.text('Normal (in-process)')), findsOneWidget);
     expect(_inSettings(find.text('Documentation')), findsOneWidget);
     expect(_inSettings(find.text('Source repository')), findsOneWidget);
+  });
+
+  testWidgets('config storage row reports the transport store honestly',
+      (tester) async {
+    await pumpPhoneApp(tester);
+    await openDestination(tester, EtDestination.settings);
+
+    final row = find.byKey(const Key('settings-storage-row'));
+    expect(row, findsOneWidget);
+    await tester.ensureVisible(row);
+    await pumpFrames(tester);
+    expect(_inSettings(find.text('Config storage')), findsOneWidget);
+    // The mock transport keeps nothing on disk: say so, do not claim "writable".
+    expect(_inSettings(find.text('In memory')), findsOneWidget);
   });
 
   testWidgets('appearance segmented pill applies the theme immediately',

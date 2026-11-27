@@ -46,6 +46,53 @@ class _EmptyClient extends MockCoreClient {
   Future<void> init() async {}
 }
 
+/// Core that reports a fatal error until its instance is stopped, the way a
+/// real core behaves after a failed start.
+class _StickyErrorClient extends MockCoreClient {
+  _StickyErrorClient(this.message) : super(startDelay: Duration.zero);
+
+  final String message;
+  bool stopped = false;
+
+  @override
+  Future<InstanceStatus> collectStatus(String id) async => stopped
+      ? InstanceStatus(instanceId: id, phase: ConnectionPhase.stopped)
+      : InstanceStatus(
+          instanceId: id,
+          phase: ConnectionPhase.error,
+          error: message,
+        );
+
+  @override
+  Future<void> stopInstance(String id) async {
+    stopped = true;
+  }
+}
+
+/// Stopped core whose config writes fail: reproduces the "stale error" trap
+/// (a save failure used to leave Home claiming the connection had failed).
+class _FailingSaveClient extends MockCoreClient {
+  _FailingSaveClient() : super(startDelay: Duration.zero);
+
+  @override
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {
+    throw StateError('No writable configuration directory.');
+  }
+}
+
+/// Stopped core whose status polling fails on demand.
+class _FailingPollClient extends MockCoreClient {
+  _FailingPollClient() : super(startDelay: Duration.zero);
+
+  bool fail = false;
+
+  @override
+  Future<InstanceStatus> collectStatus(String id) async {
+    if (fail) throw StateError('transport hiccup');
+    return super.collectStatus(id);
+  }
+}
+
 Future<AppState> _pumpWith(
   WidgetTester tester,
   CoreClient client, {
@@ -246,6 +293,120 @@ void main() {
 
     expect(state.instances, hasLength(1));
     expect(_inHome(find.text('Connect')), findsOneWidget);
+  });
+
+  testWidgets('connecting Home can be cancelled', (tester) async {
+    final client = _GatedClient();
+    final state = await _pumpWith(tester, client);
+
+    final pending = state.connect();
+    await pumpFrames(tester, frames: 4);
+
+    expect(_inHome(find.byKey(const Key('home-cancel-connect'))), findsOneWidget);
+    await tester.tap(_inHome(find.byKey(const Key('home-cancel-connect'))));
+
+    // The start is aborted without waiting for the gated run to finish.
+    client.gate.complete();
+    await pending;
+    await pumpFrames(tester, frames: 8);
+
+    expect(state.isConnecting, isFalse);
+    expect(state.status.phase, ConnectionPhase.stopped);
+    expect(_inHome(find.byKey(const Key('home-cancel-connect'))), findsNothing);
+    expect(_inHome(find.text('Connect')), findsOneWidget);
+  });
+
+  testWidgets('a status-poll failure never pins Home on Connection failed',
+      (tester) async {
+    final client = _FailingPollClient();
+    final state = await _pumpWith(tester, client, connect: false);
+    expect(state.status.phase, ConnectionPhase.stopped);
+
+    client.fail = true;
+    await state.refresh();
+    await pumpFrames(tester, frames: 4);
+
+    // Diagnostics recorded the hiccup, but the tunnel state is untouched.
+    expect(state.logs.entries.any((e) => e.message.contains('Status refresh failed')), isTrue);
+    expect(_inHome(find.text('Connection failed')), findsNothing);
+    expect(_inHome(find.text('Connect')), findsOneWidget);
+  });
+
+  testWidgets('a config write failure does not turn Home into an error state',
+      (tester) async {
+    final client = _FailingSaveClient();
+    final state = await _pumpWith(tester, client, connect: false);
+
+    final saved = await state.saveConfig(
+      state.activeConfig!.copyWith(instanceName: 'office-mesh'),
+    );
+    await pumpFrames(tester, frames: 6);
+
+    expect(saved, isFalse);
+    expect(state.lastError, isNotNull);
+    expect(state.connectError, isNull);
+    expect(_inHome(find.text('Connection failed')), findsNothing);
+    expect(_inHome(find.text('Connect')), findsOneWidget);
+  });
+
+  testWidgets('saving a configuration does not make Home claim Connecting',
+      (tester) async {
+    final state = await _pumpWith(tester, _PhaseClient(_connectedStatus()));
+    expect(state.status.phase, ConnectionPhase.connected);
+    expect(_inHome(find.text('Disconnect')), findsOneWidget);
+
+    final saving = state.saveConfig(
+      state.activeConfig!.copyWith(networkName: 'renamed'),
+    );
+    await pumpFrames(tester, frames: 2);
+    await saving;
+    await pumpFrames(tester, frames: 6);
+
+    // busy is true during the save, but that must not read as "Connecting…".
+    expect(_inHome(find.text('Connecting…')), findsNothing);
+    expect(_inHome(find.text('Connecting to EasyTier Home…')), findsNothing);
+    expect(_inHome(find.text('Disconnect')), findsOneWidget);
+  });
+
+  testWidgets('dismissing the connect error returns Home to the stopped state',
+      (tester) async {
+    const message = 'Timed out waiting for a DHCP virtual IP from peers.';
+    final client = _StickyErrorClient(message);
+    final state = await _pumpWith(tester, client, connect: false);
+    await state.refresh();
+    await pumpFrames(tester, frames: 4);
+    expect(_inHome(find.text('Reconnect')), findsOneWidget);
+
+    await tester.tap(_inHome(find.byKey(const Key('home-dismiss-error'))));
+    await pumpFrames(tester, frames: 8);
+
+    expect(state.connectError, isNull);
+    expect(_inHome(find.byKey(const Key('home-dismiss-error'))), findsNothing);
+    expect(_inHome(find.text('Connect')), findsOneWidget);
+  });
+
+  testWidgets('connecting Home with the cancel action fits 320px',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640) * 2.0;
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.reset);
+
+    final client = _GatedClient();
+    final state = AppState(client: client, pollInterval: null);
+    addTearDown(state.dispose);
+    await tester.pumpWidget(EasytierApp(state: state));
+    await pumpFrames(tester);
+
+    final pending = state.connect();
+    await pumpFrames(tester, frames: 4);
+
+    expect(tester.takeException(), isNull);
+    expect(_inHome(find.byKey(const Key('home-cancel-connect'))), findsOneWidget);
+
+    await state.cancelConnect();
+    client.gate.complete();
+    await pending;
+    await pumpFrames(tester);
   });
 
   testWidgets('Home never overflows at 320px', (tester) async {

@@ -49,7 +49,7 @@ class _ScriptedTunClient implements CoreClient, TunFdCapable {
   Future<void> deleteInstance(String id) async {}
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {}
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {}
 
   @override
   Future<NetworkConfig?> getConfig(String id) async => config;

@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/i18n/i18n.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/client/core_client.dart';
 import '../../core/state/app_state.dart';
 import '../../core/theme/theme.dart';
 import '../../core/ui/ui.dart';
 import 'logs_page.dart';
 import 'settings_widgets.dart';
 
-const _appVersion = '2.6.4+12';
+const _appVersion = '2.6.4+13';
 const _logLevels = ['off', 'warn', 'info', 'debug', 'trace'];
 
 /// Settings — global application preferences, core runtime diagnostics, and
@@ -116,6 +117,49 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  /// Where this build persists network configurations.
+  ///
+  /// Support needs this without digging through logs: a sandbox that refuses
+  /// the file is the difference between "the app lost my network" and "the app
+  /// never saved it".
+  Widget _storageRow(AppState state) {
+    final store = state.client is StorageAwareCoreClient
+        ? state.client as StorageAwareCoreClient
+        : null;
+    final path = store?.configStorePath;
+    final warning = state.storageWarning;
+    final healthy = warning == null && path != null;
+    // A transport that does not use the file store at all (the design-preview
+    // mock) is neither healthy nor broken: say so instead of crying "read only".
+    final inMemory = store == null;
+    final subtitle = healthy
+        ? path
+        : warning ?? 'Not persisted by this transport';
+    return SettingsRow(
+      key: const Key('settings-storage-row'),
+      icon: Symbols.folder,
+      tone: healthy
+          ? EtTone.success
+          : inMemory
+          ? EtTone.neutral
+          : EtTone.warn,
+      title: I18n.t('Config storage'),
+      subtitle: subtitle,
+      trailing: healthy
+          ? EtBadge(label: I18n.t('Writable'), tone: EtTone.success)
+          : inMemory
+          ? EtBadge(label: I18n.t('In memory'), tone: EtTone.neutral)
+          : EtBadge(label: I18n.t('Read only'), tone: EtTone.warn),
+      onTap: () {
+        if (path != null) {
+          _copyLink(path);
+        } else if (warning != null) {
+          _copyLink(warning);
+        }
+      },
+    );
+  }
+
   Widget _coreGroup(AppState state) {
     final p = context.et;
     final hasServer = state.configServerUrl.isNotEmpty;
@@ -162,6 +206,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           onTap: () => _openConfigServerSheet(state),
         ),
+        const SettingsDivider(),
+        _storageRow(state),
         const SettingsDivider(),
         MenuAnchor(
           builder: (context, controller, _) => SettingsRow(

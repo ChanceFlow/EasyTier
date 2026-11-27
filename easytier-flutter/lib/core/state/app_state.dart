@@ -147,6 +147,21 @@ class AppState extends ChangeNotifier {
   /// user with an unexplained "no networks".
   String? storageWarning;
 
+  /// Why the last *tunnel start* failed, or `null`.
+  ///
+  /// Deliberately separate from [lastError]: [lastError] also carries save and
+  /// status-polling problems, and Home must not claim "Connection failed"
+  /// because a configuration write or a single poll hiccup went wrong.
+  String? connectError;
+
+  /// True only while a tunnel start is in flight (Home shows "Connecting…").
+  bool get isConnecting => _connecting;
+  bool _connecting = false;
+
+  /// True only while a teardown is in flight (Home shows "Disconnecting…").
+  bool get isDisconnecting => _disconnecting;
+  bool _disconnecting = false;
+
   void _syncStorageWarning() {
     final warning = _storageAware?.storageWarning;
     if (warning == null) {
@@ -171,7 +186,7 @@ class AppState extends ChangeNotifier {
     try {
       instances = await client.listInstances();
     } catch (error) {
-      lastError = error.toString();
+      lastError = _describeError(error);
       _log(LogLevel.error, 'config', 'Loading networks failed: $error');
     }
     _reconcileActiveId();
@@ -250,9 +265,11 @@ class AppState extends ChangeNotifier {
         await _reconcileVpnIfNeeded(id);
       }
     } catch (error) {
-      lastError = error.toString();
-      if (lastError != _lastRefreshError) {
-        _lastRefreshError = lastError;
+      // A failed poll is a transport hiccup, not a tunnel failure: record it
+      // for diagnostics only, and never override the phase the core reported.
+      final message = error.toString();
+      if (message != _lastRefreshError) {
+        _lastRefreshError = message;
         _log(LogLevel.warn, 'status', 'Status refresh failed: $error');
       }
     } finally {
@@ -295,17 +312,20 @@ class AppState extends ChangeNotifier {
       instance = active;
     }
     if (instance == null) {
-      lastError = storageWarning == null
+      final message = storageWarning == null
           ? 'No network is configured yet.'
           : '$storageWarning';
-      _log(LogLevel.warn, 'tunnel', lastError!);
+      connectError = message;
+      _log(LogLevel.warn, 'tunnel', message);
       _notify();
       return;
     }
     final generation = ++_connectGeneration;
     final config = instance.config;
     busy = true;
+    _connecting = true;
     lastError = null;
+    connectError = null;
     _log(
       LogLevel.info,
       'tunnel',
@@ -357,8 +377,9 @@ class AppState extends ChangeNotifier {
       await refresh();
       _log(LogLevel.info, 'tunnel', 'Connected · ${status.peers.length} peers');
     } catch (error) {
-      final message = error.toString();
+      final message = _describeError(error);
       lastError = message;
+      connectError = message;
       _log(LogLevel.error, 'tunnel', 'Connect failed: $message');
       await _cleanupFailedConnect(startedId);
       if (generation == _connectGeneration) {
@@ -370,19 +391,40 @@ class AppState extends ChangeNotifier {
       }
     } finally {
       busy = false;
+      _connecting = false;
       _notify();
     }
   }
 
-  Future<void> disconnect() async {
-    final id = activeId;
-    if (id == null || busy) return;
+  /// Trims the `Bad state: ` / `CoreClientException: ` prefix the Dart
+  /// exception wrappers add, so the banner shows the sentence that matters.
+  static String _describeError(Object error) {
+    final raw = error is StateError
+        ? error.message
+        : error is Exception
+        ? error.toString()
+        : error.toString();
+    return raw
+        .replaceFirst('Bad state: ', '')
+        .replaceFirst('CoreClientException: ', '')
+        .trim();
+  }
+
+  /// Aborts an in-flight tunnel start.
+  ///
+  /// The start sequence can legitimately take tens of seconds (a DHCP lease is
+  /// only handed out once peers answer), so "Connecting…" must not be a dead
+  /// end: cancelling bumps the generation, which makes every pending await
+  /// bail out and the half-started instance get stopped.
+  Future<void> cancelConnect() async {
+    if (!_connecting) return;
+    _log(LogLevel.info, 'tunnel', 'Connection attempt cancelled');
     _connectGeneration++;
     _completeVirtualIpSignal();
-    busy = true;
-    lastError = null;
-    _log(LogLevel.info, 'tunnel', 'Disconnecting');
-    notifyListeners();
+    final id = activeId;
+    _connecting = false;
+    _disconnecting = true;
+    _notify();
     try {
       final vpn = vpnController;
       if (vpn != null && vpn.isConnected) {
@@ -396,27 +438,138 @@ class AppState extends ChangeNotifier {
       _vpnInstanceId = null;
       _pendingVpnInstanceId = null;
       _activeVpnRequest = null;
+      if (id != null) await client.stopInstance(id);
+      status = InstanceStatus(instanceId: id ?? '', phase: ConnectionPhase.stopped);
+      connectError = null;
+    } catch (error) {
+      lastError = _describeError(error);
+      _log(LogLevel.warn, 'tunnel', 'Cancel failed: $error');
+    } finally {
+      busy = false;
+      _disconnecting = false;
+      _notify();
+    }
+  }
+
+  /// Acknowledges the current tunnel failure.
+  ///
+  /// The error can live on either the status snapshot (`status.error`, reported
+  /// by the core) or on [connectError] (the client-side start sequence), so a
+  /// dismissal has to clear both — otherwise the banner would come straight
+  /// back from the snapshot it was rendered from. A core instance that is still
+  /// running while errored is stopped as well, so the very next poll cannot
+  /// resurrect the same banner a second later.
+  Future<void> dismissConnectError() async {
+    final hadError = connectError != null ||
+        status.phase == ConnectionPhase.error ||
+        status.error != null;
+    if (!hadError) return;
+    final id = activeId;
+    final stopInstance =
+        id != null && (status.phase == ConnectionPhase.error || status.error != null);
+    connectError = null;
+    lastError = null;
+    status = InstanceStatus(
+      instanceId: status.instanceId,
+      phase: ConnectionPhase.stopped,
+    );
+    _notify();
+    if (!stopInstance) return;
+    try {
       await client.stopInstance(id);
+    } catch (error) {
+      _log(LogLevel.warn, 'tunnel', 'Stopping the failed instance: $error');
+      return;
+    }
+    await refresh();
+  }
+
+  Future<void> disconnect() async {
+    final id = activeId;
+    if (id == null || busy) return;
+    _connectGeneration++;
+    _completeVirtualIpSignal();
+    busy = true;
+    _disconnecting = true;
+    lastError = null;
+    _log(LogLevel.info, 'tunnel', 'Disconnecting');
+    _notify();
+    try {
+      final vpn = vpnController;
+      if (vpn != null && vpn.isConnected) {
+        _selfStopping = true;
+        try {
+          await vpn.disconnect();
+        } finally {
+          _selfStopping = false;
+        }
+      }
+      // The tunnel belongs to the instance that opened it, which is not
+      // necessarily the active profile (the user can switch profiles while a
+      // tunnel is up). Stop both so no orphan instance keeps running.
+      final tunnelInstance = _vpnInstanceId;
+      _vpnInstanceId = null;
+      _pendingVpnInstanceId = null;
+      _activeVpnRequest = null;
+      await client.stopInstance(id);
+      if (tunnelInstance != null && tunnelInstance != id) {
+        await client.stopInstance(tunnelInstance);
+      }
+      connectError = null;
       await refresh();
       _log(LogLevel.info, 'tunnel', 'Disconnected');
     } catch (error) {
-      lastError = error.toString();
+      lastError = _describeError(error);
       _log(LogLevel.error, 'tunnel', 'Disconnect failed: $error');
     } finally {
       busy = false;
+      _disconnecting = false;
       _notify();
     }
   }
 
   Future<void> selectInstance(String id) async {
     if (activeId == id) return;
+    final previousId = activeId;
+    final wasLive = status.phase.isUp ||
+        (vpnController?.isConnected ?? false) ||
+        _connecting;
     _connectGeneration++;
     _completeVirtualIpSignal();
+    // Switching profiles while a tunnel is up would leave the old instance
+    // running in the core with the system VPN still attached to it, while the
+    // UI claims the new profile is simply "not connected". Tear it down first.
+    if (wasLive && previousId != null) {
+      _log(LogLevel.info, 'profiles', 'Stopping $previousId before switching');
+      busy = true;
+      _connecting = false;
+      try {
+        final vpn = vpnController;
+        if (vpn != null && vpn.isConnected) {
+          _selfStopping = true;
+          try {
+            await vpn.disconnect();
+          } finally {
+            _selfStopping = false;
+          }
+        }
+        _vpnInstanceId = null;
+        _pendingVpnInstanceId = null;
+        _activeVpnRequest = null;
+        await client.stopInstance(previousId);
+      } catch (error) {
+        lastError = _describeError(error);
+        _log(LogLevel.warn, 'profiles', 'Stopping the previous network failed: $error');
+      } finally {
+        busy = false;
+      }
+    }
     activeId = id;
     lastError = null;
+    connectError = null;
     status = InstanceStatus.stopped;
     _log(LogLevel.debug, 'profiles', 'Switched active profile to $id');
-    notifyListeners();
+    _notify();
     await refresh();
   }
 
@@ -426,16 +579,21 @@ class AppState extends ChangeNotifier {
     busy = true;
     lastError = null;
     notifyListeners();
+    final editingId = activeId;
     try {
-      await client.saveConfig(config);
+      // `activeId` is the record Config is editing; passing it keeps a renamed
+      // instance as one network instead of creating a duplicate.
+      await client.saveConfig(config, instanceId: editingId);
       _syncStorageWarning();
       // The transport is the authority on ids. Reloading here is what makes a
       // network saved from the Config screen (or the TOML editor) appear on
       // Home even when the list started out empty.
       await reloadInstances();
-      final saved = instances.where(
-        (instance) => instance.config.instanceName == config.instanceName,
-      );
+      final saved = editingId != null
+          ? instances.where((instance) => instance.id == editingId)
+          : instances.where(
+              (instance) => instance.config.instanceName == config.instanceName,
+            );
       if (saved.isNotEmpty) {
         activeId = saved.first.id;
       }
@@ -446,7 +604,7 @@ class AppState extends ChangeNotifier {
       );
       return true;
     } catch (error) {
-      lastError = error.toString();
+      lastError = _describeError(error);
       _log(LogLevel.error, 'config', 'Save failed: $error');
       // Even a failed write can leave an in-memory instance; surface whatever
       // the transport actually has so the UI does not lie about it.
@@ -483,7 +641,7 @@ class AppState extends ChangeNotifier {
         '${storageWarning == null ? '' : ' (memory only)'}',
       );
     } catch (error) {
-      lastError = error.toString();
+      lastError = _describeError(error);
       _log(LogLevel.error, 'config', 'Creating a network failed: $error');
       await reloadInstances();
     }
@@ -505,14 +663,35 @@ class AppState extends ChangeNotifier {
 
   Future<void> removeInstance(String id) async {
     _log(LogLevel.info, 'config', 'Deleting network $id');
+    _connectGeneration++;
+    _completeVirtualIpSignal();
+    _connecting = false;
+    final ownedTunnel = _vpnInstanceId == id ||
+        (vpnController?.isConnected ?? false);
     try {
+      if (ownedTunnel) {
+        final vpn = vpnController;
+        if (vpn != null && vpn.isConnected) {
+          _selfStopping = true;
+          try {
+            await vpn.disconnect();
+          } finally {
+            _selfStopping = false;
+          }
+        }
+        _vpnInstanceId = null;
+        _pendingVpnInstanceId = null;
+        _activeVpnRequest = null;
+      }
       await client.deleteInstance(id);
     } catch (error) {
-      lastError = error.toString();
+      lastError = _describeError(error);
       _log(LogLevel.error, 'config', 'Delete failed: $error');
     }
     await reloadInstances();
-    status = InstanceStatus.stopped;
+    if (activeId == id || !instances.any((instance) => instance.id == activeId)) {
+      status = InstanceStatus.stopped;
+    }
     _notify();
     await refresh();
   }
@@ -851,8 +1030,16 @@ class AppState extends ChangeNotifier {
     _vpnInstanceId = null;
     _pendingVpnInstanceId = null;
     _activeVpnRequest = null;
-    if (reason == VpnStopReason.revoked) {
-      lastError = 'The system VPN slot was taken by another app.';
+    _reconcilingVpn = false;
+    final message = switch (reason) {
+      VpnStopReason.revoked =>
+        'The system VPN slot was taken by another app. Reconnect to restore it.',
+      VpnStopReason.error => 'The system VPN tunnel failed.',
+      _ => null,
+    };
+    if (message != null) {
+      lastError = message;
+      connectError = message;
     }
     if (id != null) {
       try {
@@ -864,8 +1051,8 @@ class AppState extends ChangeNotifier {
     if (activeId == id || id == null) {
       status = InstanceStatus(
         instanceId: id ?? status.instanceId,
-        phase: ConnectionPhase.stopped,
-        error: lastError,
+        phase: message == null ? ConnectionPhase.stopped : ConnectionPhase.error,
+        error: message,
       );
     }
     events.insert(
@@ -882,7 +1069,7 @@ class AppState extends ChangeNotifier {
         },
       ),
     );
-    notifyListeners();
+    _notify();
   }
 
   void _onEvent(NetworkEvent event) {
@@ -906,6 +1093,8 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _connectGeneration++;
+    _connecting = false;
+    _disconnecting = false;
     _completeVirtualIpSignal();
     _pollTimer?.cancel();
     _eventSub?.cancel();

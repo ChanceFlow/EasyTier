@@ -222,7 +222,7 @@ class _ConfigPageState extends State<ConfigPage> {
       }
       await state.connect();
       if (!mounted) return;
-      final error = state.lastError;
+      final error = state.connectError ?? state.lastError;
       if (error != null) {
         _showSnack('Could not start the network: $error');
       } else {
@@ -682,6 +682,7 @@ class _ConfigPageState extends State<ConfigPage> {
   }
 
   Widget _buildEmptyState(BuildContext context, AppState state) {
+    final storageWarning = state.storageWarning;
     return EtPage(
       title: I18n.t('Config'),
       subtitle: 'No network',
@@ -692,19 +693,48 @@ class _ConfigPageState extends State<ConfigPage> {
           onPressed: () => _addNetwork(),
         ),
       ],
-      child: EtEmptyState(
-        icon: Symbols.lan,
-        title: I18n.t('No network configured'),
-        message:
-            'Configuration belongs to a network. Create one to set its '
-            'identity, transport and rules.',
-        action: EtPrimaryButton(
-          label: I18n.t('Create network'),
-          icon: Symbols.add,
-          expanded: false,
-          onPressed: () => _addNetwork(),
-        ),
-      ),
+      child: storageWarning == null
+          ? EtEmptyState(
+              icon: Symbols.lan,
+              title: I18n.t('No network configured'),
+              message:
+                  'Configuration belongs to a network. Create one to set its '
+                  'identity, transport and rules.',
+              action: EtPrimaryButton(
+                label: I18n.t('Create network'),
+                icon: Symbols.add,
+                expanded: false,
+                onPressed: () => _addNetwork(),
+              ),
+            )
+          // With no network *and* an unwritable store the empty state alone
+          // would hide the real reason nothing stays configured.
+          : EtScrollBody(
+              top: EtSpace.x4,
+              children: [
+                EtBanner(
+                  key: const Key('config-storage-warning'),
+                  tone: EtTone.warn,
+                  icon: Symbols.warning,
+                  title: 'Saved in memory only',
+                  message: storageWarning,
+                ),
+                const SizedBox(height: EtSpace.x4),
+                EtEmptyState(
+                  icon: Symbols.lan,
+                  title: I18n.t('No network configured'),
+                  message:
+                      'Create a network anyway — it works for this session, '
+                      'and the warning above says what to fix.',
+                  action: EtPrimaryButton(
+                    label: I18n.t('Create network'),
+                    icon: Symbols.add,
+                    expanded: false,
+                    onPressed: () => _addNetwork(),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 

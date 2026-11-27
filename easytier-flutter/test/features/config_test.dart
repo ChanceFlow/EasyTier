@@ -226,6 +226,27 @@ void main() {
     expect(find.text('Renamed Net'), findsOneWidget);
   });
 
+  testWidgets('config warns when the store is not writable', (tester) async {
+    tester.view.physicalSize = const Size(390, 844) * 2.0;
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.reset);
+
+    final state = AppState(client: _ReadOnlyStoreClient(), pollInterval: null);
+    addTearDown(state.dispose);
+    await state.bootstrap();
+    await tester.pumpWidget(EasytierApp(state: state));
+    await pumpFrames(tester);
+    await openDestination(tester, EtDestination.config);
+
+    expect(state.storageWarning, isNotNull);
+    expect(find.byKey(const Key('config-storage-warning')), findsOneWidget);
+    expect(
+      find.text('Saved in memory only'),
+      findsOneWidget,
+      reason: 'the user must see that this network will not survive a restart',
+    );
+  });
+
   testWidgets('source editor blocks Apply on syntax errors', (tester) async {
     await pumpPhoneApp(tester);
     await openDestination(tester, EtDestination.config);
@@ -358,6 +379,18 @@ void main() {
 }
 
 /// A core with no configured instance, used to cover the empty state.
+/// Storage-aware transport that cannot write (the Android sandbox failure mode).
+class _ReadOnlyStoreClient extends _EmptyCoreClient
+    implements StorageAwareCoreClient {
+  @override
+  String? get storageWarning =>
+      'No writable configuration directory. Networks work for this session '
+      'but will not be saved across restarts.';
+
+  @override
+  String? get configStorePath => null;
+}
+
 class _EmptyCoreClient implements CoreClient {
   @override
   Future<void> init() async {}
@@ -375,7 +408,7 @@ class _EmptyCoreClient implements CoreClient {
   Future<void> deleteInstance(String id) async {}
 
   @override
-  Future<void> saveConfig(NetworkConfig config) async {}
+  Future<void> saveConfig(NetworkConfig config, {String? instanceId}) async {}
 
   @override
   Future<NetworkConfig?> getConfig(String id) async => null;
