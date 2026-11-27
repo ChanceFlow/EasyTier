@@ -288,6 +288,57 @@ void main() {
     });
   });
 
+  group('store file decoding', () {
+    test('reads persisted configurations keyed by instance id', () async {
+      final directory = await Directory.systemTemp.createTemp('easytier_store');
+      addTearDown(() async {
+        if (await directory.exists()) await directory.delete(recursive: true);
+      });
+      final file = FfiCoreClient.storeFileIn(directory);
+      await file.writeAsString('''
+{
+  "version": 1,
+  "configs": [
+    {
+      "id": "inst-1",
+      "config": {
+        "instanceName": "redmi",
+        "hostname": "redmi",
+        "networkName": "mynet",
+        "dhcp": false,
+        "virtualIpv4": "10.144.0.10",
+        "networkLength": 24
+      }
+    }
+  ]
+}
+''');
+
+      final entries = await FfiCoreClient.readStoreFile(file);
+
+      expect(entries, hasLength(1));
+      expect(entries.single.id, 'inst-1');
+      expect(entries.single.config.instanceName, 'redmi');
+      expect(entries.single.config.virtualIpv4, '10.144.0.10');
+    });
+
+    test('a missing file is empty, a corrupt file throws', () async {
+      final directory = await Directory.systemTemp.createTemp('easytier_store');
+      addTearDown(() async {
+        if (await directory.exists()) await directory.delete(recursive: true);
+      });
+      final file = FfiCoreClient.storeFileIn(directory);
+
+      expect(await FfiCoreClient.readStoreFile(file), isEmpty);
+
+      await file.writeAsString('not json at all');
+      await expectLater(
+        FfiCoreClient.readStoreFile(file),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
   group('config store probing', () {
     test('a writable directory passes the probe and is left clean', () async {
       final directory = await Directory.systemTemp.createTemp('easytier_probe');

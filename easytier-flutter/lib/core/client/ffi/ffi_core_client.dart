@@ -1030,41 +1030,90 @@ class FfiCoreClient implements CoreClient, TunFdCapable, StorageAwareCoreClient 
       probeWritableDirectory(directory);
 
   Future<void> _loadStore() async {
+    final candidates = _configDirectoryCandidates();
     final attempts = <String>[];
-    for (final directory in _configDirectoryCandidates()) {
+    Directory? chosen;
+    for (final directory in candidates) {
       try {
         await _probeWritable(directory);
-        _configStorePath = directory.path;
-        _storeFile = File(
-          '${directory.path}${Platform.pathSeparator}easytier_flutter.json',
-        );
-        _storeUsable = true;
-        _storageWarning = null;
-        await _readStoreFile(_storeFile!);
-        return;
+        chosen = directory;
+        break;
       } on Object catch (error) {
         attempts.add('${directory.path}: $error');
       }
     }
 
-    _storeUsable = false;
-    _storeFile = null;
-    _storageWarning =
-        'No writable configuration directory. Networks work for this session '
-        'but will not be saved across restarts. Tried: ${attempts.join('; ')}';
-    _emit(
-      kind: EventKind.warning,
-      title: 'Configuration storage unavailable',
-      detail: _storageWarning,
-    );
+    if (chosen == null) {
+      _storeUsable = false;
+      _storeFile = null;
+      _storageWarning =
+          'No writable configuration directory. Networks work for this session '
+          'but will not be saved across restarts. Tried: ${attempts.join('; ')}';
+      _emit(
+        kind: EventKind.warning,
+        title: 'Configuration storage unavailable',
+        detail: _storageWarning,
+      );
+      return;
+    }
+
+    _configStorePath = chosen.path;
+    _storeFile = storeFileIn(chosen);
+    _storeUsable = true;
+    _storageWarning = null;
+
+    final existedBefore = await _storeFile!.exists();
+    await _readStoreFile(_storeFile!);
+    if (!existedBefore) {
+      await _importLegacyStores(candidates, chosen);
+    }
+  }
+
+  /// `easytier_flutter.json` inside [directory].
+  static File storeFileIn(Directory directory) {
+    final separator = directory.path.endsWith(Platform.pathSeparator)
+        ? ''
+        : Platform.pathSeparator;
+    return File('${directory.path}$separator.easytier_flutter.json');
+  }
+
+  /// Reads the persisted configurations from one store file.
+  ///
+  /// Returns an empty list for a missing or structurally empty file; throws
+  /// [FormatException] when the file exists but is not a config store, so the
+  /// caller can report a real problem instead of pretending nothing was saved.
+  static Future<List<({String id, NetworkConfig config})>> readStoreFile(
+    File file,
+  ) async {
+    if (!await file.exists()) return const <({String id, NetworkConfig config})>[];
+    final decoded = _tryJsonDecode(await file.readAsString());
+    if (decoded is! Map) {
+      throw FormatException('${file.path} is not valid JSON');
+    }
+    final configs = decoded['configs'];
+    if (configs is! List) {
+      throw FormatException('${file.path} has no configs list');
+    }
+    final entries = <({String id, NetworkConfig config})>[];
+    for (final raw in configs) {
+      if (raw is! Map) continue;
+      final id = _asString(raw['id']);
+      final configJson = raw['config'];
+      if (id == null || configJson is! Map) continue;
+      entries.add((
+        id: id,
+        config: _configFromJson(Map<String, dynamic>.from(configJson)),
+      ));
+    }
+    return entries;
   }
 
   Future<void> _readStoreFile(File file) async {
-    if (!await file.exists()) return;
-    final decoded = _tryJsonDecode(await file.readAsString());
-    if (decoded is! Map) {
-      _storageWarning =
-          'Configuration file ${file.path} is not valid JSON; starting empty.';
+    final List<({String id, NetworkConfig config})> entries;
+    try {
+      entries = await readStoreFile(file);
+    } on FormatException catch (error) {
+      _storageWarning = 'Configuration file unreadable ($error); starting empty.';
       _emit(
         kind: EventKind.warning,
         title: 'Configuration file unreadable',
@@ -1072,15 +1121,55 @@ class FfiCoreClient implements CoreClient, TunFdCapable, StorageAwareCoreClient 
       );
       return;
     }
-    final configs = decoded['configs'];
-    if (configs is! List) return;
-    for (final raw in configs) {
-      if (raw is! Map) continue;
-      final id = _asString(raw['id']);
-      final configJson = raw['config'];
-      if (id == null || configJson is! Map) continue;
-      _configs[id] = _configFromJson(Map<String, dynamic>.from(configJson));
+    for (final entry in entries) {
+      _configs[entry.id] = entry.config;
     }
+  }
+
+  /// Imports configurations written by an older build into the store this
+  /// install chose.
+  ///
+  /// The first Android builds could only fall back to a temp directory, so a
+  /// network added before this fix lives there. Scanning the other candidates
+  /// once (only when the new store does not exist yet) means those networks
+  /// keep working instead of the user having to re-create them.
+  Future<void> _importLegacyStores(
+    List<Directory> candidates,
+    Directory chosen,
+  ) async {
+    var imported = 0;
+    for (final directory in candidates) {
+      if (directory.path == chosen.path) continue;
+      final file = storeFileIn(directory);
+      final List<({String id, NetworkConfig config})> entries;
+      try {
+        entries = await readStoreFile(file);
+      } on FormatException {
+        continue;
+      } on FileSystemException {
+        continue;
+      }
+      for (final entry in entries) {
+        final nameTaken = _configs.values.any(
+          (config) => config.instanceName == entry.config.instanceName,
+        );
+        if (nameTaken) continue;
+        _configs[entry.id] = entry.config;
+        imported++;
+      }
+    }
+    if (imported == 0) return;
+    try {
+      await _saveStore();
+    } on Object {
+      // The in-memory list is already correct; the storage warning explains
+      // the rest.
+    }
+    _emit(
+      kind: EventKind.info,
+      title: 'Imported saved networks',
+      detail: '$imported configuration(s) moved to ${chosen.path}',
+    );
   }
 
   Future<void> _saveStore() async {
