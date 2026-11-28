@@ -12,8 +12,13 @@
 #   * libclang for bindgen (kcp-sys); LIBCLANG_PATH if not auto-discovered
 #   * Flutter wrapper: bash /home/chance/Projects/.flutter-run.sh <dir> ...
 #
+# Signing: release APKs are signed with the committed internal test key
+# (android/app/easytier-internal.jks) so successive builds update in place.
+# A real release key takes precedence via android/key.properties.
+# Verify with: apksigner verify --print-certs <apk>
+#
 # Usage:
-#   tool/build_android.sh                 # arm64-v8a debug-signed release APK
+#   tool/build_android.sh                 # arm64-v8a release APK (fixed key)
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

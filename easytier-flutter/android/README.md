@@ -14,6 +14,54 @@ the behaviour is preserved, the Tauri plugin runtime is not.
 > available, so none of the runtime behaviour was exercised. See
 > [What must be verified on a real device](#what-must-be-verified-on-a-real-device).
 
+## Signing
+
+Android installs an update over an existing app **only when both APKs carry the
+same signing certificate**. This project therefore ships a fixed test key
+instead of the SDK's auto-generated debug key.
+
+| | |
+| --- | --- |
+| Key | `android/app/easytier-internal.jks` (committed on purpose) |
+| Alias / password | `easytier` / `easytier-internal` |
+| Certificate | `CN=EasyTier Internal Test, O=ChanceFlow, C=CN` — RSA 4096, valid until 2054 |
+| SHA-256 | `58:DC:E4:54:1E:6A:99:66:96:EA:A2:FF:C1:2A:CC:C5:22:93:48:BD:88:D1:7C:CB:A4:8C:72:E7:9A:C3:66:3D` |
+
+`android/app/build.gradle.kts` picks the signing key in this order:
+
+1. `android/key.properties` — a **real** release key (not committed; see
+   `android/.gitignore`). Flutter's documented layout:
+   `storeFile`, `storePassword`, `keyAlias`, `keyPassword`.
+2. `android/app/easytier-internal.jks` — the internal test key above.
+3. Fall back to the debug keystore **and log a warning**: such an APK cannot
+   update an installed build, because Gradle creates `~/.android/debug.keystore`
+   on demand and every fresh build container gets a different one.
+
+> **Why this exists:** every `-chance.N` APK before 2.6.4+14 was debug-signed by
+> a brand-new key (`signingConfig = signingConfigs.getByName("debug")` inside a
+> `podman run --rm` container), so `adb install -r` failed with
+> `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and the release could only replace the
+> app after an uninstall. One uninstall is unavoidable when moving from such a
+> build; after that, in-place updates work.
+
+Verify any APK before installing it over an existing one:
+
+```bash
+apksigner verify --print-certs app-release.apk   # must print the SHA-256 above
+```
+
+**This key is for internal test builds only.** It is committed with a public
+password, so it proves nothing about authenticity; a Play Store or public
+release needs its own private keystore via `key.properties`.
+
+### Moving between signing keys
+
+Switching keys (test key → release key, or any key change) always requires one
+uninstall, because Android pins the certificate per package. `adb uninstall -k
+com.kkrainbow.easytier_flutter` removes the package but keeps the app's data
+directory (saved networks), and reinstalling usually reuses it; the safe route
+is to copy the network's TOML from Config → source editor (`<>`) first.
+
 ## Files
 
 | File | Responsibility |
